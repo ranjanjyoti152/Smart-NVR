@@ -12,6 +12,7 @@ import signal
 from app import app, db
 from app.utils.camera_processor import CameraManager
 from app.models.user import User
+from app.utils.scheduler import get_scheduler
 
 # Global flag for signaling shutdown
 shutdown_requested = False
@@ -155,6 +156,11 @@ if __name__ == '__main__':
     # Configure API key for internal communication
     import secrets
     app.config['API_KEY'] = os.environ.get('API_KEY', secrets.token_hex(16))
+    
+    # Initialize scheduler for background tasks
+    scheduler = get_scheduler()
+    scheduler.start()
+    logger.info("Initialized background task scheduler")
     
     # Start Flask web server
     logger.info(f"Starting web server on {args.host}:{args.port}...")

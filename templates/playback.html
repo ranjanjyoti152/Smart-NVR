@@ -55,7 +55,16 @@
         <div class="col-md-9">
             <!-- Video Player -->
             <div class="video-container mb-3" id="video-container">
-                <video id="video-player" controls class="w-100"></video>
+                <video id="video-player" controls class="w-100">
+                    <!-- Adding source types to help browser determine format -->
+                    <source id="video-source-mp4" type="video/mp4">
+                    <source id="video-source-webm" type="video/webm">
+                    <!-- Fallback message -->
+                    <div class="alert alert-warning mt-3">
+                        Your browser cannot play this video format. 
+                        Please try downloading the video or using a different browser.
+                    </div>
+                </video>
                 <div class="no-video-message text-center py-5" id="no-video-message">
                     <i class="fas fa-film fa-3x mb-3 text-muted"></i>
                     <h4>No Video Selected</h4>
@@ -277,6 +286,8 @@ document.addEventListener('DOMContentLoaded', function() {
     let currentRecording = null;
     let playbackDirection = 1; // 1 for forward, -1 for backward
     let isPlaying = false;
+    let backwardPlaybackAnimationId = null; // Track backward animation frame
+    let lastTime = 0; // Track time for smoother backward playback
     
     // Set current date in date picker
     datePicker.value = currentDate;
@@ -492,12 +503,40 @@ document.addEventListener('DOMContentLoaded', function() {
         noVideoMessage.style.display = 'none';
         videoPlayer.style.display = 'block';
         
+        // Set video sources with proper MIME types
+        const videoUrl = `/api/recordings/${recording.id}/video`;
+        
+        // Get source elements
+        const mp4Source = document.getElementById('video-source-mp4');
+        const webmSource = document.getElementById('video-source-webm');
+        
+        // Set source URLs
+        mp4Source.src = videoUrl;
+        webmSource.src = videoUrl;
+        
         // Load and play video
-        videoPlayer.src = `/api/recordings/${recording.id}/video`;
         videoPlayer.load();
         
+        // Add error handling for video loading
+        videoPlayer.onerror = function() {
+            console.error('Video loading error:', videoPlayer.error);
+            // If video fails to load, offer download instead
+            const errorMessage = document.createElement('div');
+            errorMessage.className = 'alert alert-warning mt-3';
+            errorMessage.innerHTML = `
+                <strong>Error:</strong> Unable to play this video format. 
+                <a href="${videoUrl}" download class="btn btn-sm btn-primary ms-2">
+                    <i class="fas fa-download"></i> Download Video
+                </a>
+            `;
+            videoContainer.appendChild(errorMessage);
+        };
+        
         if (isPlaying) {
-            videoPlayer.play();
+            videoPlayer.play().catch(err => {
+                console.error('Error playing video:', err);
+            });
+            
             if (playbackDirection === -1) {
                 videoPlayer.currentTime = videoPlayer.duration;
             }
@@ -550,24 +589,51 @@ document.addEventListener('DOMContentLoaded', function() {
             videoPlayer.pause();
             playPause.innerHTML = '<i class="fas fa-play"></i>';
             isPlaying = false;
+            if (backwardPlaybackAnimationId) {
+                cancelAnimationFrame(backwardPlaybackAnimationId);
+                backwardPlaybackAnimationId = null;
+            }
         } else {
             if (playbackDirection === 1) {
                 videoPlayer.play();
             } else {
-                // Simulate backwards playback with small jumps
-                const intervalId = setInterval(() => {
+                // Simulate backwards playback with requestAnimationFrame
+                lastTime = performance.now();
+                function backwardPlayback() {
                     if (!isPlaying || playbackDirection === 1) {
-                        clearInterval(intervalId);
+                        cancelAnimationFrame(backwardPlaybackAnimationId);
+                        backwardPlaybackAnimationId = null;
                         return;
                     }
-                    videoPlayer.currentTime -= 0.1;
-                    if (videoPlayer.currentTime <= 0) {
-                        clearInterval(intervalId);
-                        videoPlayer.pause();
-                        playPause.innerHTML = '<i class="fas fa-play"></i>';
-                        isPlaying = false;
+                    const currentTime = videoPlayer.currentTime;
+                    const now = performance.now();
+                    if (lastTime) {
+                        const delta = (now - lastTime) / 1000;
+                        videoPlayer.currentTime = Math.max(0, currentTime - delta);
                     }
-                }, 100);
+                    lastTime = now;
+                    
+                    if (videoPlayer.currentTime <= 0) {
+                        // Auto play previous recording
+                        const currentIndex = recordings.findIndex(r => r.id === currentRecording.id);
+                        if (currentIndex > 0) {
+                            selectRecording(recordings[currentIndex - 1]);
+                            videoPlayer.addEventListener('loadedmetadata', function onceLoaded() {
+                                videoPlayer.currentTime = videoPlayer.duration;
+                                videoPlayer.removeEventListener('loadedmetadata', onceLoaded);
+                            });
+                        } else {
+                            isPlaying = false;
+                            playPause.innerHTML = '<i class="fas fa-play"></i>';
+                            cancelAnimationFrame(backwardPlaybackAnimationId);
+                            backwardPlaybackAnimationId = null;
+                            return;
+                        }
+                    }
+                    
+                    backwardPlaybackAnimationId = requestAnimationFrame(backwardPlayback);
+                }
+                backwardPlayback();
             }
             playPause.innerHTML = '<i class="fas fa-pause"></i>';
             isPlaying = true;
@@ -575,6 +641,12 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     playForward.addEventListener('click', () => {
+        // Cancel any existing backward playback animation
+        if (backwardPlaybackAnimationId) {
+            cancelAnimationFrame(backwardPlaybackAnimationId);
+            backwardPlaybackAnimationId = null;
+        }
+        
         playbackDirection = 1;
         playForward.classList.add('active');
         playBackward.classList.remove('active');
@@ -590,19 +662,42 @@ document.addEventListener('DOMContentLoaded', function() {
         if (isPlaying) {
             videoPlayer.pause();
             // Start backward playback
-            const intervalId = setInterval(() => {
+            lastTime = performance.now();
+            function backwardPlayback() {
                 if (!isPlaying || playbackDirection === 1) {
-                    clearInterval(intervalId);
+                    cancelAnimationFrame(backwardPlaybackAnimationId);
+                    backwardPlaybackAnimationId = null;
                     return;
                 }
-                videoPlayer.currentTime -= 0.1;
-                if (videoPlayer.currentTime <= 0) {
-                    clearInterval(intervalId);
-                    videoPlayer.pause();
-                    playPause.innerHTML = '<i class="fas fa-play"></i>';
-                    isPlaying = false;
+                const currentTime = videoPlayer.currentTime;
+                const now = performance.now();
+                if (lastTime) {
+                    const delta = (now - lastTime) / 1000;
+                    videoPlayer.currentTime = Math.max(0, currentTime - delta);
                 }
-            }, 100);
+                lastTime = now;
+                
+                if (videoPlayer.currentTime <= 0) {
+                    // Auto play previous recording
+                    const currentIndex = recordings.findIndex(r => r.id === currentRecording.id);
+                    if (currentIndex > 0) {
+                        selectRecording(recordings[currentIndex - 1]);
+                        videoPlayer.addEventListener('loadedmetadata', function onceLoaded() {
+                            videoPlayer.currentTime = videoPlayer.duration;
+                            videoPlayer.removeEventListener('loadedmetadata', onceLoaded);
+                        });
+                    } else {
+                        isPlaying = false;
+                        playPause.innerHTML = '<i class="fas fa-play"></i>';
+                        cancelAnimationFrame(backwardPlaybackAnimationId);
+                        backwardPlaybackAnimationId = null;
+                        return;
+                    }
+                }
+                
+                backwardPlaybackAnimationId = requestAnimationFrame(backwardPlayback);
+            }
+            backwardPlayback();
         }
     });
     

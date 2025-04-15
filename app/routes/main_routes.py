@@ -286,6 +286,28 @@ def create_default_settings():
         }
     }
 
+def load_settings():
+    """Load settings from file for other modules to access"""
+    import os
+    import json
+    
+    settings_file = os.path.join('config', 'settings.json')
+    if os.path.exists(settings_file):
+        try:
+            with open(settings_file, 'r') as f:
+                settings = json.load(f)
+            return settings
+        except Exception as e:
+            print(f"Error loading settings: {str(e)}")
+    
+    return create_default_settings()
+
+# Make the settings available to other parts of the application
+def get_recording_settings():
+    """Get recording settings for camera processor"""
+    settings = load_settings()
+    return settings.get('recording', {})
+
 @main_bp.route('/save-settings', methods=['POST'])
 @login_required
 def save_settings():

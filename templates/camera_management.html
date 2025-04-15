@@ -221,13 +221,7 @@
                         <div class="mb-3">
                             <label for="detectionClasses" class="form-label">Object Classes to Detect</label>
                             <select class="form-select" id="detectionClasses" multiple>
-                                <option value="0">Person</option>
-                                <option value="1">Bicycle</option>
-                                <option value="2">Car</option>
-                                <option value="3">Motorcycle</option>
-                                <option value="15">Cat</option>
-                                <option value="16">Dog</option>
-                                <!-- More COCO classes can be added as needed -->
+                                <!-- Classes will be dynamically loaded -->
                             </select>
                             <div class="form-text">Hold Ctrl/Cmd to select multiple or leave empty for all classes</div>
                         </div>
@@ -334,6 +328,54 @@ function setupROICanvas(cameraId) {
     const startDrawingBtn = document.getElementById('btnStartDrawing');
     const clearDrawingBtn = document.getElementById('btnClearDrawing');
     const saveROIBtn = document.getElementById('btnSaveROI');
+    
+    // Load object classes from the model
+    const detectionClassesSelect = document.getElementById('detectionClasses');
+    
+    // Clear existing options
+    detectionClassesSelect.innerHTML = '';
+    
+    // Show loading message in the select box
+    const loadingOption = document.createElement('option');
+    loadingOption.textContent = 'Loading classes...';
+    loadingOption.disabled = true;
+    loadingOption.selected = true;
+    detectionClassesSelect.appendChild(loadingOption);
+    
+    // Fetch the classes from the API
+    fetch(`/api/model_classes`)
+        .then(response => response.json())
+        .then(data => {
+            // Remove loading message
+            detectionClassesSelect.innerHTML = '';
+            
+            if (data.success && data.classes && data.classes.length > 0) {
+                // Add classes to the select element
+                data.classes.forEach(cls => {
+                    const option = document.createElement('option');
+                    option.value = cls.id;
+                    option.textContent = cls.name;
+                    detectionClassesSelect.appendChild(option);
+                });
+                
+                console.log(`Loaded ${data.classes.length} classes from model`);
+            } else {
+                // Add a placeholder if no classes were found
+                const option = document.createElement('option');
+                option.textContent = 'No classes found';
+                option.disabled = true;
+                detectionClassesSelect.appendChild(option);
+                console.error('No classes found');
+            }
+        })
+        .catch(error => {
+            console.error('Error loading model classes:', error);
+            detectionClassesSelect.innerHTML = '';
+            const option = document.createElement('option');
+            option.textContent = 'Error loading classes';
+            option.disabled = true;
+            detectionClassesSelect.appendChild(option);
+        });
     
     // Add event listeners to the new buttons
     startDrawingBtn.addEventListener('click', function() {

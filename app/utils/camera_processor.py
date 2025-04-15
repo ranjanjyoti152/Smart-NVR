@@ -529,16 +529,81 @@ class CameraProcessor:
     
     def _rotate_video_file(self, current_time=None):
         """Create a new video file for recording"""
+        import os  # Add import here to ensure it's available
+
         if not current_time:
             current_time = datetime.now()
             
         # Close current writer if exists
         if self.video_writer:
             self.video_writer.release()
+            
+            # Create database entry for the completed recording
+            if self.current_video_path and self.video_start_time:
+                try:
+                    from app import app, db
+                    from app.models.recording import Recording
+                    
+                    # Calculate duration from start time to now
+                    duration = (current_time - self.video_start_time).total_seconds()
+                    
+                    # Get file size if file exists
+                    file_size = 0
+                    if os.path.exists(self.current_video_path):
+                        file_size = os.path.getsize(self.current_video_path)
+                        
+                        # Only process valid video files (non-zero size)
+                        if file_size > 0:
+                            # Create database record
+                            with app.app_context():
+                                # Check if a record already exists
+                                existing_recording = Recording.query.filter_by(
+                                    camera_id=self.camera.id,
+                                    file_path=self.current_video_path
+                                ).first()
+                                
+                                if not existing_recording:
+                                    recording = Recording(
+                                        camera_id=self.camera.id,
+                                        file_path=self.current_video_path,
+                                        timestamp=self.video_start_time,
+                                        duration=duration,
+                                        file_size=file_size,
+                                        recording_type='continuous'
+                                    )
+                                    
+                                    db.session.add(recording)
+                                    db.session.commit()
+                                    logger.info(f"Added recording to database: {self.current_video_path}, duration: {duration:.1f}s")
+                                else:
+                                    # Update existing recording with latest info
+                                    existing_recording.duration = duration
+                                    existing_recording.file_size = file_size
+                                    db.session.commit()
+                                    logger.debug(f"Updated existing recording in database: {self.current_video_path}")
+                        else:
+                            logger.warning(f"Skip adding empty recording file to database: {self.current_video_path}")
+                    else:
+                        logger.warning(f"Video file not found: {self.current_video_path}")
+                
+                except Exception as e:
+                    logger.error(f"Error adding recording to database: {str(e)}")
+                    import traceback
+                    logger.error(f"Traceback: {traceback.format_exc()}")
+            
             self.video_writer = None
         
+        # Get storage path from application settings
+        try:
+            from app.routes.main_routes import get_recording_settings
+            recording_settings = get_recording_settings()
+            storage_base = recording_settings.get('storage_path', 'storage/recordings')
+        except Exception as e:
+            logger.warning(f"Could not load recording settings: {str(e)}, using defaults")
+            storage_base = 'storage/recordings'
+        
         # Create recordings directory for this camera
-        video_dir = os.path.join('storage', 'recordings', 'videos', str(self.camera.id))
+        video_dir = os.path.join(storage_base, 'videos', str(self.camera.id))
         os.makedirs(video_dir, exist_ok=True)
         
         # Create video filename with timestamp

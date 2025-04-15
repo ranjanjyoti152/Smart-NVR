@@ -456,6 +456,9 @@ def get_latest_camera_detections(camera_id):
 @login_required
 def get_camera_recordings(camera_id):
     """Get recordings for a specific camera with filters"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     # Verify camera exists
     camera = Camera.query.get_or_404(camera_id)
     
@@ -464,20 +467,36 @@ def get_camera_recordings(camera_id):
     events_only = request.args.get('events_only', 'false').lower() == 'true'
     object_type = request.args.get('object_type', '')
     
+    # Log incoming request parameters for debugging
+    logger.debug(f"API request for recordings: camera_id={camera_id}, date={date}, events_only={events_only}, object_type={object_type}")
+    
     # Build query
     query = Recording.query.filter_by(camera_id=camera_id)
     
     # Filter by date
     if date:
         try:
+            # Parse date string to datetime object
             date_obj = datetime.strptime(date, '%Y-%m-%d')
             next_day = date_obj + timedelta(days=1)
-            query = query.filter(Recording.timestamp >= date_obj, 
-                                Recording.timestamp < next_day)
-        except ValueError:
+            
+            # Log the date range for debugging
+            logger.debug(f"Filtering recordings between {date_obj} and {next_day}")
+            
+            # Use explicit timestamp filtering with string conversion to avoid timezone issues
+            date_str = date_obj.strftime('%Y-%m-%d')
+            next_day_str = next_day.strftime('%Y-%m-%d')
+            
+            # Convert recording timestamps to date strings for comparison
+            query = query.filter(
+                db.func.date(Recording.timestamp) == date_str
+            )
+        except ValueError as e:
+            logger.error(f"Invalid date format: {date}. Error: {str(e)}")
             return jsonify({
                 'success': False,
-                'message': 'Invalid date format. Use YYYY-MM-DD'
+                'message': 'Invalid date format. Use YYYY-MM-DD',
+                'error': str(e)
             }), 400
     
     # Filter by recording type (events only)
@@ -493,28 +512,51 @@ def get_camera_recordings(camera_id):
             Detection.class_name == object_type
         ).distinct().all()
         recording_ids = [r[0] for r in recording_ids]
-        query = query.filter(Recording.id.in_(recording_ids))
+        if recording_ids:
+            query = query.filter(Recording.id.in_(recording_ids))
+        else:
+            # If no recordings match the object type, return empty list
+            logger.debug(f"No recordings found with object type: {object_type}")
+            return jsonify({
+                'recordings': [],
+                'detections': []
+            })
     
     # Order by timestamp
     query = query.order_by(Recording.timestamp.desc())
     
     # Execute query
     recordings = query.all()
+    logger.debug(f"Found {len(recordings)} recordings for camera {camera_id} on date {date}")
+    
+    # Group detections by recording
+    recording_detections = {}
+    if recordings:
+        recording_ids = [rec.id for rec in recordings]
+        all_detections = Detection.query.filter(Detection.recording_id.in_(recording_ids)).all()
+        
+        # Group detections by recording_id
+        for det in all_detections:
+            if det.recording_id not in recording_detections:
+                recording_detections[det.recording_id] = []
+            recording_detections[det.recording_id].append(det)
     
     # Format results
-    results = []
+    recording_results = []
     for rec in recordings:
         # Get detections for this recording if any
-        detections = []
-        for det in rec.detections:
-            detections.append({
+        detections_for_recording = recording_detections.get(rec.id, [])
+        detections_data = []
+        
+        for det in detections_for_recording:
+            detections_data.append({
                 'id': det.id,
                 'class_name': det.class_name,
                 'confidence': det.confidence,
                 'timestamp': det.timestamp.isoformat() if det.timestamp else None
             })
             
-        results.append({
+        recording_results.append({
             'id': rec.id,
             'timestamp': rec.timestamp.isoformat() if rec.timestamp else None,
             'duration': rec.duration,
@@ -525,10 +567,23 @@ def get_camera_recordings(camera_id):
             'file_size': rec.file_size,
             'video_url': f'/api/recordings/{rec.id}/video',
             'thumbnail_url': f'/api/recordings/{rec.id}/thumbnail',
-            'detections': detections
+            'detections': detections_data
         })
     
-    return jsonify(results)
+    # Get all unique detections for this date
+    all_detections_data = []
+    detection_ids = set()
+    
+    for rec_data in recording_results:
+        for det in rec_data['detections']:
+            if det['id'] not in detection_ids:
+                all_detections_data.append(det)
+                detection_ids.add(det['id'])
+    
+    return jsonify({
+        'recordings': recording_results,
+        'detections': all_detections_data
+    })
 
 # --- Recordings API Endpoints ---
 
@@ -615,13 +670,43 @@ def get_recording(recording_id):
 @login_required
 def get_recording_video(recording_id):
     """Stream recording video"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     recording = Recording.query.get_or_404(recording_id)
     
     if not os.path.exists(recording.file_path):
+        logger.error(f"Recording file not found: {recording.file_path}")
         abort(404, description="Recording file not found")
     
-    # Stream the video file
-    return send_file(recording.file_path, conditional=True)
+    # Log file information for debugging
+    logger.info(f"Serving video file: {recording.file_path}")
+    
+    # Determine MIME type based on file extension
+    mime_type = 'video/mp4'  # Default
+    if recording.file_path.lower().endswith('.avi'):
+        mime_type = 'video/x-msvideo'
+    elif recording.file_path.lower().endswith('.mkv'):
+        mime_type = 'video/x-matroska'
+    elif recording.file_path.lower().endswith('.webm'):
+        mime_type = 'video/webm'
+    elif recording.file_path.lower().endswith('.mov'):
+        mime_type = 'video/quicktime'
+    
+    # Set additional headers for improved browser compatibility
+    response = send_file(
+        recording.file_path, 
+        mimetype=mime_type,
+        conditional=True,
+        etag=True,
+        last_modified=recording.timestamp
+    )
+    
+    # Add additional headers to help browsers identify content correctly
+    response.headers['Accept-Ranges'] = 'bytes'
+    response.headers['Content-Disposition'] = f'inline; filename="{os.path.basename(recording.file_path)}"'
+    
+    return response
 
 @api_bp.route('/recordings/<int:recording_id>/thumbnail')
 @login_required
@@ -1079,3 +1164,103 @@ def hook_detection():
         'detection_id': detection.id,
         'message': 'Detection received and processed'
     }), 201
+
+@api_bp.route('/model_classes', methods=['GET'])
+def get_model_classes():
+    """Get available detection classes from a YOLOv5 model"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # If model_id is provided, use that model
+        model_id = request.args.get('model_id')
+        from app.models.ai_model import AIModel
+        
+        if model_id:
+            model = AIModel.query.get(model_id)
+            if not model:
+                return jsonify({'success': False, 'message': 'Model not found'}), 404
+            model_path = model.file_path
+        else:
+            # Otherwise use the default model
+            from app.routes.main_routes import load_settings
+            settings = load_settings()
+            default_model_name = settings.get('detection', {}).get('default_model', 'yolov5s')
+            
+            model = AIModel.query.filter_by(name=default_model_name).first()
+            if model:
+                model_path = model.file_path
+            else:
+                # Fall back to standard yolov5s
+                model_path = os.path.join('models', 'yolov5s.pt')
+        
+        # Get classes from the model
+        import torch
+        import os
+        
+        if os.path.exists(model_path):
+            try:
+                # Try to load model directly to get class names
+                logger.info(f"Loading model classes from {model_path}")
+                model_instance = torch.hub.load('ultralytics/yolov5', 'custom', path=model_path, trust_repo=True)
+                classes = model_instance.names
+                logger.info(f"Successfully loaded {len(classes)} classes from model")
+            except Exception as e:
+                logger.warning(f"Error loading model classes: {str(e)}, falling back to COCO")
+                # Fall back to complete standard COCO classes
+                classes = {
+                    0: 'person', 1: 'bicycle', 2: 'car', 3: 'motorcycle', 4: 'airplane', 5: 'bus',
+                    6: 'train', 7: 'truck', 8: 'boat', 9: 'traffic light', 10: 'fire hydrant',
+                    11: 'stop sign', 12: 'parking meter', 13: 'bench', 14: 'bird', 15: 'cat',
+                    16: 'dog', 17: 'horse', 18: 'sheep', 19: 'cow', 20: 'elephant', 21: 'bear',
+                    22: 'zebra', 23: 'giraffe', 24: 'backpack', 25: 'umbrella', 26: 'handbag',
+                    27: 'tie', 28: 'suitcase', 29: 'frisbee', 30: 'skis', 31: 'snowboard',
+                    32: 'sports ball', 33: 'kite', 34: 'baseball bat', 35: 'baseball glove',
+                    36: 'skateboard', 37: 'surfboard', 38: 'tennis racket', 39: 'bottle',
+                    40: 'wine glass', 41: 'cup', 42: 'fork', 43: 'knife', 44: 'spoon',
+                    45: 'bowl', 46: 'banana', 47: 'apple', 48: 'sandwich', 49: 'orange',
+                    50: 'broccoli', 51: 'carrot', 52: 'hot dog', 53: 'pizza', 54: 'donut',
+                    55: 'cake', 56: 'chair', 57: 'couch', 58: 'potted plant', 59: 'bed',
+                    60: 'dining table', 61: 'toilet', 62: 'tv', 63: 'laptop', 64: 'mouse',
+                    65: 'remote', 66: 'keyboard', 67: 'cell phone', 68: 'microwave',
+                    69: 'oven', 70: 'toaster', 71: 'sink', 72: 'refrigerator', 73: 'book',
+                    74: 'clock', 75: 'vase', 76: 'scissors', 77: 'teddy bear', 78: 'hair drier',
+                    79: 'toothbrush'
+                }
+        else:
+            logger.warning(f"Model file not found: {model_path}, falling back to COCO classes")
+            # Use full COCO class list when model file isn't found
+            classes = {
+                0: 'person', 1: 'bicycle', 2: 'car', 3: 'motorcycle', 4: 'airplane', 5: 'bus',
+                6: 'train', 7: 'truck', 8: 'boat', 9: 'traffic light', 10: 'fire hydrant',
+                11: 'stop sign', 12: 'parking meter', 13: 'bench', 14: 'bird', 15: 'cat',
+                16: 'dog', 17: 'horse', 18: 'sheep', 19: 'cow', 20: 'elephant', 21: 'bear',
+                22: 'zebra', 23: 'giraffe', 24: 'backpack', 25: 'umbrella', 26: 'handbag',
+                27: 'tie', 28: 'suitcase', 29: 'frisbee', 30: 'skis', 31: 'snowboard',
+                32: 'sports ball', 33: 'kite', 34: 'baseball bat', 35: 'baseball glove',
+                36: 'skateboard', 37: 'surfboard', 38: 'tennis racket', 39: 'bottle',
+                40: 'wine glass', 41: 'cup', 42: 'fork', 43: 'knife', 44: 'spoon',
+                45: 'bowl', 46: 'banana', 47: 'apple', 48: 'sandwich', 49: 'orange',
+                50: 'broccoli', 51: 'carrot', 52: 'hot dog', 53: 'pizza', 54: 'donut',
+                55: 'cake', 56: 'chair', 57: 'couch', 58: 'potted plant', 59: 'bed',
+                60: 'dining table', 61: 'toilet', 62: 'tv', 63: 'laptop', 64: 'mouse',
+                65: 'remote', 66: 'keyboard', 67: 'cell phone', 68: 'microwave',
+                69: 'oven', 70: 'toaster', 71: 'sink', 72: 'refrigerator', 73: 'book',
+                74: 'clock', 75: 'vase', 76: 'scissors', 77: 'teddy bear', 78: 'hair drier',
+                79: 'toothbrush'
+            }
+        
+        # Format classes as array of objects for easy use in frontend
+        class_list = [{"id": class_id, "name": class_name} for class_id, class_name in classes.items()]
+        
+        logger.info(f"Returning {len(class_list)} model classes")
+        return jsonify({
+            'success': True, 
+            'classes': class_list
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting model classes: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500

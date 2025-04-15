@@ -184,7 +184,7 @@
             const username = this.getAttribute('data-username');
             
             document.getElementById('delete_username').textContent = username;
-            document.getElementById('deleteUserForm').action = '/users/' + userId + '/delete';
+            document.getElementById('deleteUserForm').action = '/admin/users/' + userId + '/delete';
         });
     });
 </script>
