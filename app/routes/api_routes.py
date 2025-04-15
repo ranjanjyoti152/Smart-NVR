@@ -669,8 +669,14 @@ def get_recording(recording_id):
 @api_bp.route('/recordings/<int:recording_id>/video')
 @login_required
 def get_recording_video(recording_id):
-    """Stream recording video"""
+    """Stream recording video with transcoding support if needed"""
     import logging
+    import os
+    import subprocess
+    import tempfile
+    import re
+    from flask import Response, abort, request, send_file
+
     logger = logging.getLogger(__name__)
     
     recording = Recording.query.get_or_404(recording_id)
@@ -679,34 +685,75 @@ def get_recording_video(recording_id):
         logger.error(f"Recording file not found: {recording.file_path}")
         abort(404, description="Recording file not found")
     
-    # Log file information for debugging
     logger.info(f"Serving video file: {recording.file_path}")
     
-    # Determine MIME type based on file extension
-    mime_type = 'video/mp4'  # Default
-    if recording.file_path.lower().endswith('.avi'):
-        mime_type = 'video/x-msvideo'
-    elif recording.file_path.lower().endswith('.mkv'):
-        mime_type = 'video/x-matroska'
-    elif recording.file_path.lower().endswith('.webm'):
-        mime_type = 'video/webm'
-    elif recording.file_path.lower().endswith('.mov'):
-        mime_type = 'video/quicktime'
+    # Check if the browser supports direct playback (mobile browsers often have better codec support)
+    user_agent = request.headers.get('User-Agent', '').lower()
+    mobile = 'mobile' in user_agent or 'android' in user_agent or 'iphone' in user_agent or 'ipad' in user_agent
     
-    # Set additional headers for improved browser compatibility
-    response = send_file(
-        recording.file_path, 
-        mimetype=mime_type,
-        conditional=True,
-        etag=True,
-        last_modified=recording.timestamp
-    )
+    # Check video format - if it's MPEG-4 and not mobile, we'll transcode
+    need_transcode = False
+    try:
+        # Use ffprobe to check video codec
+        ffprobe_cmd = [
+            'ffprobe', '-v', 'error', '-select_streams', 'v:0', 
+            '-show_entries', 'stream=codec_name', '-of', 'default=noprint_wrappers=1:nokey=1',
+            recording.file_path
+        ]
+        codec = subprocess.check_output(ffprobe_cmd, stderr=subprocess.STDOUT).decode('utf-8').strip()
+        logger.info(f"Video codec: {codec}")
+        
+        # Need to transcode if it's mpeg4 (not h264)
+        need_transcode = codec == 'mpeg4' and not mobile
+    except Exception as e:
+        logger.error(f"Error checking video codec: {str(e)}")
+        # If we can't check, assume no need to transcode
+        need_transcode = False
     
-    # Add additional headers to help browsers identify content correctly
-    response.headers['Accept-Ranges'] = 'bytes'
-    response.headers['Content-Disposition'] = f'inline; filename="{os.path.basename(recording.file_path)}"'
-    
-    return response
+    if need_transcode:
+        logger.info(f"Transcoding video to H.264 for browser compatibility")
+        
+        # Check for range requests
+        range_header = request.headers.get('Range', None)
+        
+        def generate_h264():
+            """Stream H.264 transcoded video"""
+            ffmpeg_cmd = [
+                'ffmpeg', '-i', recording.file_path,
+                '-c:v', 'libx264', '-preset', 'ultrafast',
+                '-movflags', 'frag_keyframe+empty_moov+faststart',
+                '-f', 'mp4', '-'
+            ]
+            
+            process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=10**8)
+            
+            try:
+                while True:
+                    chunk = process.stdout.read(1024*1024)  # 1MB chunks
+                    if not chunk:
+                        break
+                    yield chunk
+            finally:
+                process.kill()
+        
+        return Response(
+            generate_h264(),
+            mimetype='video/mp4',
+            headers={
+                'Accept-Ranges': 'bytes',
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'X-Content-Type-Options': 'nosniff',
+                'Content-Disposition': f'inline; filename="{os.path.basename(recording.file_path)}"'
+            }
+        )
+    else:
+        # No transcoding needed, send file directly
+        return send_file(
+            recording.file_path,
+            mimetype='video/mp4',
+            conditional=True,
+            etag=True,
+        )
 
 @api_bp.route('/recordings/<int:recording_id>/thumbnail')
 @login_required
