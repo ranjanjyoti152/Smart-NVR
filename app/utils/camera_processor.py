@@ -504,14 +504,26 @@ class CameraProcessor:
     
     def _record_frames(self):
         """Record video from camera frames"""
+        # Get clip length from application settings
+        try:
+            from app.routes.main_routes import get_recording_settings
+            recording_settings = get_recording_settings()
+            clip_length = int(recording_settings.get('clip_length', 60))  # Default to 60 seconds if not set
+            # Convert clip_length from seconds to seconds (already in seconds)
+            clip_duration = clip_length  # seconds
+            logger.info(f"Using clip length of {clip_duration} seconds for camera {self.camera.id}")
+        except Exception as e:
+            logger.warning(f"Could not load recording settings: {str(e)}, using default clip length of 60 seconds")
+            clip_duration = 60  # Default to 60 seconds
+        
         while self.running and self.recording:
             try:
                 # Check if we need to create a new video file
                 current_time = datetime.now()
                 
-                # Create new file every hour or if no current file
+                # Create new file based on configured clip length or if no current file
                 if (not self.video_writer or not self.video_start_time or 
-                        (current_time - self.video_start_time).total_seconds() > 3600):
+                        (current_time - self.video_start_time).total_seconds() > clip_duration):
                     self._rotate_video_file(current_time)
                 
                 # Get frame from queue
