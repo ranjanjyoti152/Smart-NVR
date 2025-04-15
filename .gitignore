@@ -1,12 +1,15 @@
-# Python compiled files
+# Python bytecode
 __pycache__/
 *.py[cod]
 *$py.class
 
 # Virtual environment
-venv/
+.venv
 env/
+venv/
 ENV/
+env.bak/
+venv.bak/
 
 # Distribution / packaging
 dist/
@@ -14,12 +17,13 @@ build/
 *.egg-info/
 
 # Database files
-instance/*.db
+instance/
 *.db
+*.db-journal
 *.sqlite3
 
 # Log files
-logs/*.log
+logs/
 *.log
 
 # Local configuration
@@ -39,8 +43,16 @@ config/settings.json
 /models/
 /yolov5*/
 
+# Model files - exclude large model weights
+models/*.pt
+models/*.weights
+models/*.onnx
+storage/models/
+
 # Media files & recordings (too large for GitHub)
 storage/
+storage/recordings/videos/
+storage/recordings/images/
 *.mp4
 *.avi
 *.mov
