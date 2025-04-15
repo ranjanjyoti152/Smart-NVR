@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if title %}{{ title }} - {% endif %}SmartNVR</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Custom CSS for macOS-inspired design -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    
+    <!-- Additional CSS specific to pages -->
+    {% block styles %}{% endblock %}
+</head>
+<body>
+    <!-- macOS-style header -->
+    <header class="mac-header">
+        <div class="container-fluid">
+            <div class="row align-items-center">
+                <div class="col-auto">
+                    <div class="mac-traffic-lights d-none d-md-flex">
+                        <div class="mac-btn mac-close"></div>
+                        <div class="mac-btn mac-minimize"></div>
+                        <div class="mac-btn mac-maximize"></div>
+                    </div>
+                </div>
+                <div class="col text-center">
+                    <h1 class="mac-title">SmartNVR</h1>
+                </div>
+                <div class="col-auto">
+                    {% if current_user.is_authenticated %}
+                    <div class="dropdown">
+                        <button class="btn mac-user-menu" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-user-circle"></i> {{ current_user.username }}
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="{{ url_for('main.profile') }}">Profile</a></li>
+                            {% if current_user.is_admin %}
+                            <li><a class="dropdown-item" href="{{ url_for('admin.admin_index') }}">Admin Panel</a></li>
+                            {% endif %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}">Logout</a></li>
+                        </ul>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </header>
+
+    {% if current_user.is_authenticated %}
+    <!-- Navigation Sidebar (only for authenticated users) -->
+    <div class="mac-sidebar">
+        <nav>
+            <ul class="mac-menu">
+                <li>
+                    <a href="{{ url_for('main.dashboard') }}" class="{% if request.endpoint == 'main.dashboard' %}active{% endif %}">
+                        <i class="fas fa-video"></i> Live Dashboard
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('main.playback') }}" class="{% if request.endpoint == 'main.playback' %}active{% endif %}">
+                        <i class="fas fa-play-circle"></i> Playback
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('main.camera_management') }}" class="{% if request.endpoint == 'main.camera_management' %}active{% endif %}">
+                        <i class="fas fa-camera"></i> Cameras
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('main.settings') }}" class="{% if request.endpoint == 'main.settings' %}active{% endif %}">
+                        <i class="fas fa-cog"></i> Settings
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('main.monitor') }}" class="{% if request.endpoint == 'main.monitor' %}active{% endif %}">
+                        <i class="fas fa-chart-line"></i> System Monitor
+                    </a>
+                </li>
+                {% if current_user.is_admin %}
+                <li class="sidebar-divider"></li>
+                <li>
+                    <a href="{{ url_for('admin.user_management') }}" class="{% if request.endpoint == 'admin.user_management' %}active{% endif %}">
+                        <i class="fas fa-users"></i> User Management
+                    </a>
+                </li>
+                <li>
+                    <a href="{{ url_for('admin.manage_models') }}" class="{% if request.endpoint == 'admin.manage_models' %}active{% endif %}">
+                        <i class="fas fa-brain"></i> AI Models
+                    </a>
+                </li>
+                <!-- Removed System Config link as this functionality has been combined with Settings -->
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+    {% endif %}
+
+    <!-- Main Content Area -->
+    <main class="mac-content {% if not current_user.is_authenticated %}no-sidebar{% endif %}">
+        <div class="container-fluid py-3">
+            <!-- Flash messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+            
+            <!-- Page Title -->
+            {% if title and not hide_title %}
+            <div class="mac-content-header">
+                <h2>{{ title }}</h2>
+                {% block page_actions %}{% endblock %}
+            </div>
+            {% endif %}
+            
+            <!-- Page Content -->
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+    
+    <!-- JavaScript Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    
+    <!-- Custom JavaScript -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    
+    <!-- Additional JavaScript specific to pages -->
+    {% block scripts %}{% endblock %}
+</body>
+</html>

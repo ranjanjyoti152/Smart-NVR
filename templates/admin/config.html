@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5>System Configuration</h5>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    <!-- Email Notification Settings -->
+                    <div class="mb-4">
+                        <h6 class="fw-bold">Email Notifications</h6>
+                        <hr>
+                        
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="email_enabled" name="email_enabled" 
+                                {% if config.notifications.email_enabled %}checked{% endif %}>
+                            <label class="form-check-label" for="email_enabled">
+                                Enable Email Notifications
+                            </label>
+                        </div>
+                        
+                        <div id="emailSettings" {% if not config.notifications.email_enabled %}style="display:none"{% endif %}>
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="smtp_server" class="form-label">SMTP Server</label>
+                                    <input type="text" class="form-control" id="smtp_server" name="smtp_server" 
+                                        value="{{ config.notifications.smtp_server }}">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="smtp_port" class="form-label">SMTP Port</label>
+                                    <input type="number" class="form-control" id="smtp_port" name="smtp_port" 
+                                        value="{{ config.notifications.smtp_port }}">
+                                </div>
+                            </div>
+                            
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="smtp_username" class="form-label">SMTP Username</label>
+                                    <input type="text" class="form-control" id="smtp_username" name="smtp_username" 
+                                        value="{{ config.notifications.smtp_username }}">
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="smtp_password" class="form-label">SMTP Password</label>
+                                    <input type="password" class="form-control" id="smtp_password" name="smtp_password" 
+                                        placeholder="Leave blank to keep current">
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="from_email" class="form-label">From Email Address</label>
+                                <input type="email" class="form-control" id="from_email" name="from_email" 
+                                    value="{{ config.notifications.from_email }}">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="email_to" class="form-label">Recipients</label>
+                                <input type="email" class="form-control" id="email_to" name="email_to" 
+                                    value="{{ config.notifications.email_to }}">
+                                <div class="form-text">Comma-separated list of email addresses to receive notifications</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Storage Settings -->
+                    <div class="mb-4">
+                        <h6 class="fw-bold">Storage Settings</h6>
+                        <hr>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="retention_days" class="form-label">Recording Retention (days)</label>
+                                <input type="number" class="form-control" id="retention_days" name="retention_days" 
+                                    value="{{ config.recording.retention_days }}" min="1" max="365">
+                                <div class="form-text">Number of days to keep recordings before automatic deletion</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- AI Detection Settings -->
+                    <div class="mb-4">
+                        <h6 class="fw-bold">Default AI Detection Settings</h6>
+                        <hr>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="default_confidence" class="form-label">Default Confidence Threshold</label>
+                                <input type="number" class="form-control" id="default_confidence" name="default_confidence" 
+                                    value="{{ config.detection.default_confidence }}" min="0.1" max="0.95" step="0.05">
+                                <div class="form-text">Default detection confidence threshold (0.1 - 0.95)</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="default_model" class="form-label">Default AI Model</label>
+                                <select class="form-select" id="default_model" name="default_model">
+                                    <option value="yolov5s" {% if config.detection.default_model == 'yolov5s' %}selected{% endif %}>YOLOv5s (Small)</option>
+                                    <option value="yolov5m" {% if config.detection.default_model == 'yolov5m' %}selected{% endif %}>YOLOv5m (Medium)</option>
+                                    <option value="yolov5l" {% if config.detection.default_model == 'yolov5l' %}selected{% endif %}>YOLOv5l (Large)</option>
+                                </select>
+                                <div class="form-text">Default model for new cameras</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary">Save Configuration</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5>Configuration Info</h5>
+            </div>
+            <div class="card-body">
+                <p>These settings define system-wide defaults and behavior. Each camera can override specific settings on a per-camera basis.</p>
+                
+                <h6 class="mt-3">Email Notifications</h6>
+                <p>Configure email alert settings for object detection events. For Gmail, you may need to use an App Password.</p>
+                
+                <h6 class="mt-3">Storage Settings</h6>
+                <p>Control how long recordings are kept and maximum disk usage. When the threshold is reached, oldest recordings are deleted first.</p>
+                
+                <h6 class="mt-3">AI Detection Settings</h6>
+                <p>Set default AI model and confidence threshold for new cameras. Higher confidence means fewer false positives but may miss some objects.</p>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h5>Test Email</h5>
+            </div>
+            <div class="card-body">
+                <p>Test your email notification settings by sending a test email:</p>
+                <button id="testEmailBtn" class="btn btn-secondary">Send Test Email</button>
+                <div id="emailTestResult" class="mt-3"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Toggle email settings visibility based on checkbox
+    document.getElementById('email_enabled').addEventListener('change', function() {
+        const emailSettings = document.getElementById('emailSettings');
+        emailSettings.style.display = this.checked ? 'block' : 'none';
+    });
+    
+    // Test email functionality
+    document.getElementById('testEmailBtn').addEventListener('click', function() {
+        const btn = this;
+        const resultDiv = document.getElementById('emailTestResult');
+        
+        // Get current form values for testing
+        const smtpServer = document.getElementById('smtp_server').value;
+        const smtpPort = document.getElementById('smtp_port').value;
+        const smtpUsername = document.getElementById('smtp_username').value;
+        const smtpPassword = document.getElementById('smtp_password').value;
+        const emailTo = document.getElementById('email_to').value;
+        
+        // Change button state
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Sending...';
+        resultDiv.innerHTML = '';
+        
+        // Send test request
+        fetch('/api/test_email', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                smtp_server: smtpServer,
+                smtp_port: smtpPort,
+                smtp_username: smtpUsername,
+                smtp_password: smtpPassword,
+                email_recipients: emailTo
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                resultDiv.innerHTML = '<div class="alert alert-success">Test email sent successfully!</div>';
+            } else {
+                resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+            }
+        })
+        .catch(error => {
+            resultDiv.innerHTML = '<div class="alert alert-danger">Error sending email. Check server logs.</div>';
+            console.error('Error:', error);
+        })
+        .finally(() => {
+            // Restore button state
+            btn.disabled = false;
+            btn.innerHTML = 'Send Test Email';
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,394 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <!-- CPU Usage -->
+    <div class="col-md-6 mb-4">
+        <div class="mac-card">
+            <h4><i class="fas fa-microchip me-2"></i> CPU Usage</h4>
+            <div class="chart-container">
+                <canvas id="cpuChart"></canvas>
+            </div>
+            <div class="resource-details">
+                <div class="row">
+                    <div class="col">
+                        <span class="resource-label">Current:</span>
+                        <span class="resource-value" id="cpu-current">--</span>
+                    </div>
+                    <div class="col">
+                        <span class="resource-label">Cores:</span>
+                        <span class="resource-value" id="cpu-cores">--</span>
+                    </div>
+                    <div class="col">
+                        <span class="resource-label">Frequency:</span>
+                        <span class="resource-value" id="cpu-freq">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Memory Usage -->
+    <div class="col-md-6 mb-4">
+        <div class="mac-card">
+            <h4><i class="fas fa-memory me-2"></i> Memory Usage</h4>
+            <div class="chart-container">
+                <canvas id="memoryChart"></canvas>
+            </div>
+            <div class="resource-details">
+                <div class="row">
+                    <div class="col">
+                        <span class="resource-label">Current:</span>
+                        <span class="resource-value" id="memory-current">--</span>
+                    </div>
+                    <div class="col">
+                        <span class="resource-label">Used:</span>
+                        <span class="resource-value" id="memory-used">--</span>
+                    </div>
+                    <div class="col">
+                        <span class="resource-label">Total:</span>
+                        <span class="resource-value" id="memory-total">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Disk Usage -->
+    <div class="col-md-6 mb-4">
+        <div class="mac-card">
+            <h4><i class="fas fa-hdd me-2"></i> Disk Usage</h4>
+            <div class="chart-container">
+                <canvas id="diskChart"></canvas>
+            </div>
+            <div class="resource-details">
+                <div class="row">
+                    <div class="col">
+                        <span class="resource-label">Current:</span>
+                        <span class="resource-value" id="disk-current">--</span>
+                    </div>
+                    <div class="col">
+                        <span class="resource-label">Used:</span>
+                        <span class="resource-value" id="disk-used">--</span>
+                    </div>
+                    <div class="col">
+                        <span class="resource-label">Total:</span>
+                        <span class="resource-value" id="disk-total">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recordings Storage -->
+    <div class="col-md-6 mb-4">
+        <div class="mac-card">
+            <h4><i class="fas fa-film me-2"></i> Recordings Storage</h4>
+            <div class="chart-container">
+                <canvas id="recordingsChart"></canvas>
+            </div>
+            <div class="resource-details">
+                <div class="row">
+                    <div class="col">
+                        <span class="resource-label">Current:</span>
+                        <span class="resource-value" id="recordings-current">--</span>
+                    </div>
+                    <div class="col">
+                        <span class="resource-label">Used:</span>
+                        <span class="resource-value" id="recordings-used">--</span>
+                    </div>
+                    <div class="col">
+                        <span class="resource-label">Total:</span>
+                        <span class="resource-value" id="recordings-total">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if resources.gpu %}
+    <!-- GPU Usage -->
+    <div class="col-12 mb-4">
+        <div class="mac-card">
+            <h4><i class="fas fa-server me-2"></i> GPU Resources</h4>
+            <div class="row">
+                {% for gpu in resources.gpu %}
+                <div class="col-md-6 mb-3">
+                    <h5>{{ gpu.name }}</h5>
+                    <div class="chart-container">
+                        <canvas id="gpuChart{{ gpu.id }}"></canvas>
+                    </div>
+                    <div class="resource-details">
+                        <div class="row">
+                            <div class="col">
+                                <span class="resource-label">Usage:</span>
+                                <span class="resource-value" id="gpu-usage-{{ gpu.id }}">{{ gpu.load|round(1) }}%</span>
+                            </div>
+                            <div class="col">
+                                <span class="resource-label">Memory:</span>
+                                <span class="resource-value" id="gpu-memory-{{ gpu.id }}">{{ gpu.memory_percent|round(1) }}%</span>
+                            </div>
+                            <div class="col">
+                                <span class="resource-label">Temp:</span>
+                                <span class="resource-value" id="gpu-temp-{{ gpu.id }}">{{ gpu.temperature }}°C</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Hardware Info Card -->
+<div class="mac-card">
+    <h4><i class="fas fa-info-circle me-2"></i> System Information</h4>
+    <div class="table-responsive">
+        <table class="table">
+            <tbody>
+                <tr>
+                    <th scope="row">CPU</th>
+                    <td id="cpu-info">--</td>
+                </tr>
+                <tr>
+                    <th scope="row">Memory</th>
+                    <td id="memory-info">--</td>
+                </tr>
+                <tr>
+                    <th scope="row">Disk</th>
+                    <td id="disk-info">--</td>
+                </tr>
+                <tr>
+                    <th scope="row">Operating System</th>
+                    <td id="os-info">--</td>
+                </tr>
+                <tr>
+                    <th scope="row">Python Version</th>
+                    <td id="python-info">--</td>
+                </tr>
+                {% if resources.gpu %}
+                <tr>
+                    <th scope="row">GPU</th>
+                    <td id="gpu-info">
+                        {% for gpu in resources.gpu %}
+                        {{ gpu.name }}{% if not loop.last %}, {% endif %}
+                        {% endfor %}
+                    </td>
+                </tr>
+                {% endif %}
+                <tr>
+                    <th scope="row">Uptime</th>
+                    <td id="uptime">--</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Format bytes to human readable
+    function formatBytes(bytes, decimals = 2) {
+        if (bytes === 0) return '0 Bytes';
+        
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+        
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+
+    // Format uptime to readable format
+    function formatUptime(seconds) {
+        const days = Math.floor(seconds / 86400);
+        const hours = Math.floor((seconds % 86400) / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        
+        let result = '';
+        if (days > 0) result += days + ' days, ';
+        if (hours > 0 || days > 0) result += hours + ' hours, ';
+        result += minutes + ' minutes';
+        
+        return result;
+    }
+
+    // Initialize charts
+    document.addEventListener('DOMContentLoaded', function() {
+        // Create charts with gradient backgrounds
+        function createResourceChart(canvasId, label, color) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            
+            // Create gradient
+            const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+            gradient.addColorStop(0, color + '99');
+            gradient.addColorStop(1, color + '10');
+            
+            return new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: Array(60).fill(''),
+                    datasets: [{
+                        label: label,
+                        data: Array(60).fill(null),
+                        borderColor: color,
+                        backgroundColor: gradient,
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        pointHoverRadius: 3,
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {
+                                callback: function(value) {
+                                    return value + '%';
+                                }
+                            }
+                        },
+                        x: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Initialize charts
+        const cpuChart = createResourceChart('cpuChart', 'CPU Usage', '#007bff');
+        const memoryChart = createResourceChart('memoryChart', 'Memory Usage', '#28a745');
+        const diskChart = createResourceChart('diskChart', 'Disk Usage', '#ffc107');
+        const recordingsChart = createResourceChart('recordingsChart', 'Recordings Storage', '#dc3545');
+        
+        // Initialize GPU charts if available
+        const gpuCharts = {};
+        {% if resources.gpu %}
+            {% for gpu in resources.gpu %}
+                gpuCharts[{{ gpu.id }}] = createResourceChart('gpuChart{{ gpu.id }}', 'GPU Usage', '#6f42c1');
+            {% endfor %}
+        {% endif %}
+        
+        // Fetch system info initially
+        fetch('/api/system/info')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.info) {
+                    // Extract CPU information
+                    const cpuInfo = data.info.platform.processor || 'Unknown';
+                    const cpuCores = data.info.cpu.cores_logical || 'Unknown';
+                    document.getElementById('cpu-info').textContent = `${cpuInfo} (${cpuCores} cores)`;
+                    
+                    // Extract memory information
+                    document.getElementById('memory-info').textContent = formatBytes(data.info.memory.total);
+                    
+                    // Extract disk information
+                    document.getElementById('disk-info').textContent = `${formatBytes(data.info.disk.total)} (${data.info.disk.percent}% used)`;
+                    
+                    // Extract OS information
+                    document.getElementById('os-info').textContent = `${data.info.platform.system} ${data.info.platform.release}`;
+                    
+                    // Extract Python information
+                    document.getElementById('python-info').textContent = `${data.info.python.version} (${data.info.python.implementation})`;
+                    
+                    // Format uptime
+                    document.getElementById('uptime').textContent = formatUptime(data.info.app.uptime);
+                    
+                    // GPU information is already being shown in the template
+                }
+            })
+            .catch(error => console.error('Error fetching system info:', error));
+            
+        // Update charts with real-time data
+        function updateResourceCharts() {
+            fetch('/api/system/resources')
+                .then(response => response.json())
+                .then(data => {
+                    if (!data.success || !data.resources) {
+                        console.error('Invalid response format from API:', data);
+                        return;
+                    }
+                    
+                    const resources = data.resources;
+                    
+                    // Update CPU chart and info
+                    cpuChart.data.datasets[0].data.push(resources.cpu.percent);
+                    cpuChart.data.datasets[0].data.shift();
+                    cpuChart.update();
+                    
+                    document.getElementById('cpu-current').textContent = resources.cpu.percent.toFixed(1) + '%';
+                    document.getElementById('cpu-cores').textContent = resources.cpu.count;
+                    document.getElementById('cpu-freq').textContent = (resources.cpu.freq / 1000).toFixed(2) + ' GHz';
+                    
+                    // Update Memory chart and info
+                    memoryChart.data.datasets[0].data.push(resources.memory.percent);
+                    memoryChart.data.datasets[0].data.shift();
+                    memoryChart.update();
+                    
+                    document.getElementById('memory-current').textContent = resources.memory.percent.toFixed(1) + '%';
+                    document.getElementById('memory-used').textContent = formatBytes(resources.memory.used);
+                    document.getElementById('memory-total').textContent = formatBytes(resources.memory.total);
+                    
+                    // Update Disk chart and info
+                    diskChart.data.datasets[0].data.push(resources.disk.percent);
+                    diskChart.data.datasets[0].data.shift();
+                    diskChart.update();
+                    
+                    document.getElementById('disk-current').textContent = resources.disk.percent.toFixed(1) + '%';
+                    document.getElementById('disk-used').textContent = formatBytes(resources.disk.used);
+                    document.getElementById('disk-total').textContent = formatBytes(resources.disk.total);
+                    
+                    // Update Recordings chart and info if available
+                    if (resources.recordings) {
+                        recordingsChart.data.datasets[0].data.push(resources.recordings.percent);
+                        recordingsChart.data.datasets[0].data.shift();
+                        recordingsChart.update();
+                        
+                        document.getElementById('recordings-current').textContent = resources.recordings.percent.toFixed(1) + '%';
+                        document.getElementById('recordings-used').textContent = formatBytes(resources.recordings.used);
+                        document.getElementById('recordings-total').textContent = formatBytes(resources.recordings.total);
+                    }
+                    
+                    // Update GPU charts if available
+                    if (resources.gpu && resources.gpu.length > 0) {
+                        resources.gpu.forEach(gpu => {
+                            if (gpuCharts[gpu.id]) {
+                                gpuCharts[gpu.id].data.datasets[0].data.push(gpu.load);
+                                gpuCharts[gpu.id].data.datasets[0].data.shift();
+                                gpuCharts[gpu.id].update();
+                                
+                                document.getElementById(`gpu-usage-${gpu.id}`).textContent = gpu.load.toFixed(1) + '%';
+                                document.getElementById(`gpu-memory-${gpu.id}`).textContent = gpu.memory_percent.toFixed(1) + '%';
+                                document.getElementById(`gpu-temp-${gpu.id}`).textContent = gpu.temperature + '°C';
+                            }
+                        });
+                    }
+                })
+                .catch(error => console.error('Error fetching resource data:', error));
+        }
+        
+        // Update every 2 seconds
+        setInterval(updateResourceCharts, 2000);
+        updateResourceCharts(); // Initial update
+    });
+</script>
+{% endblock %}

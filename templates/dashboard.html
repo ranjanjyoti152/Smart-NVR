@@ -1,0 +1,619 @@
+{% extends "base.html" %}
+
+{% block styles %}
+<style>
+    .detection-tooltip {
+        position: absolute;
+        background: rgba(0,0,0,0.8);
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        pointer-events: none;
+        z-index: 100;
+        display: none;
+    }
+    
+    .camera-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .camera-card {
+        position: relative;
+        overflow: hidden;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+        background-color: #1e1e1e;
+        transition: transform 0.2s;
+        cursor: pointer;
+    }
+    
+    .camera-card:hover {
+        transform: translateY(-3px);
+    }
+    
+    .camera-feed {
+        width: 100%;
+        height: auto;
+        display: block;
+        background-color: #000;
+    }
+    
+    .camera-info {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        padding: 8px 12px;
+        background: rgba(0,0,0,0.7);
+        color: white;
+        display: flex;
+        justify-content: space-between;
+        font-size: 14px;
+    }
+    
+    .camera-status {
+        font-size: 12px;
+        opacity: 0.8;
+    }
+    
+    .camera-status.text-success {
+        color: #28a745 !important;
+    }
+    
+    .detection-boxes {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+    }
+    
+    .detection-box {
+        position: absolute;
+        border: 2px solid #00ff00;
+        background-color: rgba(0, 255, 0, 0.1);
+        pointer-events: auto;
+        cursor: pointer;
+        transition: all 0.1s ease-in-out;
+    }
+    
+    .detection-box:hover {
+        border-width: 3px;
+        background-color: rgba(0, 255, 0, 0.2);
+    }
+    
+    .detection-label {
+        position: absolute;
+        top: -22px;
+        left: 0;
+        background-color: rgba(0, 0, 0, 0.7);
+        color: #00ff00;
+        padding: 2px 6px;
+        font-size: 11px;
+        white-space: nowrap;
+        border-radius: 4px;
+        font-weight: bold;
+    }
+    
+    /* Fullscreen mode */
+    .fullscreen-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.9);
+        z-index: 1050;
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+    }
+    
+    .fullscreen-header {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 15px;
+        background: rgba(0, 0, 0, 0.5);
+        color: white;
+    }
+    
+    .close-fullscreen {
+        background: none;
+        border: none;
+        color: white;
+        font-size: 24px;
+        cursor: pointer;
+    }
+    
+    .fullscreen-video {
+        max-width: 100%;
+        max-height: 90vh;
+        width: auto;
+        height: auto;
+    }
+    
+    .fullscreen-detection-boxes {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+        width: auto;
+        height: auto;
+    }
+    
+    .stream-fps-control {
+        margin-left: 15px;
+        color: white;
+        display: flex;
+        align-items: center;
+    }
+    
+    .fps-value {
+        margin: 0 8px;
+        min-width: 20px;
+        text-align: center;
+    }
+    
+    .stream-quality-control {
+        margin-left: 15px;
+        color: white;
+        display: flex;
+        align-items: center;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="camera-controls mb-3">
+    <div class="row align-items-center">
+        <div class="col-auto">
+            <div class="btn-group" role="group">
+                <button type="button" class="btn btn-outline-primary" id="grid-1">1×1</button>
+                <button type="button" class="btn btn-outline-primary" id="grid-4">2×2</button>
+                <button type="button" class="btn btn-outline-primary" id="grid-9">3×3</button>
+                <button type="button" class="btn btn-outline-primary active" id="grid-all">All</button>
+            </div>
+        </div>
+        <div class="col-auto">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="show-detections" checked>
+                <label class="form-check-label" for="show-detections">Show Detections</label>
+            </div>
+        </div>
+        <div class="col-auto">
+            <div class="stream-fps-control">
+                <label for="fps-slider">FPS:</label>
+                <input type="range" id="fps-slider" min="1" max="30" value="30" class="form-range" style="width: 100px;">
+                <span id="fps-value" class="fps-value">30</span>
+            </div>
+        </div>
+        <div class="col-auto">
+            <div class="stream-quality-control">
+                <label for="quality-select">Quality:</label>
+                <select id="quality-select" class="form-select form-select-sm" style="width: 100px;">
+                    <option value="high">High</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="low">Low</option>
+                </select>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if cameras %}
+    <div class="camera-grid" id="camera-container">
+        {% for camera in cameras %}
+        <div class="mac-card camera-card" data-camera-id="{{ camera.id }}">
+            <img src="" class="camera-feed" alt="{{ camera.name }}">
+            <div class="camera-info">
+                <span class="camera-name">{{ camera.name }}</span>
+                <span class="camera-status">No Signal</span>
+            </div>
+            <div class="detection-boxes"></div>
+            <div class="detection-tooltip"></div>
+        </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="mac-card">
+        <div class="text-center py-5">
+            <i class="fas fa-video-slash fa-4x mb-3 text-muted"></i>
+            <h4>No Cameras Configured</h4>
+            <p class="text-muted">Add cameras in the camera management section to start monitoring.</p>
+            <a href="{{ url_for('main.camera_management') }}" class="btn btn-primary mt-3">
+                <i class="fas fa-plus"></i> Add Camera
+            </a>
+        </div>
+    </div>
+{% endif %}
+
+<!-- Fullscreen camera view -->
+<div id="fullscreen-view" class="fullscreen-container">
+    <div class="fullscreen-header">
+        <h3 id="fullscreen-title">Camera View</h3>
+        <div>
+            <div class="form-check form-switch d-inline-block me-3">
+                <input class="form-check-input" type="checkbox" id="fullscreen-show-detections" checked>
+                <label class="form-check-label" for="fullscreen-show-detections">Show Detections</label>
+            </div>
+            <button id="close-fullscreen" class="close-fullscreen">&times;</button>
+        </div>
+    </div>
+    <img id="fullscreen-feed" class="fullscreen-video" src="" alt="Camera Feed">
+    <div id="fullscreen-detection-boxes" class="fullscreen-detection-boxes"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Camera streaming and detection handling
+    document.addEventListener('DOMContentLoaded', function() {
+        const cameraCards = document.querySelectorAll('.camera-card');
+        const showDetections = document.getElementById('show-detections');
+        const tooltip = document.querySelector('.detection-tooltip');
+        const fpsSlider = document.getElementById('fps-slider');
+        const fpsValue = document.getElementById('fps-value');
+        const qualitySelect = document.getElementById('quality-select');
+        
+        // Fullscreen elements
+        const fullscreenView = document.getElementById('fullscreen-view');
+        const fullscreenTitle = document.getElementById('fullscreen-title');
+        const fullscreenFeed = document.getElementById('fullscreen-feed');
+        const fullscreenDetectionBoxes = document.getElementById('fullscreen-detection-boxes');
+        const closeFullscreenBtn = document.getElementById('close-fullscreen');
+        const fullscreenShowDetections = document.getElementById('fullscreen-show-detections');
+        
+        // Track stream settings
+        let streamFps = parseInt(fpsSlider.value);
+        let streamQuality = qualitySelect.value;
+        let currentFullscreenCamera = null;
+        
+        // FPS control
+        fpsSlider.addEventListener('input', function() {
+            streamFps = parseInt(this.value);
+            fpsValue.textContent = streamFps;
+            restartAllCameraStreams();
+        });
+        
+        // Quality control
+        qualitySelect.addEventListener('change', function() {
+            streamQuality = this.value;
+            restartAllCameraStreams();
+        });
+        
+        // Map for storing interval IDs for each camera
+        const cameraIntervals = new Map();
+        
+        // Stream updates
+        function setupCameraStreams() {
+            cameraCards.forEach(card => {
+                const cameraId = card.dataset.cameraId;
+                const imgElement = card.querySelector('.camera-feed');
+                const statusElement = card.querySelector('.camera-status');
+                const boxesContainer = card.querySelector('.detection-boxes');
+                
+                // Set up click handler for fullscreen mode
+                card.addEventListener('click', function() {
+                    openFullscreenView(cameraId, imgElement.src, card.querySelector('.camera-name').textContent);
+                });
+                
+                startCameraStream(cameraId, imgElement, statusElement, boxesContainer);
+            });
+        }
+        
+        function startCameraStream(cameraId, imgElement, statusElement, boxesContainer) {
+            // Clear existing interval if any
+            if (cameraIntervals.has(cameraId)) {
+                clearInterval(cameraIntervals.get(cameraId));
+            }
+            
+            // Keep track of whether a request is in progress
+            let isLoading = false;
+            let retryCount = 0;
+            const maxRetries = 5;
+            const retryDelay = 2000; // 2 seconds between retries
+            
+            // Function to update image
+            function updateImage() {
+                // Skip if previous request is still pending
+                if (isLoading) return;
+                
+                isLoading = true;
+                const timestamp = new Date().getTime();
+                const newImgElement = new Image();
+                
+                // Quality parameter based on selected quality
+                let qualityParam = '';
+                if (streamQuality === 'low') {
+                    qualityParam = '&quality=low';
+                } else if (streamQuality === 'medium') {
+                    qualityParam = '&quality=medium';
+                }
+                
+                // Set up image event handlers before setting src
+                newImgElement.onload = function() {
+                    // Only replace the image once it's fully loaded
+                    imgElement.src = newImgElement.src;
+                    statusElement.textContent = 'Live';
+                    statusElement.classList.add('text-success');
+                    retryCount = 0; // Reset retry count on success
+                    isLoading = false;
+                    
+                    // Fetch detections after image is updated
+                    fetchDetections(cameraId, boxesContainer, imgElement);
+                    
+                    // Update fullscreen view if this is the active camera
+                    if (currentFullscreenCamera === cameraId && fullscreenView.style.display === 'flex') {
+                        fullscreenFeed.src = newImgElement.src;
+                        fetchDetections(cameraId, fullscreenDetectionBoxes, fullscreenFeed);
+                    }
+                };
+                
+                newImgElement.onerror = function() {
+                    statusElement.textContent = 'No Signal';
+                    statusElement.classList.remove('text-success');
+                    isLoading = false;
+                    retryCount++;
+                    
+                    if (retryCount <= maxRetries) {
+                        // Try again after delay
+                        setTimeout(updateImage, retryDelay);
+                    } else {
+                        // After max retries, continue with normal intervals
+                        retryCount = 0;
+                    }
+                };
+                
+                // Set the source after setting up event handlers
+                newImgElement.src = `/api/cameras/${cameraId}/frame?t=${timestamp}${qualityParam}`;
+            }
+            
+            // Initial image load
+            updateImage();
+            
+            // Calculate interval in ms based on desired FPS
+            const interval = Math.max(Math.floor(1000 / streamFps), 33); // Min 33ms (30fps max)
+            
+            // Set up interval for periodic updates
+            const intervalId = setInterval(updateImage, interval);
+            cameraIntervals.set(cameraId, intervalId);
+        }
+        
+        // Restart all camera streams (e.g., when FPS changes)
+        function restartAllCameraStreams() {
+            cameraCards.forEach(card => {
+                const cameraId = card.dataset.cameraId;
+                const imgElement = card.querySelector('.camera-feed');
+                const statusElement = card.querySelector('.camera-status');
+                const boxesContainer = card.querySelector('.detection-boxes');
+                
+                startCameraStream(cameraId, imgElement, statusElement, boxesContainer);
+            });
+        }
+        
+        // Fetch detections for a camera
+        function fetchDetections(cameraId, boxesContainer, imgElement) {
+            if (!showDetections.checked && boxesContainer !== fullscreenDetectionBoxes) {
+                boxesContainer.innerHTML = '';
+                return;
+            }
+            
+            if (boxesContainer === fullscreenDetectionBoxes && !fullscreenShowDetections.checked) {
+                boxesContainer.innerHTML = '';
+                return;
+            }
+            
+            fetch(`/api/cameras/${cameraId}/detections/latest`)
+                .then(response => response.json())
+                .then(detections => {
+                    boxesContainer.innerHTML = '';
+                    
+                    if (!detections || detections.length === 0) return;
+                    
+                    // Get image dimensions for scaling coordinates
+                    const imgWidth = imgElement.clientWidth;
+                    const imgHeight = imgElement.clientHeight;
+                    const naturalWidth = imgElement.naturalWidth || 640;
+                    const naturalHeight = imgElement.naturalHeight || 480;
+                    
+                    // Scale factor between actual image size and displayed size
+                    const scaleX = imgWidth / naturalWidth;
+                    const scaleY = imgHeight / naturalHeight;
+                    
+                    // Add detection boxes
+                    detections.forEach(det => {
+                        // Skip if we don't have valid coordinates
+                        if (!det.coordinates || typeof det.coordinates.x_min !== 'number') return;
+                        
+                        try {
+                            // Scale the coordinates from the original image to the displayed size
+                            const x_min = Math.round(det.coordinates.x_min * scaleX);
+                            const y_min = Math.round(det.coordinates.y_min * scaleY);
+                            const width = Math.round((det.coordinates.x_max - det.coordinates.x_min) * scaleX);
+                            const height = Math.round((det.coordinates.y_max - det.coordinates.y_min) * scaleY);
+                            
+                            const box = document.createElement('div');
+                            box.className = 'detection-box';
+                            box.style.left = `${x_min}px`;
+                            box.style.top = `${y_min}px`;
+                            box.style.width = `${width}px`;
+                            box.style.height = `${height}px`;
+                            
+                            const label = document.createElement('div');
+                            label.className = 'detection-label';
+                            label.textContent = `${det.class_name} ${Math.round(det.confidence * 100)}%`;
+                            
+                            box.appendChild(label);
+                            boxesContainer.appendChild(box);
+                            
+                            // Show detailed tooltip on hover (only for main view, not fullscreen)
+                            if (boxesContainer !== fullscreenDetectionBoxes) {
+                                box.addEventListener('mouseenter', function(e) {
+                                    tooltip.textContent = `${det.class_name} (${(det.confidence * 100).toFixed(1)}%)`;
+                                    tooltip.style.display = 'block';
+                                    tooltip.style.left = `${e.pageX + 10}px`;
+                                    tooltip.style.top = `${e.pageY + 10}px`;
+                                });
+                                
+                                box.addEventListener('mouseleave', function() {
+                                    tooltip.style.display = 'none';
+                                });
+                                
+                                box.addEventListener('mousemove', function(e) {
+                                    tooltip.style.left = `${e.pageX + 10}px`;
+                                    tooltip.style.top = `${e.pageY + 10}px`;
+                                });
+                            }
+                        } catch (err) {
+                            console.error('Error drawing detection box:', err);
+                        }
+                    });
+                })
+                .catch(error => console.error('Error fetching detections:', error));
+        }
+        
+        // Fullscreen view functions
+        function openFullscreenView(cameraId, initialSrc, cameraName) {
+            currentFullscreenCamera = cameraId;
+            fullscreenTitle.textContent = cameraName;
+            fullscreenFeed.src = initialSrc;
+            fullscreenDetectionBoxes.innerHTML = '';
+            fullscreenView.style.display = 'flex';
+            
+            // Fetch initial detections for fullscreen view
+            fetchDetections(cameraId, fullscreenDetectionBoxes, fullscreenFeed);
+            
+            // Start updating the fullscreen view independently
+            startFullscreenStream(cameraId);
+            
+            // Prevent scrolling on body when fullscreen is active
+            document.body.style.overflow = 'hidden';
+        }
+        
+        let fullscreenIntervalId = null;
+        
+        function startFullscreenStream(cameraId) {
+            if (fullscreenIntervalId) {
+                clearInterval(fullscreenIntervalId);
+            }
+            
+            let isLoading = false;
+            
+            function updateFullscreenImage() {
+                if (isLoading || fullscreenView.style.display !== 'flex') return;
+                
+                isLoading = true;
+                const timestamp = new Date().getTime();
+                const newImg = new Image();
+                
+                newImg.onload = function() {
+                    fullscreenFeed.src = newImg.src;
+                    fetchDetections(cameraId, fullscreenDetectionBoxes, fullscreenFeed);
+                    isLoading = false;
+                };
+                
+                newImg.onerror = function() {
+                    isLoading = false;
+                };
+                
+                // Get high quality frames for fullscreen view
+                newImg.src = `/api/cameras/${cameraId}/frame?t=${timestamp}&quality=high`;
+            }
+            
+            // Update at slightly higher frequency for smooth fullscreen view
+            const interval = Math.max(Math.floor(1000 / Math.min(streamFps + 5, 30)), 33);
+            fullscreenIntervalId = setInterval(updateFullscreenImage, interval);
+        }
+        
+        // Close fullscreen view
+        closeFullscreenBtn.addEventListener('click', function() {
+            fullscreenView.style.display = 'none';
+            currentFullscreenCamera = null;
+            document.body.style.overflow = ''; // Restore scrolling
+            
+            if (fullscreenIntervalId) {
+                clearInterval(fullscreenIntervalId);
+                fullscreenIntervalId = null;
+            }
+        });
+        
+        // Toggle detection boxes
+        fullscreenShowDetections.addEventListener('change', function() {
+            if (currentFullscreenCamera) {
+                if (this.checked) {
+                    fetchDetections(currentFullscreenCamera, fullscreenDetectionBoxes, fullscreenFeed);
+                } else {
+                    fullscreenDetectionBoxes.innerHTML = '';
+                }
+            }
+        });
+        
+        showDetections.addEventListener('change', function() {
+            const boxContainers = document.querySelectorAll('.detection-boxes:not(#fullscreen-detection-boxes)');
+            if (!this.checked) {
+                boxContainers.forEach(container => {
+                    container.innerHTML = '';
+                });
+            } else {
+                // Refresh detections for all cameras
+                cameraCards.forEach(card => {
+                    const cameraId = card.dataset.cameraId;
+                    const imgElement = card.querySelector('.camera-feed');
+                    const boxesContainer = card.querySelector('.detection-boxes');
+                    fetchDetections(cameraId, boxesContainer, imgElement);
+                });
+            }
+        });
+        
+        // Camera grid layout controls
+        document.getElementById('grid-1').addEventListener('click', () => changeGridLayout(1));
+        document.getElementById('grid-4').addEventListener('click', () => changeGridLayout(2));
+        document.getElementById('grid-9').addEventListener('click', () => changeGridLayout(3));
+        document.getElementById('grid-all').addEventListener('click', () => changeGridLayout('auto-fill'));
+        
+        function changeGridLayout(columns) {
+            const container = document.getElementById('camera-container');
+            const buttons = document.querySelectorAll('.camera-controls .btn');
+            
+            buttons.forEach(btn => btn.classList.remove('active'));
+            
+            if (columns === 1) {
+                container.style.gridTemplateColumns = '1fr';
+                document.getElementById('grid-1').classList.add('active');
+            } else if (columns === 2) {
+                container.style.gridTemplateColumns = 'repeat(2, 1fr)';
+                document.getElementById('grid-4').classList.add('active');
+            } else if (columns === 3) {
+                container.style.gridTemplateColumns = 'repeat(3, 1fr)';
+                document.getElementById('grid-9').classList.add('active');
+            } else {
+                container.style.gridTemplateColumns = 'repeat(auto-fill, minmax(320px, 1fr))';
+                document.getElementById('grid-all').classList.add('active');
+            }
+        }
+        
+        // Escape key to exit fullscreen
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && fullscreenView.style.display === 'flex') {
+                closeFullscreenBtn.click();
+            }
+        });
+        
+        // Initialize
+        setupCameraStreams();
+    });
+</script>
+{% endblock %}

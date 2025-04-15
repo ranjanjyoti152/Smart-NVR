@@ -1,0 +1,740 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <!-- Camera Selection -->
+    <div class="col-md-6 col-lg-4">
+        <div class="mac-card">
+            <h5><i class="fas fa-camera me-2"></i>Select Camera</h5>
+            <select class="form-select" id="camera-select">
+                <option value="">Select a camera...</option>
+                {% for camera in cameras %}
+                <option value="{{ camera.id }}">{{ camera.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+    
+    <!-- Date Picker -->
+    <div class="col-md-6 col-lg-4">
+        <div class="mac-card">
+            <h5><i class="fas fa-calendar me-2"></i>Select Date</h5>
+            <input type="date" class="form-control" id="date-picker" value="{{ date_today }}">
+        </div>
+    </div>
+    
+    <!-- Filters -->
+    <div class="col-md-12 col-lg-4">
+        <div class="mac-card">
+            <h5><i class="fas fa-filter me-2"></i>Filters</h5>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="show-detections-only">
+                        <label class="form-check-label" for="show-detections-only">
+                            Events only
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <select class="form-select form-select-sm" id="object-filter">
+                        <option value="">All objects</option>
+                        <option value="person">Person</option>
+                        <option value="car">Car</option>
+                        <option value="animal">Animal</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Video Player Card -->
+<div class="mac-card">
+    <div class="row">
+        <div class="col-md-9">
+            <!-- Video Player -->
+            <div class="video-container mb-3" id="video-container">
+                <video id="video-player" controls class="w-100"></video>
+                <div class="no-video-message text-center py-5" id="no-video-message">
+                    <i class="fas fa-film fa-3x mb-3 text-muted"></i>
+                    <h4>No Video Selected</h4>
+                    <p class="text-muted">Select a camera and date to view recordings</p>
+                </div>
+            </div>
+            
+            <!-- Timeline -->
+            <div class="timeline-container" id="timeline-container">
+                <div class="timeline-scale" id="timeline-scale"></div>
+                <div class="timeline-events" id="timeline-events"></div>
+                <div class="timeline-playhead" id="timeline-playhead"></div>
+            </div>
+            
+            <!-- Playback Controls -->
+            <div class="playback-controls">
+                <button id="play-prev" title="Previous Recording"><i class="fas fa-step-backward"></i></button>
+                <button id="play-backward" title="Play Backward"><i class="fas fa-backward"></i></button>
+                <button id="play-pause" title="Play/Pause"><i class="fas fa-play"></i></button>
+                <button id="play-forward" title="Play Forward" class="active"><i class="fas fa-forward"></i></button>
+                <button id="play-next" title="Next Recording"><i class="fas fa-step-forward"></i></button>
+                <button id="fullscreen" title="Fullscreen"><i class="fas fa-expand"></i></button>
+            </div>
+        </div>
+        
+        <div class="col-md-3">
+            <!-- Recording List -->
+            <h5>Recordings</h5>
+            <div class="recording-list" id="recording-list">
+                <div class="text-center py-4 text-muted" id="no-recordings-message">
+                    <i class="fas fa-info-circle"></i>
+                    No recordings found
+                </div>
+                <ul class="list-group recording-items" id="recording-items">
+                    <!-- Populated by JavaScript -->
+                </ul>
+            </div>
+            
+            <!-- Detection Events -->
+            <h5 class="mt-4">Detection Events</h5>
+            <div class="detection-list" id="detection-list">
+                <div class="text-center py-4 text-muted" id="no-detections-message">
+                    <i class="fas fa-info-circle"></i>
+                    No detections found
+                </div>
+                <ul class="list-group detection-items" id="detection-items">
+                    <!-- Populated by JavaScript -->
+                </ul>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Download options -->
+    <div class="mt-3">
+        <div class="d-flex align-items-center justify-content-between">
+            <h5>Download Options</h5>
+            <div>
+                <button class="btn btn-sm btn-outline-primary" id="download-video">
+                    <i class="fas fa-download me-1"></i> Download Video
+                </button>
+                <button class="btn btn-sm btn-outline-primary" id="download-snapshot">
+                    <i class="fas fa-camera me-1"></i> Save Snapshot
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block styles %}
+<style>
+    .video-container {
+        position: relative;
+        background-color: #000;
+        aspect-ratio: 16/9;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        border-radius: 6px;
+    }
+    
+    .timeline-container {
+        position: relative;
+        height: 80px;
+        background-color: var(--mac-sidebar-bg);
+        border-radius: 6px;
+        margin: 15px 0;
+        overflow: hidden;
+    }
+    
+    .timeline-scale {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 20px;
+        border-bottom: 1px solid var(--mac-border);
+    }
+    
+    .timeline-scale-mark {
+        position: absolute;
+        top: 0;
+        width: 1px;
+        height: 10px;
+        background-color: var(--mac-border);
+    }
+    
+    .timeline-scale-label {
+        position: absolute;
+        top: 12px;
+        font-size: 10px;
+        transform: translateX(-50%);
+        color: var(--mac-text);
+    }
+    
+    .timeline-events {
+        position: absolute;
+        top: 20px;
+        left: 0;
+        right: 0;
+        bottom: 0;
+    }
+    
+    .timeline-event {
+        position: absolute;
+        height: 30px;
+        top: 10px;
+        background-color: rgba(0, 123, 255, 0.4);
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    
+    .timeline-event:hover {
+        background-color: rgba(0, 123, 255, 0.6);
+    }
+    
+    .timeline-event.detection {
+        background-color: rgba(220, 53, 69, 0.4);
+        top: 45px;
+        height: 20px;
+    }
+    
+    .timeline-event.detection:hover {
+        background-color: rgba(220, 53, 69, 0.6);
+    }
+    
+    .timeline-playhead {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background-color: #ff0000;
+        z-index: 10;
+    }
+    
+    .recording-list, .detection-list {
+        max-height: 200px;
+        overflow-y: auto;
+        border: 1px solid var(--mac-border);
+        border-radius: 6px;
+        background-color: var(--mac-bg);
+    }
+    
+    .recording-items .list-group-item, .detection-items .list-group-item {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.9rem;
+        cursor: pointer;
+        border-left: none;
+        border-right: none;
+    }
+    
+    .recording-items .list-group-item:hover, .detection-items .list-group-item:hover {
+        background-color: var(--mac-sidebar-bg);
+    }
+    
+    .recording-items .list-group-item.active, .detection-items .list-group-item.active {
+        background-color: var(--mac-accent);
+        border-color: var(--mac-accent);
+    }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // DOM elements
+    const cameraSelect = document.getElementById('camera-select');
+    const datePicker = document.getElementById('date-picker');
+    const videoPlayer = document.getElementById('video-player');
+    const videoContainer = document.getElementById('video-container');
+    const noVideoMessage = document.getElementById('no-video-message');
+    const timelineContainer = document.getElementById('timeline-container');
+    const timelineEvents = document.getElementById('timeline-events');
+    const timelinePlayhead = document.getElementById('timeline-playhead');
+    const timelineScale = document.getElementById('timeline-scale');
+    const recordingItems = document.getElementById('recording-items');
+    const noRecordingsMessage = document.getElementById('no-recordings-message');
+    const detectionItems = document.getElementById('detection-items');
+    const noDetectionsMessage = document.getElementById('no-detections-message');
+    const showDetectionsOnly = document.getElementById('show-detections-only');
+    const objectFilter = document.getElementById('object-filter');
+    const downloadVideo = document.getElementById('download-video');
+    const downloadSnapshot = document.getElementById('download-snapshot');
+    
+    // Playback control buttons
+    const playPrev = document.getElementById('play-prev');
+    const playBackward = document.getElementById('play-backward');
+    const playPause = document.getElementById('play-pause');
+    const playForward = document.getElementById('play-forward');
+    const playNext = document.getElementById('play-next');
+    const fullscreen = document.getElementById('fullscreen');
+    
+    // State variables
+    let currentCamera = null;
+    let currentDate = new Date().toISOString().split('T')[0];
+    let recordings = [];
+    let detections = [];
+    let currentRecording = null;
+    let playbackDirection = 1; // 1 for forward, -1 for backward
+    let isPlaying = false;
+    
+    // Set current date in date picker
+    datePicker.value = currentDate;
+    
+    // Initialize timeline scale
+    function initTimelineScale() {
+        timelineScale.innerHTML = '';
+        
+        // Add hour marks (24 hour format)
+        for (let hour = 0; hour <= 24; hour++) {
+            const mark = document.createElement('div');
+            mark.className = 'timeline-scale-mark';
+            mark.style.left = (hour / 24 * 100) + '%';
+            
+            const label = document.createElement('div');
+            label.className = 'timeline-scale-label';
+            label.style.left = (hour / 24 * 100) + '%';
+            label.textContent = hour.toString().padStart(2, '0') + ':00';
+            
+            timelineScale.appendChild(mark);
+            timelineScale.appendChild(label);
+        }
+    }
+    
+    // Format timestamp for display
+    function formatTimestamp(timestamp) {
+        const date = new Date(timestamp);
+        const hours = date.getHours().toString().padStart(2, '0');
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        const seconds = date.getSeconds().toString().padStart(2, '0');
+        return `${hours}:${minutes}:${seconds}`;
+    }
+    
+    // Convert time to percentage position on timeline
+    function timeToPosition(time) {
+        const date = new Date(time);
+        const hours = date.getHours();
+        const minutes = date.getMinutes();
+        const seconds = date.getSeconds();
+        const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+        return (totalSeconds / (24 * 3600)) * 100;
+    }
+    
+    // Update the playhead position based on video current time
+    function updatePlayhead() {
+        if (!currentRecording || !videoPlayer.duration) return;
+        
+        const recordingDate = new Date(currentRecording.timestamp);
+        const currentTime = videoPlayer.currentTime;
+        const hours = recordingDate.getHours();
+        const minutes = recordingDate.getMinutes();
+        const seconds = recordingDate.getSeconds();
+        const startSeconds = hours * 3600 + minutes * 60 + seconds;
+        const currentSeconds = startSeconds + currentTime;
+        const position = (currentSeconds / (24 * 3600)) * 100;
+        
+        timelinePlayhead.style.left = position + '%';
+    }
+    
+    // Load recordings for a specific camera and date
+    function loadRecordings() {
+        if (!currentCamera || !currentDate) {
+            resetUI();
+            return;
+        }
+        
+        // Show loading state
+        recordingItems.innerHTML = '<li class="list-group-item text-center"><div class="spinner-border spinner-border-sm" role="status"></div> Loading...</li>';
+        noRecordingsMessage.style.display = 'none';
+        
+        // Fetch recordings from API
+        fetch(`/api/cameras/${currentCamera}/recordings?date=${currentDate}&events_only=${showDetectionsOnly.checked}&object_type=${objectFilter.value}`)
+            .then(response => response.json())
+            .then(data => {
+                recordings = data.recordings;
+                detections = data.detections;
+                
+                // Update recordings list
+                updateRecordingsList();
+                
+                // Update timeline
+                updateTimeline();
+                
+                // Update detections list
+                updateDetectionsList();
+            })
+            .catch(error => {
+                console.error('Error loading recordings:', error);
+                resetUI();
+            });
+    }
+    
+    // Update recordings list UI
+    function updateRecordingsList() {
+        recordingItems.innerHTML = '';
+        
+        if (recordings.length === 0) {
+            noRecordingsMessage.style.display = 'block';
+            return;
+        }
+        
+        noRecordingsMessage.style.display = 'none';
+        
+        recordings.forEach(recording => {
+            const item = document.createElement('li');
+            item.className = 'list-group-item d-flex justify-content-between align-items-center';
+            item.dataset.id = recording.id;
+            
+            const time = formatTimestamp(recording.timestamp);
+            const duration = Math.round(recording.duration);
+            
+            item.innerHTML = `
+                <div>
+                    <i class="fas fa-video me-2"></i>
+                    <span>${time}</span>
+                </div>
+                <span class="badge bg-secondary">${duration}s</span>
+            `;
+            
+            item.addEventListener('click', () => {
+                selectRecording(recording);
+            });
+            
+            recordingItems.appendChild(item);
+        });
+    }
+    
+    // Update detections list UI
+    function updateDetectionsList() {
+        detectionItems.innerHTML = '';
+        
+        if (detections.length === 0) {
+            noDetectionsMessage.style.display = 'block';
+            return;
+        }
+        
+        noDetectionsMessage.style.display = 'none';
+        
+        detections.forEach(detection => {
+            const item = document.createElement('li');
+            item.className = 'list-group-item d-flex justify-content-between align-items-center';
+            item.dataset.id = detection.id;
+            
+            const time = formatTimestamp(detection.timestamp);
+            
+            item.innerHTML = `
+                <div>
+                    <i class="fas fa-exclamation-triangle me-2 text-danger"></i>
+                    <span>${detection.class_name}</span>
+                </div>
+                <span class="text-muted">${time}</span>
+            `;
+            
+            item.addEventListener('click', () => {
+                jumpToDetection(detection);
+            });
+            
+            detectionItems.appendChild(item);
+        });
+    }
+    
+    // Update timeline UI
+    function updateTimeline() {
+        timelineEvents.innerHTML = '';
+        
+        // Add recording events to timeline
+        recordings.forEach(recording => {
+            const event = document.createElement('div');
+            event.className = 'timeline-event';
+            const position = timeToPosition(recording.timestamp);
+            const width = (recording.duration / (24 * 3600)) * 100;
+            event.style.left = position + '%';
+            event.style.width = width + '%';
+            event.dataset.id = recording.id;
+            
+            event.addEventListener('click', () => {
+                selectRecording(recording);
+            });
+            
+            timelineEvents.appendChild(event);
+        });
+        
+        // Add detection events to timeline
+        detections.forEach(detection => {
+            const event = document.createElement('div');
+            event.className = 'timeline-event detection';
+            const position = timeToPosition(detection.timestamp);
+            event.style.left = position + '%';
+            event.style.width = '0.5%';
+            event.dataset.id = detection.id;
+            
+            event.addEventListener('click', () => {
+                jumpToDetection(detection);
+            });
+            
+            timelineEvents.appendChild(event);
+        });
+    }
+    
+    // Select and play a recording
+    function selectRecording(recording) {
+        currentRecording = recording;
+        
+        // Update UI
+        recordingItems.querySelectorAll('.list-group-item').forEach(item => {
+            item.classList.remove('active');
+            if (item.dataset.id === recording.id.toString()) {
+                item.classList.add('active');
+            }
+        });
+        
+        // Show video player and hide message
+        noVideoMessage.style.display = 'none';
+        videoPlayer.style.display = 'block';
+        
+        // Load and play video
+        videoPlayer.src = `/api/recordings/${recording.id}/video`;
+        videoPlayer.load();
+        
+        if (isPlaying) {
+            videoPlayer.play();
+            if (playbackDirection === -1) {
+                videoPlayer.currentTime = videoPlayer.duration;
+            }
+        }
+    }
+    
+    // Jump to a specific detection event
+    function jumpToDetection(detection) {
+        // Find the recording that contains this detection
+        const recording = recordings.find(r => {
+            const recStart = new Date(r.timestamp);
+            const recEnd = new Date(recStart.getTime() + r.duration * 1000);
+            const detTime = new Date(detection.timestamp);
+            return detTime >= recStart && detTime <= recEnd;
+        });
+        
+        if (!recording) return;
+        
+        // Select the recording
+        selectRecording(recording);
+        
+        // Calculate time offset within the recording
+        const recStart = new Date(recording.timestamp);
+        const detTime = new Date(detection.timestamp);
+        const offsetSeconds = (detTime - recStart) / 1000;
+        
+        // Set video current time to the detection
+        videoPlayer.addEventListener('loadedmetadata', function onceLoaded() {
+            videoPlayer.currentTime = offsetSeconds;
+            videoPlayer.removeEventListener('loadedmetadata', onceLoaded);
+        });
+    }
+    
+    // Reset UI when no recordings are available
+    function resetUI() {
+        recordingItems.innerHTML = '';
+        detectionItems.innerHTML = '';
+        timelineEvents.innerHTML = '';
+        noRecordingsMessage.style.display = 'block';
+        noDetectionsMessage.style.display = 'block';
+        noVideoMessage.style.display = 'block';
+        videoPlayer.style.display = 'none';
+        videoPlayer.src = '';
+        currentRecording = null;
+    }
+    
+    // Handle playback controls
+    playPause.addEventListener('click', () => {
+        if (isPlaying) {
+            videoPlayer.pause();
+            playPause.innerHTML = '<i class="fas fa-play"></i>';
+            isPlaying = false;
+        } else {
+            if (playbackDirection === 1) {
+                videoPlayer.play();
+            } else {
+                // Simulate backwards playback with small jumps
+                const intervalId = setInterval(() => {
+                    if (!isPlaying || playbackDirection === 1) {
+                        clearInterval(intervalId);
+                        return;
+                    }
+                    videoPlayer.currentTime -= 0.1;
+                    if (videoPlayer.currentTime <= 0) {
+                        clearInterval(intervalId);
+                        videoPlayer.pause();
+                        playPause.innerHTML = '<i class="fas fa-play"></i>';
+                        isPlaying = false;
+                    }
+                }, 100);
+            }
+            playPause.innerHTML = '<i class="fas fa-pause"></i>';
+            isPlaying = true;
+        }
+    });
+    
+    playForward.addEventListener('click', () => {
+        playbackDirection = 1;
+        playForward.classList.add('active');
+        playBackward.classList.remove('active');
+        if (isPlaying) {
+            videoPlayer.play();
+        }
+    });
+    
+    playBackward.addEventListener('click', () => {
+        playbackDirection = -1;
+        playBackward.classList.add('active');
+        playForward.classList.remove('active');
+        if (isPlaying) {
+            videoPlayer.pause();
+            // Start backward playback
+            const intervalId = setInterval(() => {
+                if (!isPlaying || playbackDirection === 1) {
+                    clearInterval(intervalId);
+                    return;
+                }
+                videoPlayer.currentTime -= 0.1;
+                if (videoPlayer.currentTime <= 0) {
+                    clearInterval(intervalId);
+                    videoPlayer.pause();
+                    playPause.innerHTML = '<i class="fas fa-play"></i>';
+                    isPlaying = false;
+                }
+            }, 100);
+        }
+    });
+    
+    playPrev.addEventListener('click', () => {
+        if (!currentRecording) return;
+        
+        const currentIndex = recordings.findIndex(r => r.id === currentRecording.id);
+        if (currentIndex > 0) {
+            selectRecording(recordings[currentIndex - 1]);
+        }
+    });
+    
+    playNext.addEventListener('click', () => {
+        if (!currentRecording) return;
+        
+        const currentIndex = recordings.findIndex(r => r.id === currentRecording.id);
+        if (currentIndex < recordings.length - 1) {
+            selectRecording(recordings[currentIndex + 1]);
+        }
+    });
+    
+    fullscreen.addEventListener('click', () => {
+        if (videoPlayer.requestFullscreen) {
+            videoPlayer.requestFullscreen();
+        } else if (videoPlayer.webkitRequestFullscreen) {
+            videoPlayer.webkitRequestFullscreen();
+        } else if (videoPlayer.msRequestFullscreen) {
+            videoPlayer.msRequestFullscreen();
+        }
+    });
+    
+    // Download buttons
+    downloadVideo.addEventListener('click', () => {
+        if (!currentRecording) return;
+        
+        const link = document.createElement('a');
+        link.href = `/api/recordings/${currentRecording.id}/download`;
+        link.download = `recording_${currentRecording.id}.mp4`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    });
+    
+    downloadSnapshot.addEventListener('click', () => {
+        if (!videoPlayer.src) return;
+        
+        // Create a canvas element to capture the current frame
+        const canvas = document.createElement('canvas');
+        canvas.width = videoPlayer.videoWidth;
+        canvas.height = videoPlayer.videoHeight;
+        
+        // Draw the current video frame to the canvas
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(videoPlayer, 0, 0, canvas.width, canvas.height);
+        
+        // Convert canvas to data URL and trigger download
+        const dataURL = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.href = dataURL;
+        link.download = `snapshot_${Date.now()}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    });
+    
+    // Update playhead position on timeupdate event
+    videoPlayer.addEventListener('timeupdate', updatePlayhead);
+    
+    // Handle end of video
+    videoPlayer.addEventListener('ended', () => {
+        if (playbackDirection === 1) {
+            // Auto play next recording
+            const currentIndex = recordings.findIndex(r => r.id === currentRecording.id);
+            if (currentIndex < recordings.length - 1) {
+                selectRecording(recordings[currentIndex + 1]);
+            } else {
+                isPlaying = false;
+                playPause.innerHTML = '<i class="fas fa-play"></i>';
+            }
+        }
+    });
+    
+    // Event listeners for controls
+    cameraSelect.addEventListener('change', () => {
+        currentCamera = cameraSelect.value;
+        loadRecordings();
+    });
+    
+    datePicker.addEventListener('change', () => {
+        currentDate = datePicker.value;
+        loadRecordings();
+    });
+    
+    showDetectionsOnly.addEventListener('change', loadRecordings);
+    objectFilter.addEventListener('change', loadRecordings);
+    
+    // Timeline drag
+    timelineContainer.addEventListener('click', (e) => {
+        if (!recordings.length) return;
+        
+        const rect = timelineContainer.getBoundingClientRect();
+        const clickPosition = (e.clientX - rect.left) / rect.width;
+        
+        // Convert position to time of day
+        const daySeconds = clickPosition * 24 * 3600;
+        const hours = Math.floor(daySeconds / 3600);
+        const minutes = Math.floor((daySeconds % 3600) / 60);
+        const seconds = Math.floor(daySeconds % 60);
+        
+        // Find recording at this time
+        const clickDate = new Date(`${currentDate}T00:00:00`);
+        clickDate.setHours(hours, minutes, seconds);
+        
+        // Find recording that contains this timestamp
+        for (const recording of recordings) {
+            const recStart = new Date(recording.timestamp);
+            const recEnd = new Date(recStart.getTime() + recording.duration * 1000);
+            
+            if (clickDate >= recStart && clickDate <= recEnd) {
+                selectRecording(recording);
+                const offsetSeconds = (clickDate - recStart) / 1000;
+                videoPlayer.currentTime = offsetSeconds;
+                break;
+            }
+        }
+    });
+    
+    // Initialize
+    initTimelineScale();
+    
+    // Set date to today initially
+    datePicker.valueAsDate = new Date();
+});
+</script>
+{% endblock %}
