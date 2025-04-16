@@ -162,6 +162,7 @@ def edit_camera(camera_id):
 def delete_camera(camera_id):
     """Delete camera"""
     from flask import flash
+    import os
     
     # Find camera
     camera = Camera.query.get_or_404(camera_id)
@@ -180,22 +181,105 @@ def delete_camera(camera_id):
     from app.models.detection import Detection
     from app.models.recording import Recording
     from app.models.roi import ROI
+    from app.routes.main_routes import get_recording_settings
+    import logging
+    
+    logger = logging.getLogger(__name__)
     
     try:
+        # Get all recordings for this camera - we need to get the file paths before deleting them
+        recordings = Recording.query.filter_by(camera_id=camera_id).all()
+        
+        # Store the recording file paths so we can delete them after DB records are gone
+        recording_files = []
+        thumbnail_files = []
+        
+        for recording in recordings:
+            if recording.file_path:
+                # Handle both absolute and relative paths
+                if os.path.isabs(recording.file_path):
+                    file_path = recording.file_path
+                else:
+                    # If relative path, make it absolute relative to the app root
+                    file_path = os.path.join(os.getcwd(), recording.file_path)
+                
+                if os.path.exists(file_path):
+                    recording_files.append(file_path)
+                else:
+                    logger.warning(f"Recording file not found: {file_path}")
+            
+            if recording.thumbnail_path:
+                # Handle both absolute and relative paths
+                if os.path.isabs(recording.thumbnail_path):
+                    thumbnail_path = recording.thumbnail_path
+                else:
+                    # If relative path, make it absolute relative to the app root
+                    thumbnail_path = os.path.join(os.getcwd(), recording.thumbnail_path)
+                
+                if os.path.exists(thumbnail_path):
+                    thumbnail_files.append(thumbnail_path)
+                else:
+                    logger.warning(f"Thumbnail file not found: {thumbnail_path}")
+        
+        logger.info(f"Deleting camera {camera_id} with {len(recordings)} recordings")
+        
         # Delete related detections first
         Detection.query.filter_by(camera_id=camera_id).delete()
+        logger.info(f"Deleted detections for camera {camera_id}")
         
-        # Delete related recordings
+        # Delete related recordings from database
         Recording.query.filter_by(camera_id=camera_id).delete()
+        logger.info(f"Deleted recording records for camera {camera_id}")
         
         # Delete related ROIs
         ROI.query.filter_by(camera_id=camera_id).delete()
+        logger.info(f"Deleted ROIs for camera {camera_id}")
         
-        # Now delete the camera
+        # Now delete the camera from database
         db.session.delete(camera)
         db.session.commit()
         
-        flash(f'Camera {camera_name} deleted successfully', 'success')
+        # After successful DB commit, delete physical files
+        deleted_count = 0
+        for file_path in recording_files:
+            try:
+                os.remove(file_path)
+                deleted_count += 1
+                logger.info(f"Deleted recording file: {file_path}")
+            except Exception as e:
+                logger.error(f"Error deleting recording file {file_path}: {str(e)}")
+        
+        for file_path in thumbnail_files:
+            try:
+                os.remove(file_path)
+                logger.info(f"Deleted thumbnail file: {file_path}")
+            except Exception as e:
+                logger.error(f"Error deleting thumbnail file {file_path}: {str(e)}")
+        
+        # Also, try to remove the camera's recordings directory
+        try:
+            recording_settings = get_recording_settings()
+            storage_base = recording_settings.get('storage_path', 'storage/recordings')
+            
+            # Check both relative and absolute paths
+            camera_dir = os.path.join(storage_base, 'videos', str(camera_id))
+            if not os.path.exists(camera_dir):
+                camera_dir = os.path.join(os.getcwd(), storage_base, 'videos', str(camera_id))
+            
+            if os.path.exists(camera_dir) and os.path.isdir(camera_dir):
+                # Check if directory is empty before removing
+                remaining_files = os.listdir(camera_dir)
+                if not remaining_files:
+                    os.rmdir(camera_dir)
+                    logger.info(f"Removed empty directory: {camera_dir}")
+                else:
+                    logger.info(f"Directory not empty, skipping removal: {camera_dir}")
+            else:
+                logger.info(f"Camera directory not found: {camera_dir}")
+        except Exception as e:
+            logger.error(f"Error removing camera directory: {str(e)}")
+        
+        flash(f'Camera {camera_name} and {deleted_count} recording files deleted successfully', 'success')
     except Exception as e:
         db.session.rollback()
         flash(f'Error deleting camera: {str(e)}', 'danger')

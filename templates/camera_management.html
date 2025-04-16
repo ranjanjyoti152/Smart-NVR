@@ -250,10 +250,13 @@
 document.querySelectorAll('.edit-camera').forEach(button => {
     button.addEventListener('click', function() {
         const cameraId = this.getAttribute('data-camera-id');
-        // Here we would normally fetch the camera data with AJAX
-        // For now, we'll just update the form action
+        
+        // Set the exact full path instead of trying to replace parts of it
         const form = document.getElementById('editCameraForm');
-        form.action = form.action.replace('/0', `/${cameraId}`);
+        form.action = `/edit-camera/${cameraId}`;
+        
+        // Log for debugging
+        console.log(`Set edit form action to: ${form.action} for camera ID: ${cameraId}`);
     });
 });
 
@@ -264,7 +267,12 @@ document.querySelectorAll('.delete-camera').forEach(button => {
         const cameraName = this.getAttribute('data-camera-name');
         document.getElementById('deleteCameraName').textContent = cameraName;
         const form = document.getElementById('deleteCameraForm');
-        form.action = form.action.replace('/0', `/${cameraId}`);
+        
+        // Set the exact full path instead of trying to replace parts of it
+        form.action = `/delete-camera/${cameraId}`;
+        
+        // Log for debugging
+        console.log(`Set delete form action to: ${form.action} for camera ${cameraName} (ID: ${cameraId})`);
     });
 });
 

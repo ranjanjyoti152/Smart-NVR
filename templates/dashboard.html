@@ -281,6 +281,9 @@
         let streamQuality = qualitySelect.value;
         let currentFullscreenCamera = null;
         
+        // Track failed cameras to avoid repeated requests
+        const failedCameras = new Set();
+        
         // FPS control
         fpsSlider.addEventListener('input', function() {
             streamFps = parseInt(this.value);
@@ -307,6 +310,9 @@
                 
                 // Set up click handler for fullscreen mode
                 card.addEventListener('click', function() {
+                    // Don't try to open fullscreen view for failed cameras
+                    if (failedCameras.has(cameraId)) return;
+                    
                     openFullscreenView(cameraId, imgElement.src, card.querySelector('.camera-name').textContent);
                 });
                 
@@ -315,6 +321,13 @@
         }
         
         function startCameraStream(cameraId, imgElement, statusElement, boxesContainer) {
+            // Skip if this camera is in the failed list
+            if (failedCameras.has(cameraId)) {
+                statusElement.textContent = 'Camera Unavailable';
+                statusElement.classList.remove('text-success');
+                return;
+            }
+            
             // Clear existing interval if any
             if (cameraIntervals.has(cameraId)) {
                 clearInterval(cameraIntervals.get(cameraId));
@@ -328,8 +341,8 @@
             
             // Function to update image
             function updateImage() {
-                // Skip if previous request is still pending
-                if (isLoading) return;
+                // Skip if previous request is still pending or camera failed
+                if (isLoading || failedCameras.has(cameraId)) return;
                 
                 isLoading = true;
                 const timestamp = new Date().getTime();
@@ -368,17 +381,51 @@
                     isLoading = false;
                     retryCount++;
                     
+                    // Check if we've reached max retries
                     if (retryCount <= maxRetries) {
                         // Try again after delay
                         setTimeout(updateImage, retryDelay);
                     } else {
-                        // After max retries, continue with normal intervals
-                        retryCount = 0;
+                        // After max retries, mark camera as failed and clear interval
+                        console.log(`Camera ${cameraId} is unavailable after ${maxRetries} retries`);
+                        failedCameras.add(cameraId);
+                        statusElement.textContent = 'Camera Unavailable';
+                        
+                        if (cameraIntervals.has(cameraId)) {
+                            clearInterval(cameraIntervals.get(cameraId));
+                            cameraIntervals.delete(cameraId);
+                        }
                     }
                 };
                 
                 // Set the source after setting up event handlers
-                newImgElement.src = `/api/cameras/${cameraId}/frame?t=${timestamp}${qualityParam}`;
+                fetch(`/api/cameras/${cameraId}/frame?t=${timestamp}${qualityParam}`, {
+                    method: 'HEAD'
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        // If response is not OK (e.g., 404), mark camera as failed
+                        if (response.status === 404) {
+                            console.log(`Camera ${cameraId} returned 404, marking as failed`);
+                            failedCameras.add(cameraId);
+                            statusElement.textContent = 'Camera Unavailable';
+                            
+                            if (cameraIntervals.has(cameraId)) {
+                                clearInterval(cameraIntervals.get(cameraId));
+                                cameraIntervals.delete(cameraId);
+                            }
+                            isLoading = false;
+                            throw new Error(`Camera ${cameraId} not found (404)`);
+                        }
+                    }
+                    // Proceed with loading the image if no error
+                    newImgElement.src = `/api/cameras/${cameraId}/frame?t=${timestamp}${qualityParam}`;
+                })
+                .catch(error => {
+                    console.error(`Error checking camera ${cameraId}:`, error);
+                    isLoading = false;
+                    retryCount++;
+                });
             }
             
             // Initial image load
@@ -396,6 +443,10 @@
         function restartAllCameraStreams() {
             cameraCards.forEach(card => {
                 const cameraId = card.dataset.cameraId;
+                
+                // Skip already failed cameras
+                if (failedCameras.has(cameraId)) return;
+                
                 const imgElement = card.querySelector('.camera-feed');
                 const statusElement = card.querySelector('.camera-status');
                 const boxesContainer = card.querySelector('.detection-boxes');
@@ -406,6 +457,8 @@
         
         // Fetch detections for a camera
         function fetchDetections(cameraId, boxesContainer, imgElement) {
+            if (failedCameras.has(cameraId)) return;
+            
             if (!showDetections.checked && boxesContainer !== fullscreenDetectionBoxes) {
                 boxesContainer.innerHTML = '';
                 return;
@@ -417,7 +470,17 @@
             }
             
             fetch(`/api/cameras/${cameraId}/detections/latest`)
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        // If camera returns 404, mark it as failed
+                        if (response.status === 404) {
+                            failedCameras.add(cameraId);
+                            throw new Error(`Camera ${cameraId} not found (404)`);
+                        }
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
                 .then(detections => {
                     boxesContainer.innerHTML = '';
                     
@@ -487,6 +550,9 @@
         
         // Fullscreen view functions
         function openFullscreenView(cameraId, initialSrc, cameraName) {
+            // Don't open fullscreen for failed cameras
+            if (failedCameras.has(cameraId)) return;
+            
             currentFullscreenCamera = cameraId;
             fullscreenTitle.textContent = cameraName;
             fullscreenFeed.src = initialSrc;
@@ -510,10 +576,13 @@
                 clearInterval(fullscreenIntervalId);
             }
             
+            // Don't start stream for failed cameras
+            if (failedCameras.has(cameraId)) return;
+            
             let isLoading = false;
             
             function updateFullscreenImage() {
-                if (isLoading || fullscreenView.style.display !== 'flex') return;
+                if (isLoading || fullscreenView.style.display !== 'flex' || failedCameras.has(cameraId)) return;
                 
                 isLoading = true;
                 const timestamp = new Date().getTime();
@@ -527,10 +596,31 @@
                 
                 newImg.onerror = function() {
                     isLoading = false;
+                    
+                    // Mark camera as failed if fullscreen image can't load
+                    failedCameras.add(cameraId);
+                    closeFullscreenBtn.click();  // Close fullscreen view
                 };
                 
-                // Get high quality frames for fullscreen view
-                newImg.src = `/api/cameras/${cameraId}/frame?t=${timestamp}&quality=high`;
+                // Check camera availability first
+                fetch(`/api/cameras/${cameraId}/frame?t=${timestamp}&quality=high`, {
+                    method: 'HEAD'
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        if (response.status === 404) {
+                            failedCameras.add(cameraId);
+                            closeFullscreenBtn.click();  // Close fullscreen view
+                            throw new Error(`Camera ${cameraId} not found (404)`);
+                        }
+                    }
+                    // Proceed with loading the image
+                    newImg.src = `/api/cameras/${cameraId}/frame?t=${timestamp}&quality=high`;
+                })
+                .catch(error => {
+                    console.error(`Error checking fullscreen camera ${cameraId}:`, error);
+                    isLoading = false;
+                });
             }
             
             // Update at slightly higher frequency for smooth fullscreen view
@@ -552,7 +642,7 @@
         
         // Toggle detection boxes
         fullscreenShowDetections.addEventListener('change', function() {
-            if (currentFullscreenCamera) {
+            if (currentFullscreenCamera && !failedCameras.has(currentFullscreenCamera)) {
                 if (this.checked) {
                     fetchDetections(currentFullscreenCamera, fullscreenDetectionBoxes, fullscreenFeed);
                 } else {
@@ -571,6 +661,10 @@
                 // Refresh detections for all cameras
                 cameraCards.forEach(card => {
                     const cameraId = card.dataset.cameraId;
+                    
+                    // Skip failed cameras
+                    if (failedCameras.has(cameraId)) return;
+                    
                     const imgElement = card.querySelector('.camera-feed');
                     const boxesContainer = card.querySelector('.detection-boxes');
                     fetchDetections(cameraId, boxesContainer, imgElement);
