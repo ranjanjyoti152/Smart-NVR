@@ -26,9 +26,10 @@
         overflow: hidden;
         border-radius: 8px;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-        background-color: #1e1e1e;
+        background-color: var(--mac-bg);
         transition: transform 0.2s;
         cursor: pointer;
+        border: none; /* Removed border to eliminate white border */
     }
     
     .camera-card:hover {
@@ -39,7 +40,7 @@
         width: 100%;
         height: auto;
         display: block;
-        background-color: #000;
+        background-color: transparent;
     }
     
     .camera-info {

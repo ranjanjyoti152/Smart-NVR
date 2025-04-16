@@ -59,6 +59,7 @@ body {
     letter-spacing: -0.5px;
     background: linear-gradient(135deg, var(--mac-accent) 0%, #6eb9ff 100%);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
     transition: all 0.3s;
 }
@@ -209,6 +210,15 @@ body {
     border-color: var(--mac-accent);
 }
 
+.mac-card.camera-card {
+    border: none;
+    padding: 0; /* Remove padding to eliminate any additional white space */
+}
+
+.mac-card.camera-card:hover {
+    border: none;
+}
+
 @media (prefers-color-scheme: dark) {
     .mac-card {
         background-color: #2d2d2d;
@@ -231,18 +241,18 @@ body {
     position: relative;
     overflow: hidden;
     border-radius: 12px;
-    background-color: #000;
+    background-color: var(--mac-bg);
     aspect-ratio: 16/9;
     box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
     transition: all 0.3s ease;
     cursor: pointer;
-    border: 2px solid transparent;
+    border: none; /* Changed from 2px solid transparent to remove white border */
 }
 
 .camera-card:hover {
     transform: scale(1.03);
     box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
-    border-color: var(--mac-accent);
+    border: none; /* Ensuring no border appears on hover */
 }
 
 .camera-card video,
@@ -384,6 +394,7 @@ body {
     font-weight: 500;
     box-shadow: 0 4px 10px rgba(0, 123, 255, 0.3);
     transition: all 0.3s ease;
+    background-clip: padding-box;
 }
 
 .mac-btn-primary:hover {
