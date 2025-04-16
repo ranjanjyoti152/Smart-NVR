@@ -9,9 +9,6 @@
     --mac-text: #333333;
     --mac-accent: #007bff;
     --mac-border: #d1d1d6;
-    --mac-close: #ff5f57;
-    --mac-minimize: #ffbd2e;
-    --mac-maximize: #28c840;
 }
 
 /* Dark mode support */
@@ -59,32 +56,6 @@ body {
     font-weight: 500;
     margin: 0;
     color: var(--mac-text);
-}
-
-.mac-traffic-lights {
-    display: flex;
-    align-items: center;
-    margin-left: 15px;
-}
-
-.mac-btn {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    margin-right: 8px;
-    transition: all 0.2s;
-}
-
-.mac-close {
-    background-color: var(--mac-close);
-}
-
-.mac-minimize {
-    background-color: var(--mac-minimize);
-}
-
-.mac-maximize {
-    background-color: var(--mac-maximize);
 }
 
 /* macOS style sidebar */
