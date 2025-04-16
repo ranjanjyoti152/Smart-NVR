@@ -38,8 +38,8 @@ body {
 .mac-header {
     height: 60px;
     background-color: var(--mac-header-bg);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
     border-bottom: 1px solid var(--mac-border);
     position: fixed;
     top: 0;
@@ -48,14 +48,42 @@ body {
     z-index: 1000;
     display: flex;
     align-items: center;
-    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .mac-title {
     font-size: 1.4rem;
-    font-weight: 500;
+    font-weight: 600;
     margin: 0;
     color: var(--mac-text);
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, var(--mac-accent) 0%, #6eb9ff 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    transition: all 0.3s;
+}
+
+/* User menu styling */
+.mac-user-menu {
+    background-color: transparent;
+    border: 1px solid var(--mac-border);
+    color: var(--mac-text);
+    border-radius: 20px;
+    padding: 6px 15px;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.mac-user-menu:hover {
+    background-color: rgba(0, 123, 255, 0.1);
+    border-color: var(--mac-accent);
+    box-shadow: 0 2px 8px rgba(0, 123, 255, 0.2);
+}
+
+.mac-user-menu i {
+    font-size: 18px;
 }
 
 /* macOS style sidebar */
@@ -70,6 +98,7 @@ body {
     overflow-y: auto;
     z-index: 900;
     transition: transform 0.3s ease;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
 }
 
 .mac-menu {
@@ -79,7 +108,7 @@ body {
 }
 
 .mac-menu li {
-    margin-bottom: 2px;
+    margin-bottom: 4px;
 }
 
 .mac-menu a {
@@ -88,24 +117,60 @@ body {
     padding: 12px 15px;
     color: var(--mac-text);
     text-decoration: none;
-    border-radius: 6px;
+    border-radius: 8px;
     margin: 0 10px;
     transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+
+.mac-menu a::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+    transition: left 0.6s;
 }
 
 .mac-menu a:hover {
     background-color: rgba(0, 0, 0, 0.05);
+    transform: translateX(5px);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
+}
+
+.mac-menu a:hover::before {
+    left: 100%;
 }
 
 .mac-menu a.active {
     background-color: var(--mac-accent);
     color: white;
+    box-shadow: 0 4px 8px rgba(0, 123, 255, 0.3);
 }
 
 .mac-menu a i {
-    margin-right: 10px;
-    width: 20px;
+    margin-right: 12px;
+    width: 24px;
+    height: 24px;
     text-align: center;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s;
+}
+
+.mac-menu a:hover i {
+    transform: scale(1.2);
+}
+
+@media (prefers-color-scheme: dark) {
+    .mac-menu a:hover {
+        background-color: rgba(255, 255, 255, 0.05);
+    }
 }
 
 .sidebar-divider {
@@ -134,17 +199,24 @@ body {
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.1);
     padding: 20px;
     margin-bottom: 20px;
-    transition: all 0.2s ease;
+    transition: all 0.3s ease;
+    border: 1px solid transparent;
 }
 
 .mac-card:hover {
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08), 0 1px 5px rgba(0, 0, 0, 0.15);
-    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.06);
+    transform: translateY(-5px);
+    border-color: var(--mac-accent);
 }
 
 @media (prefers-color-scheme: dark) {
     .mac-card {
         background-color: #2d2d2d;
+        border-color: transparent;
+    }
+    
+    .mac-card:hover {
+        border-color: var(--mac-accent);
     }
 }
 
@@ -158,10 +230,19 @@ body {
 .camera-card {
     position: relative;
     overflow: hidden;
-    border-radius: 8px;
+    border-radius: 12px;
     background-color: #000;
     aspect-ratio: 16/9;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+    transition: all 0.3s ease;
+    cursor: pointer;
+    border: 2px solid transparent;
+}
+
+.camera-card:hover {
+    transform: scale(1.03);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
+    border-color: var(--mac-accent);
 }
 
 .camera-card video,
@@ -169,6 +250,7 @@ body {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    transition: all 0.3s ease;
 }
 
 .camera-card .camera-info {
@@ -176,11 +258,23 @@ body {
     bottom: 0;
     left: 0;
     right: 0;
-    background: rgba(0, 0, 0, 0.7);
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.4), transparent);
     color: white;
-    padding: 8px;
+    padding: 15px 10px 8px;
     display: flex;
     justify-content: space-between;
+    transition: all 0.3s ease;
+    opacity: 0.9;
+}
+
+.camera-card:hover .camera-info {
+    opacity: 1;
+    padding-bottom: 12px;
+}
+
+.camera-card .camera-name {
+    font-weight: bold;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
 }
 
 .camera-card .detection-box {
@@ -188,6 +282,8 @@ body {
     border: 2px solid #00ff00;
     background-color: rgba(0, 255, 0, 0.15);
     pointer-events: none;
+    box-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
+    transition: all 0.2s ease;
 }
 
 .camera-card .detection-label {
@@ -196,10 +292,12 @@ body {
     left: 0;
     background-color: #00ff00;
     color: black;
-    padding: 2px 6px;
+    padding: 3px 8px;
     font-size: 12px;
     border-radius: 4px;
     font-weight: bold;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    transition: all 0.2s ease;
 }
 
 /* User profile and login forms */
@@ -229,17 +327,83 @@ body {
 }
 
 /* Form elements with macOS style */
-.form-control, .btn {
-    border-radius: 6px;
+.form-control {
+    border-radius: 8px;
+    border: 1px solid var(--mac-border);
+    padding: 10px 15px;
+    transition: all 0.3s ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.form-control:focus {
+    border-color: var(--mac-accent);
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+}
+
+.btn {
+    border-radius: 8px;
+    padding: 8px 16px;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.6s;
+}
+
+.btn:hover::before {
+    left: 100%;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--mac-accent) 0%, #4da3ff 100%);
+    border: none;
+    box-shadow: 0 4px 10px rgba(0, 123, 255, 0.3);
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(0, 123, 255, 0.4);
+    background: linear-gradient(135deg, var(--mac-accent) 0%, #6eb9ff 100%);
 }
 
 .mac-btn-primary {
-    background-color: var(--mac-accent);
+    background: linear-gradient(135deg, var(--mac-accent) 0%, #4da3ff 100%);
     color: white;
     border: none;
     padding: 10px 20px;
-    border-radius: 6px;
+    border-radius: 8px;
     font-weight: 500;
+    box-shadow: 0 4px 10px rgba(0, 123, 255, 0.3);
+    transition: all 0.3s ease;
+}
+
+.mac-btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(0, 123, 255, 0.4);
+    background: linear-gradient(135deg, var(--mac-accent) 0%, #6eb9ff 100%);
+}
+
+/* Switch toggle styling */
+.form-switch .form-check-input {
+    width: 3em;
+    height: 1.5em;
+    margin-top: 0.15em;
+    transition: all 0.3s ease;
+}
+
+.form-switch .form-check-input:checked {
+    background-color: var(--mac-accent);
+    border-color: var(--mac-accent);
+    box-shadow: 0 0 0 1px rgba(0, 123, 255, 0.25);
 }
 
 .mac-content-header {
@@ -312,6 +476,287 @@ body {
     border: 1px solid var(--mac-border);
     cursor: crosshair;
     background-color: black;
+}
+
+/* Enhanced Alert Styling */
+.alert {
+    border-radius: 10px;
+    border: none;
+    padding: 15px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+    position: relative;
+    overflow: hidden;
+    animation: slideDown 0.3s ease-out forwards;
+}
+
+@keyframes slideDown {
+    from {
+        transform: translateY(-20px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.alert::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 4px;
+}
+
+.alert-success {
+    background-color: rgba(40, 167, 69, 0.1);
+    color: #28a745;
+}
+
+.alert-success::before {
+    background-color: #28a745;
+}
+
+.alert-danger {
+    background-color: rgba(220, 53, 69, 0.1);
+    color: #dc3545;
+}
+
+.alert-danger::before {
+    background-color: #dc3545;
+}
+
+.alert-warning {
+    background-color: rgba(255, 193, 7, 0.1);
+    color: #ffc107;
+}
+
+.alert-warning::before {
+    background-color: #ffc107;
+}
+
+.alert-info {
+    background-color: rgba(0, 123, 255, 0.1);
+    color: var(--mac-accent);
+}
+
+.alert-info::before {
+    background-color: var(--mac-accent);
+}
+
+.alert .btn-close {
+    opacity: 0.5;
+    transition: all 0.2s;
+}
+
+.alert .btn-close:hover {
+    opacity: 1;
+}
+
+/* Loading Animation */
+.mac-loader-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 30px;
+}
+
+.mac-loader {
+    width: 48px;
+    height: 48px;
+    border: 5px solid rgba(0, 123, 255, 0.2);
+    border-radius: 50%;
+    border-top-color: var(--mac-accent);
+    animation: mac-spin 1s ease-in-out infinite;
+    position: relative;
+}
+
+@keyframes mac-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.mac-loader::before, .mac-loader::after {
+    content: '';
+    position: absolute;
+    border-radius: 50%;
+    border: 3px solid transparent;
+}
+
+.mac-loader::before {
+    top: -3px;
+    left: -3px;
+    right: -3px;
+    bottom: -3px;
+    border-top-color: rgba(0, 123, 255, 0.5);
+    animation: mac-spin 1.5s linear infinite;
+}
+
+.mac-loader.sm {
+    width: 24px;
+    height: 24px;
+    border-width: 3px;
+}
+
+.mac-loader-text {
+    margin-top: 15px;
+    text-align: center;
+    color: var(--mac-text);
+    font-size: 14px;
+}
+
+/* Toast Notifications */
+.mac-toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    min-width: 250px;
+    max-width: 350px;
+    background-color: white;
+    color: var(--mac-text);
+    border-radius: 8px;
+    padding: 12px 15px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+    z-index: 9999;
+    opacity: 0;
+    transform: translateY(-20px);
+    transition: opacity 0.3s, transform 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.mac-toast-show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.mac-toast-content {
+    display: flex;
+    align-items: center;
+}
+
+.mac-toast-close {
+    background: transparent;
+    border: none;
+    color: var(--mac-text);
+    opacity: 0.5;
+    cursor: pointer;
+    padding: 0;
+    font-size: 18px;
+    transition: opacity 0.2s;
+}
+
+.mac-toast-close:hover {
+    opacity: 0.8;
+}
+
+.mac-toast-success {
+    border-left: 4px solid #28a745;
+}
+
+.mac-toast-warning {
+    border-left: 4px solid #ffc107;
+}
+
+.mac-toast-error {
+    border-left: 4px solid #dc3545;
+}
+
+.mac-toast-info {
+    border-left: 4px solid var(--mac-accent);
+}
+
+/* Page Transitions */
+.page-loaded .mac-content {
+    animation: fadeIn 0.5s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.mac-card-visible {
+    opacity: 1 !important;
+    transform: translateY(0) !important;
+}
+
+/* Dark Mode Toggle Button */
+.dark-mode-toggle {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 45px;
+    height: 45px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--mac-accent) 0%, #4da3ff 100%);
+    color: white;
+    border: none;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 999;
+    transition: all 0.3s ease;
+}
+
+.dark-mode-toggle:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.3);
+}
+
+.dark-mode-toggle i {
+    font-size: 20px;
+}
+
+/* Improved Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.05);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    transition: background 0.3s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.3);
+}
+
+@media (prefers-color-scheme: dark) {
+    ::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.2);
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background: rgba(255, 255, 255, 0.3);
+    }
+}
+
+/* Mobile Sidebar Toggle Button */
+.mac-sidebar-toggle {
+    color: var(--mac-text);
+    font-size: 24px;
+    transition: color 0.3s ease;
+}
+
+.mac-sidebar-toggle:hover {
+    color: var(--mac-accent);
 }
 
 /* Media queries for responsive design */
