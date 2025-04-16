@@ -210,29 +210,144 @@ def _send_email_internal(email_data):
         msg['From'] = from_email
         msg['To'] = ', '.join(recipients)
         
-        # Include ROI name in subject if available
+        # Get ROI name (lowercase for case-insensitive comparison)
+        roi_name_lower = roi_data['name'].lower() if roi_data else ""
+        
+        # Customize subject based on ROI name
         if roi_data:
-            msg['Subject'] = f"SmartNVR Alert: {detection_data['class_name']} detected in {roi_data['name']} on {camera_data['name']}"
+            # Add urgency level for specific ROIs
+            if "intrusion" in roi_name_lower:
+                msg['Subject'] = f"🚨 URGENT: Intrusion Detected - {detection_data['class_name']} in {roi_data['name']} on {camera_data['name']}"
+            elif "fire" in roi_name_lower:
+                msg['Subject'] = f"🔥 EMERGENCY: Fire Detection Alert - {detection_data['class_name']} in {roi_data['name']} on {camera_data['name']}"
+            elif "smoke" in roi_name_lower:
+                msg['Subject'] = f"⚠️ WARNING: Smoke Detected - {detection_data['class_name']} in {roi_data['name']} on {camera_data['name']}"
+            elif "helmet" in roi_name_lower or "safety" in roi_name_lower:
+                msg['Subject'] = f"👷 Safety Alert: {detection_data['class_name']} detected in {roi_data['name']} on {camera_data['name']}"
+            else:
+                msg['Subject'] = f"SmartNVR Alert: {detection_data['class_name']} detected in {roi_data['name']} on {camera_data['name']}"
         else:
             msg['Subject'] = f"SmartNVR Alert: {detection_data['class_name']} detected on {camera_data['name']}"
         
         # Format timestamp if it's a datetime object
         timestamp_str = detection_data['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if isinstance(detection_data['timestamp'], datetime) else str(detection_data['timestamp'])
         
-        # Email body
+        # Email header style
+        header_style = "style='padding: 10px; color: white; font-size: 18px; text-align: center;'"
+        
+        # Get custom styles and content based on ROI name
+        header_bg = "#2C3E50"  # Default header background
+        alert_box_style = "style='border: 1px solid #ddd; padding: 15px; margin: 15px 0; border-radius: 5px; background-color: #f9f9f9;'"
+        custom_message = ""
+        action_steps = ""
+        
+        if roi_data:
+            if "intrusion" in roi_name_lower:
+                header_bg = "#B90E0A"  # Red for intrusion
+                alert_box_style = "style='border: 1px solid #B90E0A; padding: 15px; margin: 15px 0; border-radius: 5px; background-color: #FFEBEE;'"
+                custom_message = f"""
+                <div {alert_box_style}>
+                    <h3 style='color: #B90E0A; margin-top: 0;'>⚠️ SECURITY BREACH DETECTED ⚠️</h3>
+                    <p>A potential intruder has been detected in an area marked for intrusion monitoring.</p>
+                    <p>Detected object: <strong>{detection_data['class_name']}</strong> with {detection_data['confidence']:.1%} confidence.</p>
+                </div>
+                """
+                action_steps = """
+                <h3>Recommended Actions:</h3>
+                <ol>
+                    <li>Verify the alert by checking the attached image and video</li>
+                    <li>Contact security personnel immediately if intrusion is confirmed</li>
+                    <li>Save video evidence for future reference</li>
+                    <li>Check other camera feeds for additional intrusion points</li>
+                </ol>
+                """
+                
+            elif "fire" in roi_name_lower:
+                header_bg = "#D32F2F"  # Bright red for fire
+                alert_box_style = "style='border: 1px solid #D32F2F; padding: 15px; margin: 15px 0; border-radius: 5px; background-color: #FFEBEE;'"
+                custom_message = f"""
+                <div {alert_box_style}>
+                    <h3 style='color: #D32F2F; margin-top: 0;'>🔥 FIRE EMERGENCY ALERT 🔥</h3>
+                    <p>A potential fire has been detected in the monitoring area.</p>
+                    <p>Detected object: <strong>{detection_data['class_name']}</strong> with {detection_data['confidence']:.1%} confidence.</p>
+                </div>
+                """
+                action_steps = """
+                <h3>Immediate Actions Required:</h3>
+                <ol>
+                    <li>Evacuate the area immediately</li>
+                    <li>Contact emergency services (Fire Department) at once</li>
+                    <li>Activate fire alarm systems if not already triggered</li>
+                    <li>Do NOT attempt to fight substantial fires</li>
+                    <li>Follow your organization's fire emergency procedures</li>
+                </ol>
+                """
+                
+            elif "smoke" in roi_name_lower:
+                header_bg = "#FF9800"  # Orange for smoke warning
+                alert_box_style = "style='border: 1px solid #FF9800; padding: 15px; margin: 15px 0; border-radius: 5px; background-color: #FFF3E0;'"
+                custom_message = f"""
+                <div {alert_box_style}>
+                    <h3 style='color: #FF9800; margin-top: 0;'>🚨 SMOKE DETECTION WARNING 🚨</h3>
+                    <p>Smoke has been detected in the monitoring area which could indicate a fire hazard.</p>
+                    <p>Detected object: <strong>{detection_data['class_name']}</strong> with {detection_data['confidence']:.1%} confidence.</p>
+                </div>
+                """
+                action_steps = """
+                <h3>Recommended Actions:</h3>
+                <ol>
+                    <li>Investigate the source of smoke immediately</li>
+                    <li>Prepare for possible evacuation</li>
+                    <li>Alert fire safety personnel</li>
+                    <li>Check for signs of fire</li>
+                    <li>If fire is confirmed, follow fire emergency procedures</li>
+                </ol>
+                """
+                
+            elif "helmet" in roi_name_lower or "safety" in roi_name_lower:
+                header_bg = "#FFC107"  # Yellow for safety violations
+                alert_box_style = "style='border: 1px solid #FFC107; padding: 15px; margin: 15px 0; border-radius: 5px; background-color: #FFF8E1;'"
+                custom_message = f"""
+                <div {alert_box_style}>
+                    <h3 style='color: #FFC107; margin-top: 0;'>👷 SAFETY COMPLIANCE ALERT 👷</h3>
+                    <p>A safety-related detection has occurred in the monitoring area.</p>
+                    <p>Detected object: <strong>{detection_data['class_name']}</strong> with {detection_data['confidence']:.1%} confidence.</p>
+                </div>
+                """
+                action_steps = """
+                <h3>Recommended Actions:</h3>
+                <ol>
+                    <li>Verify if proper safety equipment is being used</li>
+                    <li>Address any safety violations</li>
+                    <li>Document the incident for safety records</li>
+                    <li>Consider additional safety training if violations are frequent</li>
+                </ol>
+                """
+        
+        # Email body with HTML, using custom content if available
         body = f"""
         <html>
-        <body>
-            <h2>SmartNVR Detection Alert</h2>
-            <p><strong>Camera:</strong> {camera_data['name']}</p>
-            <p><strong>Object:</strong> {detection_data['class_name']}</p>
-            <p><strong>Confidence:</strong> {detection_data['confidence']:.2%}</p>
-            <p><strong>Time:</strong> {timestamp_str}</p>
+        <body style='font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto;'>
+            <div style='background-color: {header_bg}; {header_style[7:-1]}'>
+                <h2>SmartNVR Detection Alert</h2>
+            </div>
+            
+            {custom_message}
+            
+            <div style='padding: 15px;'>
+                <p><strong>Camera:</strong> {camera_data['name']}</p>
+                <p><strong>Object:</strong> {detection_data['class_name']}</p>
+                <p><strong>Confidence:</strong> {detection_data['confidence']:.2%}</p>
+                <p><strong>Time:</strong> {timestamp_str}</p>
         """
         
         # Add ROI information if available
         if roi_data:
             body += f"<p><strong>Detection Zone:</strong> {roi_data['name']}</p>"
+        
+        # Add action steps if available
+        if action_steps:
+            body += action_steps
         
         # Add image if available
         image_path = detection_data['image_path']
@@ -246,9 +361,13 @@ def _send_email_internal(email_data):
         # Add video link if available
         if detection_data['video_path']:
             video_url = f"/playback?video={os.path.basename(detection_data['video_path'])}&camera={camera_data['id']}"
-            body += f'<p><a href="{video_url}">View Recorded Video</a></p>'
+            body += f'<p><a href="{video_url}" style="display: inline-block; padding: 8px 16px; background-color: #0078D7; color: white; text-decoration: none; border-radius: 4px;">View Recorded Video</a></p>'
         
         body += """
+            </div>
+            <div style='background-color: #f5f5f5; padding: 10px; font-size: 12px; text-align: center; margin-top: 20px;'>
+                <p>This is an automated message from your SmartNVR system.</p>
+            </div>
         </body>
         </html>
         """
