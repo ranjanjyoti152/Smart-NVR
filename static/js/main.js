@@ -1,6 +1,6 @@
 /**
- * SmartNVR - Main JavaScript Functions
- * Contains utility functions for enhancing the UI experience
+ * SmartNVR - Enhanced JavaScript Functions
+ * Contains utility functions for a colorful and attractive UI experience
  */
 
 // Create a loading spinner with optional text
@@ -32,7 +32,7 @@ function createLoader(container, size = 'normal', text = null) {
     return loaderContainer;
 }
 
-// Create a toast notification
+// Create a toast notification with enhanced styling
 function showToast(message, type = 'info', duration = 3000) {
     // Remove existing toasts
     const existingToasts = document.querySelectorAll('.mac-toast');
@@ -53,7 +53,7 @@ function showToast(message, type = 'info', duration = 3000) {
     
     toast.innerHTML = `
         <div class="mac-toast-content">
-            <i class="fas fa-${icon} me-2"></i>
+            <i class="fas fa-${icon}"></i>
             <span>${message}</span>
         </div>
         <button class="mac-toast-close">
@@ -99,13 +99,16 @@ function animateCardsOnScroll() {
                 }
             });
         }, {
-            threshold: 0.1
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
         });
         
-        cards.forEach(card => {
+        cards.forEach((card, index) => {
             card.style.opacity = '0';
             card.style.transform = 'translateY(20px)';
             card.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+            // Add staggered delay for card animations
+            card.style.transitionDelay = `${index * 0.05}s`;
             observer.observe(card);
         });
     } else {
@@ -149,6 +152,28 @@ function initSidebarToggle() {
     }
 }
 
+// Add hover effects to menu items
+function enhanceMenuItems() {
+    const menuItems = document.querySelectorAll('.mac-menu a:not(.active)');
+    menuItems.forEach(item => {
+        // Add hover shine effect
+        item.addEventListener('mouseover', function() {
+            this.style.transition = 'all 0.3s ease';
+        });
+        
+        item.addEventListener('mousemove', function(e) {
+            const x = e.pageX - this.offsetLeft;
+            const y = e.pageY - this.offsetTop;
+            
+            this.style.background = `radial-gradient(circle at ${x}px ${y}px, rgba(var(--color-primary-rgb, 75, 109, 222), 0.2) 0%, rgba(var(--color-primary-rgb, 75, 109, 222), 0.1) 20%, rgba(var(--color-primary-rgb, 75, 109, 222), 0.05) 60%)`;
+        });
+        
+        item.addEventListener('mouseleave', function() {
+            this.style.background = '';
+        });
+    });
+}
+
 // Initialize page
 document.addEventListener('DOMContentLoaded', function() {
     // Animation for cards
@@ -159,20 +184,50 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Add animation class to body after page loads
     document.body.classList.add('page-loaded');
+    
+    // Add hover effects to menu items
+    enhanceMenuItems();
+    
+    // Add stat number animation on hover
+    const statNumbers = document.querySelectorAll('.stat-number');
+    statNumbers.forEach(stat => {
+        stat.addEventListener('mouseenter', function() {
+            this.classList.add('pulse-animation');
+        });
+        
+        stat.addEventListener('mouseleave', function() {
+            this.classList.remove('pulse-animation');
+        });
+    });
 });
 
-// Dark mode toggle
+// Dark mode toggle with enhanced animation
 function toggleDarkMode() {
     const currentMode = localStorage.getItem('darkMode') === 'true';
     localStorage.setItem('darkMode', !currentMode);
     
+    const root = document.documentElement;
+    
     if (!currentMode) {
-        document.documentElement.setAttribute('data-theme', 'dark');
-        showToast('Dark mode enabled', 'info', 2000);
+        // Add transition for smooth color changes
+        root.style.transition = 'all 0.5s ease';
+        root.setAttribute('data-theme', 'dark');
+        showToast('Dark mode activated ✨', 'info', 2000);
     } else {
-        document.documentElement.removeAttribute('data-theme');
-        showToast('Light mode enabled', 'info', 2000);
+        root.style.transition = 'all 0.5s ease';
+        root.removeAttribute('data-theme');
+        showToast('Light mode activated ☀️', 'info', 2000);
     }
+    
+    // Add animation to all cards during mode change
+    const cards = document.querySelectorAll('.mac-card');
+    cards.forEach(card => {
+        card.style.transition = 'all 0.5s ease';
+        card.classList.add('pulse-animation');
+        setTimeout(() => {
+            card.classList.remove('pulse-animation');
+        }, 1000);
+    });
 }
 
 // Check for dark mode on page load
@@ -181,7 +236,7 @@ function checkDarkMode() {
     if (localStorage.getItem('darkMode') === 'true') {
         document.documentElement.setAttribute('data-theme', 'dark');
     }
-    // No else needed as we want to respect system preference by default
+    // Respect system preference by default
 }
 
 // Run dark mode check on page load
