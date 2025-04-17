@@ -233,17 +233,58 @@
                             <div class="form-text">When checked, an email will be sent when objects are detected in this region</div>
                         </div>
 
-                        <!-- Add email notification configuration info -->
-                        <div class="alert alert-info mt-3 mb-3">
-                            <h6><i class="fas fa-info-circle"></i> Smart Email Notifications</h6>
-                            <p class="small mb-2">Create specialized alerts by including these keywords in your ROI name:</p>
-                            <ul class="small mb-2">
-                                <li><strong>"Intrusion"</strong>: Security breach alerts with verification steps</li>
-                                <li><strong>"Fire"</strong>: Emergency evacuation instructions</li>
-                                <li><strong>"Smoke"</strong>: Early warning with investigation steps</li>
-                                <li><strong>"Helmet"</strong> or <strong>"Safety"</strong>: Safety compliance information</li>
-                            </ul>
-                            <p class="small mb-0">Example: Name your ROI "Front Door Intrusion Zone" to get security-focused alerts.</p>
+                        <!-- Redesigned Smart Email Notifications section -->
+                        <div class="card border-info shadow-sm mb-3">
+                            <div class="card-header bg-info bg-opacity-10 d-flex align-items-center">
+                                <i class="fas fa-envelope-open-text text-info me-2"></i>
+                                <span class="fw-bold">Smart Email Notifications</span>
+                                <button type="button" class="btn btn-sm ms-auto p-0 border-0" 
+                                    data-bs-toggle="collapse" data-bs-target="#smartEmailHelp" 
+                                    aria-expanded="false" aria-controls="smartEmailHelp">
+                                    <i class="fas fa-chevron-down"></i>
+                                </button>
+                            </div>
+                            <div class="collapse show" id="smartEmailHelp">
+                                <div class="card-body p-3">
+                                    <p class="text-muted small mb-2">Add these keywords to your region name for specialized alerts:</p>
+                                    
+                                    <div class="d-flex flex-wrap gap-2 mb-3">
+                                        <div class="notification-type security p-2 rounded">
+                                            <div class="d-flex align-items-center mb-1">
+                                                <i class="fas fa-shield-alt text-danger me-1"></i>
+                                                <span class="fw-bold small">Intrusion</span>
+                                            </div>
+                                            <span class="badge bg-danger bg-opacity-10 text-danger small">Security breach alerts</span>
+                                        </div>
+                                        
+                                        <div class="notification-type fire p-2 rounded">
+                                            <div class="d-flex align-items-center mb-1">
+                                                <i class="fas fa-fire text-danger me-1"></i>
+                                                <span class="fw-bold small">Fire</span>
+                                            </div>
+                                            <span class="badge bg-danger bg-opacity-10 text-danger small">Evacuation instructions</span>
+                                        </div>
+                                        
+                                        <div class="notification-type smoke p-2 rounded">
+                                            <div class="d-flex align-items-center mb-1">
+                                                <i class="fas fa-smoking text-warning me-1"></i>
+                                                <span class="fw-bold small">Smoke</span>
+                                            </div>
+                                            <span class="badge bg-warning bg-opacity-10 text-warning small">Early warnings</span>
+                                        </div>
+                                        
+                                        <div class="notification-type safety p-2 rounded">
+                                            <div class="d-flex align-items-center mb-1">
+                                                <i class="fas fa-hard-hat text-primary me-1"></i>
+                                                <span class="fw-bold small">Helmet/Safety</span>
+                                            </div>
+                                            <span class="badge bg-primary bg-opacity-10 text-primary small">Compliance info</span>
+                                        </div>
+                                    </div>
+                                    
+                                    <p class="small text-muted mb-0 fst-italic">Example: "Front Door <mark>Intrusion</mark> Zone" for security-focused alerts</p>
+                                </div>
+                            </div>
                         </div>
                         
                         <button id="btnSaveROI" class="btn btn-primary" disabled>Save Region</button>
