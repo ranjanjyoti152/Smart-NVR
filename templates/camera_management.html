@@ -518,7 +518,7 @@ function setupROICanvas(cameraId) {
     
     // Add new save ROI event handler
     saveROIBtn.addEventListener('click', function() {
-        console.log("Save ROI button clicked once");
+        console.log("Save ROI button clicked");
         const roiName = document.getElementById('roiName').value || `ROI ${Date.now()}`;
         
         // Get selected detection classes
@@ -534,6 +534,12 @@ function setupROICanvas(cameraId) {
             point[1] / drawCanvas.height
         ]);
         
+        // Verify we have enough points for a valid polygon
+        if (normalizedPoints.length < 3) {
+            alert('Please draw a complete polygon with at least 3 points.');
+            return;
+        }
+        
         // Prepare data for API
         const roiData = {
             name: roiName,
@@ -542,6 +548,8 @@ function setupROICanvas(cameraId) {
             is_active: true,
             email_notifications: emailNotifications
         };
+        
+        console.log("ROI Data to save:", roiData);
         
         // Disable the save button to prevent double submission
         saveROIBtn.disabled = true;
@@ -555,32 +563,44 @@ function setupROICanvas(cameraId) {
             },
             body: JSON.stringify(roiData)
         })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.success) {
+                console.log("ROI saved successfully:", data);
                 // Reset drawing
                 isDrawing = false;
                 points = [];
                 startDrawingBtn.classList.remove('btn-primary');
                 startDrawingBtn.classList.add('btn-outline-primary');
-                saveROIBtn.disabled = true;
-                saveROIBtn.innerHTML = 'Save Region';
                 ctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
                 document.getElementById('roiName').value = '';
                 detectionClassesSelect.selectedIndex = -1;
                 document.getElementById('emailNotifications').checked = false;
                 
-                // Reload ROIs
-                loadROIs(cameraId);
+                // Show success message
+                alert('Region of Interest saved successfully!');
+                
+                // Wait a brief moment for the backend to process before reloading ROIs
+                setTimeout(() => {
+                    // Reload ROIs with a forced cache-busting parameter
+                    loadROIs(cameraId, true);
+                }, 500);
             } else {
-                alert('Error saving ROI: ' + data.message);
-                saveROIBtn.disabled = false;
-                saveROIBtn.innerHTML = 'Save Region';
+                console.error('Error saving ROI:', data);
+                alert('Error saving ROI: ' + (data.message || 'Unknown error'));
             }
         })
         .catch(error => {
             console.error('Error saving ROI:', error);
-            alert('Error saving ROI. See console for details.');
+            alert('Error saving ROI: ' + error.message);
+        })
+        .finally(() => {
+            // Always reset the button state regardless of success or error
             saveROIBtn.disabled = false;
             saveROIBtn.innerHTML = 'Save Region';
         });
@@ -593,6 +613,8 @@ function loadROIs(cameraId) {
     const noRoiMessage = document.getElementById('noRoiMessage');
     const canvas = document.getElementById('roiCanvas');
     const ctx = canvas.getContext('2d');
+    
+    console.log(`Loading ROIs for camera ${cameraId}...`);
     
     // Clear list and canvas
     roiList.innerHTML = '';

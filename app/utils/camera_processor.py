@@ -11,15 +11,27 @@ from datetime import datetime, timedelta
 import uuid
 from shapely.geometry import Point, Polygon
 import requests
+import random # Import random for generating colors
 
 logger = logging.getLogger(__name__)
 
+# Define a color map for object classes (you can customize this)
+# Using BGR format for OpenCV
+CLASS_COLORS = {}
+
+def get_color_for_class(class_name):
+    """Get a consistent color for a class name."""
+    if class_name not in CLASS_COLORS:
+        # Generate a random color if class not in map
+        CLASS_COLORS[class_name] = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+    return CLASS_COLORS[class_name]
+
 class CameraProcessor:
     """Process RTSP camera streams with YOLOv5 object detection"""
-    
+
     def __init__(self, camera, model_path=None, confidence_threshold=None):
         """Initialize camera processor
-        
+
         Args:
             camera: Camera object from database
             model_path: Path to YOLOv5 model file (if None, use camera's model)
@@ -35,18 +47,20 @@ class CameraProcessor:
         self.thread = None
         self.recording_thread = None
         self.detection_thread = None
-        self.frame_queue = queue.Queue(maxsize=10)  # Queue for frames to process
-        self.recording_queue = queue.Queue(maxsize=30)  # Queue for frames to record
-        self.last_frame = None
+        self.frame_queue = queue.Queue(maxsize=5)  # Reduced queue size for lower latency
+        self.recording_queue = queue.Queue(maxsize=30)
+        self.last_frame = None # Stores the latest raw frame from camera
+        self.last_processed_frame = None # Stores the latest frame processed by detection
+        self.last_processed_detections = [] # Stores detections for the last_processed_frame
         self.fps = 0
         self.last_detection_time = None
         self.current_video_path = None
         self.video_writer = None
         self.video_start_time = None
         self.detection_regions = self._load_detection_regions()
-        self.current_detections = []  # Store current detections for API access
-        self.detection_lock = threading.Lock()  # Lock for thread-safe detection updates
-        
+        self.current_detections = []  # Store latest detections for API access (might differ slightly from last_processed_detections)
+        self.detection_lock = threading.Lock()
+
     def _get_model_path(self):
         """Get path to YOLOv5 model file from camera config or use default"""
         from app import db
@@ -263,59 +277,74 @@ class CameraProcessor:
         return True
         
     def get_frame(self):
-        """Get the latest processed frame with detection boxes"""
-        frame = self.last_frame.copy() if self.last_frame is not None else None
-        
-        if frame is not None:
-            # Draw ROIs on frame
-            for region in self.detection_regions:
-                if not hasattr(region['polygon'], 'exterior'):
-                    continue
-                    
-                # Convert polygon coordinates to pixel points
-                height, width = frame.shape[:2]
-                points = []
-                for x, y in region['polygon'].exterior.coords:
-                    # Convert from normalized to pixel coordinates if needed
-                    if 0 <= x <= 1 and 0 <= y <= 1:  # Normalized coordinates
-                        px = int(x * width)
-                        py = int(y * height)
-                    else:  # Already in pixel coordinates
-                        px = int(x)
-                        py = int(y)
-                    points.append([px, py])
-                
-                # Convert points to numpy array
-                if len(points) >= 3:
-                    points = np.array(points, dtype=np.int32)
-                    # Draw polygon
-                    cv2.polylines(frame, [points], True, (0, 0, 255), 2)
-                    # Add ROI name near the polygon
-                    centroid_x = np.mean(points[:, 0])
-                    centroid_y = np.mean(points[:, 1])
-                    cv2.putText(frame, region['name'], (int(centroid_x), int(centroid_y)), 
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-            
-            # Always draw current detections on the returned frame
-            with self.detection_lock:
-                for detection in self.current_detections:
-                    if all(k in detection for k in ['bbox_x', 'bbox_y', 'bbox_width', 'bbox_height']):
-                        x1 = int(detection['bbox_x'])
-                        y1 = int(detection['bbox_y'])
-                        x2 = int(detection['bbox_x'] + detection['bbox_width'])
-                        y2 = int(detection['bbox_y'] + detection['bbox_height'])
-                        class_name = detection['class_name']
-                        conf = detection['confidence']
-                        
-                        # Draw the bounding box
-                        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                        label = f"{class_name} {conf:.2f}"
-                        # Draw label with background
-                        text_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
-                        cv2.rectangle(frame, (x1, y1 - text_size[1] - 5), (x1 + text_size[0], y1), (0, 255, 0), -1)
-                        cv2.putText(frame, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
-        
-        return frame
+        """Get the latest frame *that has been processed for detections*, with boxes drawn."""
+        frame_to_display = None
+        detections_to_draw = []
+
+        with self.detection_lock:
+            if self.last_processed_frame is not None:
+                # Work on copies to release the lock quickly
+                frame_to_display = self.last_processed_frame.copy()
+                detections_to_draw = self.last_processed_detections.copy()
+
+        if frame_to_display is None:
+            # If detection hasn't processed any frame yet, return the latest raw frame
+            # or None if capture hasn't started.
+            with self.detection_lock: # Re-acquire briefly if needed
+                 if self.last_frame is not None:
+                     frame_to_display = self.last_frame.copy()
+                 else:
+                     return None # No frame available at all
+
+        # --- Drawing happens on the retrieved frame_to_display ---
+
+        # Draw ROIs on frame
+        height, width = frame_to_display.shape[:2]
+        for region in self.detection_regions:
+            if not hasattr(region['polygon'], 'exterior'):
+                continue
+            points = []
+            for x, y in region['polygon'].exterior.coords:
+                px = int(x * width) if 0 <= x <= 1 else int(x)
+                py = int(y * height) if 0 <= y <= 1 else int(y)
+                points.append([px, py])
+
+            if len(points) >= 3:
+                points_np = np.array(points, dtype=np.int32)
+                roi_color = (0, 0, 255) # Red for ROIs
+                cv2.polylines(frame_to_display, [points_np], True, roi_color, 2)
+                centroid_x = np.mean(points_np[:, 0])
+                centroid_y = np.mean(points_np[:, 1])
+                cv2.putText(frame_to_display, region['name'], (int(centroid_x), int(centroid_y)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, roi_color, 2)
+
+        # Draw the specific detections corresponding to this frame
+        for detection in detections_to_draw:
+            if all(k in detection for k in ['bbox_x', 'bbox_y', 'bbox_width', 'bbox_height']):
+                x1 = int(detection['bbox_x'])
+                y1 = int(detection['bbox_y'])
+                x2 = int(detection['bbox_x'] + detection['bbox_width'])
+                y2 = int(detection['bbox_y'] + detection['bbox_height'])
+                class_name = detection['class_name']
+                conf = detection['confidence']
+                color = get_color_for_class(class_name)
+
+                cv2.rectangle(frame_to_display, (x1, y1), (x2, y2), color, 2)
+                label = f"{class_name} {conf:.2f}"
+                text_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
+                label_y = y1 - 5
+                label_bg_y1 = y1 - text_size[1] - 5
+                if label_bg_y1 < 0:
+                    label_bg_y1 = y1 + 5
+                    label_y = y1 + text_size[1] + 5
+
+                cv2.rectangle(frame_to_display, (x1, label_bg_y1), (x1 + text_size[0], y1 if label_bg_y1 < y1 else label_y), color, -1)
+                cv2.putText(frame_to_display, label, (x1, label_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2) # Black text
+
+        # Timestamp and camera name should already be on the frame from _process_frames
+        # If not, they could be added here if needed.
+
+        return frame_to_display
         
     def get_latest_detections(self):
         """Get the latest detections"""
@@ -326,182 +355,215 @@ class CameraProcessor:
         """Main processing loop for camera frames"""
         frame_count = 0
         start_time = time.time()
-        
+
         while self.running:
             try:
                 ret, frame = self.cap.read()
-                
+
                 if not ret:
                     logger.warning(f"Failed to read frame from camera {self.camera.name}, reconnecting...")
                     time.sleep(2)
-                    
-                    # Try to reconnect
                     self.cap.release()
-                    self.cap = cv2.VideoCapture(self.camera.rtsp_url)
+                    # Re-initialize capture object (ensure correct parameters)
+                    rtsp_url = self.camera.rtsp_url # Get URL again
+                    if self.camera.username and self.camera.password:
+                         if '://' in rtsp_url:
+                            protocol, rest = rtsp_url.split('://', 1)
+                            rtsp_url = f"{protocol}://{self.camera.username}:{self.camera.password}@{rest}"
+
+                    if rtsp_url.startswith('rtsp://'):
+                        self.cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
+                        self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M','J','P','G'))
+                        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 3)
+                    else:
+                        self.cap = cv2.VideoCapture(rtsp_url)
+                        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
+
+                    # Check if stream opened successfully
+                    if not self.cap.isOpened():
+                         logger.error(f"Failed to reconnect to camera stream: {rtsp_url}")
+                         time.sleep(5) # Wait longer before next attempt
                     continue
-                
-                # Update FPS calculation every 30 frames
+
+
+                # --- Add overlays BEFORE putting frame in detection queue ---
+                # Add timestamp overlay
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                cv2.putText(frame, timestamp, (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.8, (0, 255, 0), 2, cv2.LINE_AA)
+
+                # Add camera name overlay
+                cv2.putText(frame, self.camera.name, (10, 60), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.8, (0, 255, 0), 2, cv2.LINE_AA)
+                # --- End overlays ---
+
+                # Store the latest raw frame (with overlays)
+                with self.detection_lock:
+                    self.last_frame = frame.copy()
+
+                # Add frame to queues for processing and recording
+                # Use frame.copy() if putting the same object into multiple queues
+                # or if modification happens downstream before consumption.
+                # Here, detection thread will use its own copy later.
+                frame_copy_for_queues = frame.copy()
+                try:
+                    if self.camera.detection_enabled:
+                         # Drop oldest frame if queue is full to prioritize newer frames
+                        if self.frame_queue.full():
+                            try:
+                                self.frame_queue.get_nowait() # Discard oldest
+                            except queue.Empty:
+                                pass # Should not happen if full, but handle anyway
+                        self.frame_queue.put(frame_copy_for_queues, block=False)
+                except queue.Full:
+                     logger.warning(f"Detection frame queue full for camera {self.camera.name}. Check detection performance.")
+                     pass # Should be handled by the check above, but keep for safety
+
+                try:
+                    if self.recording:
+                        # Recording queue can block or drop if needed, depending on requirements
+                        # Current behavior drops if full
+                        if self.recording_queue.full():
+                             try:
+                                 self.recording_queue.get_nowait() # Discard oldest recording frame
+                             except queue.Empty:
+                                 pass
+                        self.recording_queue.put(frame_copy_for_queues, block=False)
+                except queue.Full:
+                    logger.warning(f"Recording queue full for camera {self.camera.name}.")
+                    pass
+
+                # Update FPS calculation
                 frame_count += 1
                 if frame_count >= 30:
                     end_time = time.time()
-                    self.fps = frame_count / (end_time - start_time)
+                    elapsed = end_time - start_time
+                    if elapsed > 0: # Avoid division by zero
+                         self.fps = frame_count / elapsed
                     frame_count = 0
                     start_time = time.time()
-                
-                # Add timestamp overlay
-                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                cv2.putText(frame, timestamp, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 
-                            0.8, (0, 255, 0), 2, cv2.LINE_AA)
-                
-                # Add camera name overlay
-                cv2.putText(frame, self.camera.name, (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 
-                            0.8, (0, 255, 0), 2, cv2.LINE_AA)
-                
-                # Store current frame
-                self.last_frame = frame.copy()
-                
-                # Add frame to queues for processing and recording
-                try:
-                    if not self.frame_queue.full() and self.camera.detection_enabled:
-                        self.frame_queue.put(frame, block=False)
-                except queue.Full:
-                    pass
-                    
-                try:
-                    if not self.recording_queue.full() and self.recording:
-                        self.recording_queue.put(frame, block=False)
-                except queue.Full:
-                    pass
-                    
+
+
             except Exception as e:
                 logger.error(f"Error processing frame: {str(e)}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
                 time.sleep(1)
-                
+
     def _detect_objects(self):
         """Process frames for object detection"""
         while self.running:
             try:
                 # Get frame from queue
-                frame = self.frame_queue.get(timeout=1.0)
-                
-                # Get image dimensions for coordinate normalization
-                height, width = frame.shape[:2]
-                
-                # Perform inference with YOLOv5
-                results = self.model(frame)
-                detections = results.pandas().xyxy[0]
-                
+                frame_to_process = self.frame_queue.get(timeout=1.0)
+
+                # Get image dimensions
+                height, width = frame_to_process.shape[:2]
+
+                # Perform inference
+                results = self.model(frame_to_process)
+                detections_df = results.pandas().xyxy[0] # Use a different name to avoid confusion
+
                 detected_objects = []
-                
+                current_time = datetime.now()
+
                 # Process detection results
-                for _, detection in detections.iterrows():
-                    x1, y1, x2, y2 = int(detection['xmin']), int(detection['ymin']), int(detection['xmax']), int(detection['ymax'])
-                    conf = float(detection['confidence'])
-                    class_id = int(detection['class'])
-                    class_name = detection['name']
-                    
-                    # Skip if confidence is below threshold
+                for _, detection_row in detections_df.iterrows(): # Use different loop var name
+                    conf = float(detection_row['confidence'])
                     if conf < self.confidence_threshold:
                         continue
-                    
-                    # Calculate center point of the detection
+
+                    x1, y1, x2, y2 = int(detection_row['xmin']), int(detection_row['ymin']), int(detection_row['xmax']), int(detection_row['ymax'])
+                    class_id = int(detection_row['class'])
+                    class_name = detection_row['name']
+
+                    # ROI Check (keep existing logic)
                     center_x = (x1 + x2) / 2
                     center_y = (y1 + y2) / 2
-                    
-                    # Create point for ROI checking
                     pixel_center = Point(center_x, center_y)
-                    # For normalized coordinates, we need to create a normalized point
                     norm_center = Point(center_x / width, center_y / height)
-                    
-                    # Initialize variables for ROI tracking
-                    in_any_roi = False
                     matched_roi_id = None
-                    matched_roi = None
-                    
-                    # First pass: Check if object is inside any ROI
                     for region in self.detection_regions:
-                        # Choose the correct point based on whether coordinates are normalized
                         point_to_check = norm_center if region.get('normalized_coords', False) else pixel_center
-                        
-                        logger.debug(f"Checking if {class_name} at {point_to_check} is in ROI {region['name']}")
-                        
                         if region['polygon'].contains(point_to_check):
-                            in_any_roi = True
-                            logger.info(f"Object {class_name} inside ROI {region['name']}")
-                            
-                            # Check if this object class is allowed in this ROI
-                            if region['classes'] and len(region['classes']) > 0:
-                                logger.debug(f"ROI {region['name']} has class restrictions: {region['classes']}")
-                                if class_id in region['classes']:
-                                    matched_roi_id = region['id']
-                                    matched_roi = region
-                                    logger.info(f"Object {class_name} (class_id={class_id}) matched ROI {region['name']} (id={region['id']})")
-                                    break
-                            else:
-                                # No class restrictions, match any class
+                            if not region['classes'] or class_id in region['classes']:
                                 matched_roi_id = region['id']
-                                matched_roi = region
-                                logger.info(f"Object {class_name} in ROI {region['name']} with no class restrictions")
                                 break
-                    
-                    # Include all detections for now, marking those in ROIs appropriately
+
+                    # Store detection details
                     detected_obj = {
                         'camera_id': self.camera.id,
                         'class_name': class_name,
                         'confidence': conf,
-                        'bbox_x': x1,
-                        'bbox_y': y1,
-                        'bbox_width': x2 - x1,
-                        'bbox_height': y2 - y1,
-                        'roi_id': matched_roi_id  # This is the key field for email notifications
+                        'bbox_x': x1, 'bbox_y': y1,
+                        'bbox_width': x2 - x1, 'bbox_height': y2 - y1,
+                        'roi_id': matched_roi_id,
+                        'timestamp': current_time
                     }
-                    
-                    # For debugging: log if this detection has an ROI association
-                    if matched_roi_id is not None:
-                        logger.info(f"Detection of {class_name} associated with ROI ID {matched_roi_id}")
-                    
                     detected_objects.append(detected_obj)
-                    
-                    # Draw detection rectangle on frame
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                    cv2.putText(frame, f"{class_name} {conf:.2f}", (x1, y1 - 10), 
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-                
-                # If objects detected, save frame and send notification
+
+                # --- Update shared state under lock ---
+                with self.detection_lock:
+                    # Store the frame that was just processed and its detections
+                    self.last_processed_frame = frame_to_process # Store the actual frame used for detection
+                    self.last_processed_detections = detected_objects
+                    # Also update current_detections for the API
+                    self.current_detections = detected_objects
+
+                # --- Post-detection actions (outside lock) ---
                 if detected_objects:
-                    self.last_detection_time = datetime.now()
-                    
-                    # Save detection image
-                    detection_time = self.last_detection_time.strftime("%Y%m%d_%H%M%S")
-                    image_dir = os.path.join('storage', 'recordings', 'images', str(self.camera.id))
-                    os.makedirs(image_dir, exist_ok=True)
-                    image_path = os.path.join(image_dir, f"{detection_time}_{uuid.uuid4().hex[:8]}.jpg")
-                    cv2.imwrite(image_path, frame)
-                    
-                    # Set video path if we're recording
+                    self.last_detection_time = current_time # Update last detection time
+
+                    # Save detection image (optional)
+                    save_image = True # Or based on a setting
+                    if save_image:
+                        # Draw boxes on a *copy* of the processed frame for saving
+                        frame_with_boxes = frame_to_process.copy()
+                        for obj in detected_objects:
+                             x1, y1 = int(obj['bbox_x']), int(obj['bbox_y'])
+                             x2, y2 = x1 + int(obj['bbox_width']), y1 + int(obj['bbox_height'])
+                             color = get_color_for_class(obj['class_name'])
+                             cv2.rectangle(frame_with_boxes, (x1, y1), (x2, y2), color, 2)
+                             # label = f"{obj['class_name']} {obj['confidence']:.2f}" # Optional label on saved image
+                             # cv2.putText(frame_with_boxes, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+
+                        detection_time_str = current_time.strftime("%Y%m%d_%H%M%S")
+                        image_dir = os.path.join('storage', 'recordings', 'images', str(self.camera.id))
+                        os.makedirs(image_dir, exist_ok=True)
+                        image_path = os.path.join(image_dir, f"{detection_time_str}_{uuid.uuid4().hex[:8]}.jpg")
+                        cv2.imwrite(image_path, frame_with_boxes)
+
+                        # Add image path to detections
+                        for obj in detected_objects:
+                            obj['image_path'] = image_path
+                    else:
+                         for obj in detected_objects:
+                            obj['image_path'] = None
+
+                    # Set video path if recording
                     video_path = self.current_video_path if self.recording else None
-                    
-                    # Add image path to detections
                     for obj in detected_objects:
-                        obj['image_path'] = image_path
                         obj['video_path'] = video_path
-                        obj['timestamp'] = self.last_detection_time
-                    
-                    # Update current detections for API
-                    with self.detection_lock:
-                        self.current_detections = detected_objects
-                    
+
                     # Report detection to API
-                    self._report_detection(detected_objects)
-                    
+                    self._report_detection(detected_objects) # Pass the final list with image/video paths
+
+                # Mark the frame queue task as done
+                self.frame_queue.task_done()
+
             except queue.Empty:
+                # If queue is empty, briefly pause to yield CPU
+                time.sleep(0.01)
                 continue
             except Exception as e:
                 logger.error(f"Error in object detection: {str(e)}")
                 import traceback
                 logger.error(f"Traceback: {traceback.format_exc()}")
-                time.sleep(1)
-    
+                # Ensure task_done is called even on error if a frame was retrieved
+                if 'frame_to_process' in locals():
+                     self.frame_queue.task_done()
+                time.sleep(1) # Longer sleep on error
+
     def _record_frames(self):
         """Record video from camera frames"""
         # Get clip length from application settings
