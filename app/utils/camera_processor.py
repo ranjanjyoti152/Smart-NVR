@@ -12,6 +12,7 @@ import uuid
 from shapely.geometry import Point, Polygon
 import requests
 import random # Import random for generating colors
+from ultralytics import YOLO # Import YOLO from ultralytics
 
 logger = logging.getLogger(__name__)
 
@@ -62,44 +63,63 @@ class CameraProcessor:
         self.detection_lock = threading.Lock()
 
     def _get_model_path(self):
-        """Get path to YOLOv5 model file from camera config or use default"""
+        """Get path to AI model file from camera config or use default"""
         from app import db
         from app.models.ai_model import AIModel
-        
+
         if self.camera.model_id:
             model = AIModel.query.get(self.camera.model_id)
             if model and os.path.exists(model.file_path):
+                logger.info(f"Using model specified by camera: {model.file_path}")
                 return model.file_path
-                
-        # Use default model if camera model not found
+
+        # Use default model if camera model not found or invalid
         default_model = AIModel.query.filter_by(is_default=True).first()
         if default_model and os.path.exists(default_model.file_path):
+            logger.info(f"Using default model: {default_model.file_path}")
             return default_model.file_path
-            
-        # Fall back to YOLOv5s
-        return os.path.join('models', 'yolov5s.pt')
-        
+
+        # Fallback logic (e.g., to yolov5s or a known existing model)
+        fallback_path = os.path.join('models', 'yolov5s.pt') # Default fallback
+        if os.path.exists(fallback_path):
+             logger.warning(f"Falling back to default yolov5s.pt model: {fallback_path}")
+             return fallback_path
+        else:
+            # If even the fallback doesn't exist, try finding *any* .pt file
+            models_dir = 'models'
+            if os.path.exists(models_dir):
+                pt_files = [f for f in os.listdir(models_dir) if f.endswith('.pt')]
+                if pt_files:
+                    first_model = os.path.join(models_dir, pt_files[0])
+                    logger.warning(f"No specific or default model found. Falling back to first available model: {first_model}")
+                    return first_model
+
+        logger.error("No suitable AI model file found.")
+        # Consider raising an error or returning None if no model can be found
+        return None # Or raise an exception
+
+
     def _load_detection_regions(self):
         """Load detection regions (ROIs) for this camera"""
         from app.models.roi import ROI
-        
+
         regions = []
         rois = ROI.query.filter_by(camera_id=self.camera.id).all()
-        
+
         for roi in rois:
             if not roi.is_active:
                 continue
-                
+
             try:
                 # Parse ROI coordinates and allowed classes
                 import json
                 coords = json.loads(roi.coordinates) if isinstance(roi.coordinates, str) else roi.coordinates
                 classes = json.loads(roi.detection_classes) if roi.detection_classes and isinstance(roi.detection_classes, str) else None
-                
+
                 # Log the loaded ROI for debugging
                 logger.info(f"Loading ROI {roi.id}: {roi.name}, classes: {classes}, email_notifications: {roi.email_notifications}")
                 logger.info(f"ROI coordinates: {coords}")
-                
+
                 if len(coords) >= 4:  # Need at least 3 points for a polygon
                     # Create polygon from coordinates - note these are normalized (0-1 range)
                     # We store them as normalized but need to keep track of this when checking points
@@ -116,7 +136,7 @@ class CameraProcessor:
                 logger.error(f"Error loading ROI {roi.id}: {str(e)}")
                 import traceback
                 logger.error(traceback.format_exc())
-                
+
         logger.info(f"Loaded {len(regions)} ROIs for camera {self.camera.id}")
         return regions
 
@@ -125,12 +145,12 @@ class CameraProcessor:
         logger.info(f"Reloading ROIs for camera {self.camera.id}")
         self.detection_regions = self._load_detection_regions()
         return len(self.detection_regions)
-        
+
     def start(self):
         """Start processing camera stream"""
         if self.running:
             return False
-            
+
         # Initialize video capture
         rtsp_url = self.camera.rtsp_url
         if self.camera.username and self.camera.password:
@@ -138,144 +158,118 @@ class CameraProcessor:
             if '://' in rtsp_url:
                 protocol, rest = rtsp_url.split('://', 1)
                 rtsp_url = f"{protocol}://{self.camera.username}:{self.camera.password}@{rest}"
-        
+
         # Set OpenCV backend to FFMPEG with specific parameters to avoid threading issues
         os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|buffer_size;10485760|stimeout;1000000"
-        
+
         # Open video capture with optimized parameters
         if rtsp_url.startswith('rtsp://'):
             # For RTSP streams, use these specific parameters to avoid the async_lock crash
             self.cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
             # Important: Disable multi-threading in FFmpeg which causes the crash
-            self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M','J','P','G'))  # Use MJPEG
-            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 3)  # Small buffer 
+            # self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M','J','P','G')) # Use MJPEG - May not be needed/supported everywhere
+            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 3) # Small buffer
         else:
             # For other sources (like local files or HTTP streams)
             self.cap = cv2.VideoCapture(rtsp_url)
             self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
-        
+
         # Check if stream opened successfully
         if not self.cap.isOpened():
             logger.error(f"Failed to open camera stream: {rtsp_url}")
             return False
-            
+
         logger.info(f"Successfully opened camera stream: {rtsp_url}")
-        
-        # Initialize YOLOv5 model
+
+        # Initialize AI model (YOLOv5, v8, v9, v10)
         try:
-            logger.info(f"Loading YOLOv5 model from {self.model_path}")
-            
-            # Try loading model directly if it's a local file
-            if os.path.exists(self.model_path) and self.model_path.endswith('.pt'):
-                try:
-                    # Use local model file with direct YOLOv5 loading
-                    # Check if we're in the yolov5 models directory or root directory
-                    if os.path.basename(self.model_path) in ["yolov5n.pt", "yolov5s.pt", "yolov5m.pt", "yolov5l.pt", "yolov5x.pt"]:
-                        # Standard YOLOv5 model - use the appropriate size
-                        model_size = os.path.basename(self.model_path).replace('yolov5', '').replace('.pt', '')
-                        logger.info(f"Loading standard YOLOv5 model size: {model_size}")
-                        self.model = torch.hub.load('ultralytics/yolov5', f'yolov5{model_size}', 
-                                                  pretrained=True, 
-                                                  trust_repo=True)
-                    else:
-                        # Custom model - try direct loading
-                        logger.info(f"Loading custom model from {self.model_path}")
-                        self.model = torch.hub.load('ultralytics/yolov5', 'custom', 
-                                                  path=self.model_path,
-                                                  trust_repo=True)
-                except Exception as e:
-                    logger.warning(f"Direct YOLOv5 loading failed: {str(e)}")
-                    
-                    # Get the basename of the model file for simpler handling
-                    model_basename = os.path.basename(self.model_path)
-                    
-                    # Check if it's a standard YOLOv5 model by name
-                    if model_basename in ["yolov5n.pt", "yolov5s.pt", "yolov5m.pt", "yolov5l.pt", "yolov5x.pt"]:
-                        model_size = model_basename.replace('yolov5', '').replace('.pt', '')
-                        logger.info(f"Falling back to YOLOv5 {model_size} from PyTorch Hub")
-                        self.model = torch.hub.load('ultralytics/yolov5', f'yolov5{model_size}', 
-                                                  pretrained=True, 
-                                                  trust_repo=True,
-                                                  force_reload=True)
-                    else:
-                        # Last resort - use default YOLOv5s
-                        logger.warning(f"Falling back to default YOLOv5s model")
-                        self.model = torch.hub.load('ultralytics/yolov5', 'yolov5s', 
-                                                  pretrained=True, 
-                                                  trust_repo=True)
+            if not self.model_path or not os.path.exists(self.model_path):
+                 logger.error(f"Model path is invalid or file does not exist: {self.model_path}. Cannot start processor.")
+                 self.cap.release()
+                 return False
+
+            logger.info(f"Loading AI model from {self.model_path}")
+            model_filename = os.path.basename(self.model_path).lower()
+
+            # Use ultralytics YOLO for v8, v9, v10 and potentially others
+            # YOLOv5 can also be loaded via ultralytics, simplifying the logic
+            if model_filename.endswith('.pt'):
+                 logger.info(f"Attempting to load {model_filename} using ultralytics YOLO.")
+                 self.model = YOLO(self.model_path) # Load model using ultralytics
+                 logger.info(f"Successfully loaded model {model_filename} using ultralytics.")
             else:
-                # Model path doesn't exist or isn't a .pt file - use default YOLOv5s
-                logger.warning(f"Model path {self.model_path} not valid, using default YOLOv5s")
-                self.model = torch.hub.load('ultralytics/yolov5', 'yolov5s', 
-                                           pretrained=True, 
-                                           trust_repo=True)
-                
-            # Set confidence threshold
-            self.model.conf = self.confidence_threshold
-            
-            # Use GPU if available
-            if torch.cuda.is_available():
-                self.model.cuda()
-                logger.info("Using CUDA for inference")
-            else:
-                logger.info("Using CPU for inference")
-            
-            logger.info(f"Successfully loaded YOLOv5 model")
+                 logger.error(f"Unsupported model file format: {model_filename}. Only .pt files are supported.")
+                 raise ValueError(f"Unsupported model file format: {model_filename}")
+
+
+            # Confidence threshold is handled differently in ultralytics YOLO
+            # It's typically set during inference, not on the model object directly like yolov5 hub
+            # self.model.conf = self.confidence_threshold # This won't work for ultralytics YOLO
+
+            # Device selection is usually automatic with ultralytics, but can be specified
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            self.model.to(device) # Ensure model is on the correct device
+            logger.info(f"Using {device.upper()} for inference")
+
+            logger.info(f"Successfully initialized AI model")
         except Exception as e:
-            logger.error(f"Failed to load YOLOv5 model: {str(e)}")
-            self.cap.release()
+            logger.error(f"Failed to load AI model: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            if self.cap:
+                self.cap.release()
             return False
-            
+
         # Start processing thread
         self.running = True
         self.thread = threading.Thread(target=self._process_frames)
         self.thread.daemon = True
         self.thread.start()
-        
+
         # Give the main processing thread a moment to initialize
         time.sleep(1.0)
-        
+
         # Start recording thread if enabled
         if self.camera.recording_enabled:
             self.recording = True
             self.recording_thread = threading.Thread(target=self._record_frames)
             self.recording_thread.daemon = True
             self.recording_thread.start()
-            
+
         # Start detection thread if enabled
         if self.camera.detection_enabled:
             self.detection_thread = threading.Thread(target=self._detect_objects)
             self.detection_thread.daemon = True
             self.detection_thread.start()
-            
+
         logger.info(f"Started processing camera: {self.camera.name}")
         return True
-        
+
     def stop(self):
         """Stop processing camera stream"""
         self.running = False
         self.recording = False
-        
+
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=1.0)
-            
+
         if self.recording_thread and self.recording_thread.is_alive():
             self.recording_thread.join(timeout=1.0)
-            
+
         if self.detection_thread and self.detection_thread.is_alive():
             self.detection_thread.join(timeout=1.0)
-            
+
         if self.video_writer:
             self.video_writer.release()
             self.video_writer = None
-            
+
         if self.cap:
             self.cap.release()
             self.cap = None
-            
+
         logger.info(f"Stopped camera: {self.camera.name}")
         return True
-        
+
     def get_frame(self):
         """Get the latest frame *that has been processed for detections*, with boxes drawn."""
         frame_to_display = None
@@ -345,12 +339,12 @@ class CameraProcessor:
         # If not, they could be added here if needed.
 
         return frame_to_display
-        
+
     def get_latest_detections(self):
         """Get the latest detections"""
         with self.detection_lock:
             return self.current_detections.copy()
-        
+
     def _process_frames(self):
         """Main processing loop for camera frames"""
         frame_count = 0
@@ -373,7 +367,6 @@ class CameraProcessor:
 
                     if rtsp_url.startswith('rtsp://'):
                         self.cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
-                        self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M','J','P','G'))
                         self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 3)
                     else:
                         self.cap = cv2.VideoCapture(rtsp_url)
@@ -451,7 +444,7 @@ class CameraProcessor:
                 time.sleep(1)
 
     def _detect_objects(self):
-        """Process frames for object detection"""
+        """Process frames for object detection using the loaded model"""
         while self.running:
             try:
                 # Get frame from queue
@@ -460,47 +453,65 @@ class CameraProcessor:
                 # Get image dimensions
                 height, width = frame_to_process.shape[:2]
 
-                # Perform inference
-                results = self.model(frame_to_process)
-                detections_df = results.pandas().xyxy[0] # Use a different name to avoid confusion
+                # Perform inference using ultralytics YOLO
+                # Pass confidence threshold here
+                results = self.model.predict(source=frame_to_process, conf=self.confidence_threshold, verbose=False) # verbose=False to reduce console spam
 
+                # Process results (ultralytics results object is different)
                 detected_objects = []
                 current_time = datetime.now()
 
-                # Process detection results
-                for _, detection_row in detections_df.iterrows(): # Use different loop var name
-                    conf = float(detection_row['confidence'])
-                    if conf < self.confidence_threshold:
-                        continue
+                # Assuming results[0] contains the detections for the single image
+                if results and len(results) > 0:
+                    res = results[0] # Get the results for the first (and only) image
+                    boxes = res.boxes # Access the Boxes object
+                    class_names = res.names # Dictionary mapping class_id to class_name
 
-                    x1, y1, x2, y2 = int(detection_row['xmin']), int(detection_row['ymin']), int(detection_row['xmax']), int(detection_row['ymax'])
-                    class_id = int(detection_row['class'])
-                    class_name = detection_row['name']
+                    for i in range(len(boxes)):
+                        box = boxes[i]
+                        conf = float(box.conf[0]) # Confidence score
+                        class_id = int(box.cls[0]) # Class ID
+                        class_name = class_names.get(class_id, f"Class_{class_id}") # Get class name
 
-                    # ROI Check (keep existing logic)
-                    center_x = (x1 + x2) / 2
-                    center_y = (y1 + y2) / 2
-                    pixel_center = Point(center_x, center_y)
-                    norm_center = Point(center_x / width, center_y / height)
-                    matched_roi_id = None
-                    for region in self.detection_regions:
-                        point_to_check = norm_center if region.get('normalized_coords', False) else pixel_center
-                        if region['polygon'].contains(point_to_check):
-                            if not region['classes'] or class_id in region['classes']:
-                                matched_roi_id = region['id']
-                                break
+                        # Get bounding box coordinates (xyxy format)
+                        x1, y1, x2, y2 = map(int, box.xyxy[0])
 
-                    # Store detection details
-                    detected_obj = {
-                        'camera_id': self.camera.id,
-                        'class_name': class_name,
-                        'confidence': conf,
-                        'bbox_x': x1, 'bbox_y': y1,
-                        'bbox_width': x2 - x1, 'bbox_height': y2 - y1,
-                        'roi_id': matched_roi_id,
-                        'timestamp': current_time
-                    }
-                    detected_objects.append(detected_obj)
+                        # ROI Check (keep existing logic)
+                        center_x = (x1 + x2) / 2
+                        center_y = (y1 + y2) / 2
+                        pixel_center = Point(center_x, center_y)
+                        norm_center = Point(center_x / width, center_y / height)
+                        matched_roi_id = None
+                        for region in self.detection_regions:
+                            point_to_check = norm_center if region.get('normalized_coords', False) else pixel_center
+                            # Ensure polygon is valid before checking containment
+                            if region['polygon'].is_valid and region['polygon'].contains(point_to_check):
+                                # Check if classes are defined and if the detected class is allowed
+                                allowed_classes = region.get('classes')
+                                # Handle cases where allowed_classes might be None, empty list, or list of strings/ints
+                                class_allowed = True # Default to allowed if no specific classes are set for ROI
+                                if allowed_classes:
+                                     # Check if class_id or class_name is in the allowed list
+                                     if isinstance(allowed_classes, list) and allowed_classes:
+                                         if class_id not in allowed_classes and class_name not in allowed_classes:
+                                             class_allowed = False
+                                     # Add more robust checking if needed (e.g., case-insensitive string comparison)
+
+                                if class_allowed:
+                                    matched_roi_id = region['id']
+                                    break # Stop checking ROIs once a match is found
+
+                        # Store detection details
+                        detected_obj = {
+                            'camera_id': self.camera.id,
+                            'class_name': class_name,
+                            'confidence': conf,
+                            'bbox_x': x1, 'bbox_y': y1,
+                            'bbox_width': x2 - x1, 'bbox_height': y2 - y1,
+                            'roi_id': matched_roi_id,
+                            'timestamp': current_time
+                        }
+                        detected_objects.append(detected_obj)
 
                 # --- Update shared state under lock ---
                 with self.detection_lock:
@@ -528,14 +539,24 @@ class CameraProcessor:
                              # cv2.putText(frame_with_boxes, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
                         detection_time_str = current_time.strftime("%Y%m%d_%H%M%S")
-                        image_dir = os.path.join('storage', 'recordings', 'images', str(self.camera.id))
+                        # Ensure the base directory exists
+                        base_image_dir = os.path.join('storage', 'recordings', 'images')
+                        os.makedirs(base_image_dir, exist_ok=True)
+                        # Create camera-specific directory
+                        image_dir = os.path.join(base_image_dir, str(self.camera.id))
                         os.makedirs(image_dir, exist_ok=True)
-                        image_path = os.path.join(image_dir, f"{detection_time_str}_{uuid.uuid4().hex[:8]}.jpg")
-                        cv2.imwrite(image_path, frame_with_boxes)
 
-                        # Add image path to detections
-                        for obj in detected_objects:
-                            obj['image_path'] = image_path
+                        image_path = os.path.join(image_dir, f"{detection_time_str}_{uuid.uuid4().hex[:8]}.jpg")
+                        try:
+                            cv2.imwrite(image_path, frame_with_boxes)
+                            # Add image path to detections
+                            for obj in detected_objects:
+                                obj['image_path'] = image_path
+                        except Exception as img_err:
+                             logger.error(f"Error saving detection image to {image_path}: {img_err}")
+                             for obj in detected_objects:
+                                obj['image_path'] = None
+
                     else:
                          for obj in detected_objects:
                             obj['image_path'] = None
@@ -561,7 +582,10 @@ class CameraProcessor:
                 logger.error(f"Traceback: {traceback.format_exc()}")
                 # Ensure task_done is called even on error if a frame was retrieved
                 if 'frame_to_process' in locals():
-                     self.frame_queue.task_done()
+                     try:
+                         self.frame_queue.task_done()
+                     except ValueError: # Can happen if task_done called multiple times
+                         pass
                 time.sleep(1) # Longer sleep on error
 
     def _record_frames(self):
@@ -577,55 +601,55 @@ class CameraProcessor:
         except Exception as e:
             logger.warning(f"Could not load recording settings: {str(e)}, using default clip length of 60 seconds")
             clip_duration = 60  # Default to 60 seconds
-        
+
         while self.running and self.recording:
             try:
                 # Check if we need to create a new video file
                 current_time = datetime.now()
-                
+
                 # Create new file based on configured clip length or if no current file
-                if (not self.video_writer or not self.video_start_time or 
+                if (not self.video_writer or not self.video_start_time or
                         (current_time - self.video_start_time).total_seconds() > clip_duration):
                     self._rotate_video_file(current_time)
-                
+
                 # Get frame from queue
                 frame = self.recording_queue.get(timeout=1.0)
-                
+
                 # Write frame to video
                 if self.video_writer:
                     self.video_writer.write(frame)
-                    
+
             except queue.Empty:
                 continue
             except Exception as e:
                 logger.error(f"Error recording video: {str(e)}")
                 time.sleep(1)
-    
+
     def _rotate_video_file(self, current_time=None):
         """Create a new video file for recording"""
         import os  # Add import here to ensure it's available
 
         if not current_time:
             current_time = datetime.now()
-            
+
         # Close current writer if exists
         if self.video_writer:
             self.video_writer.release()
-            
+
             # Create database entry for the completed recording
             if self.current_video_path and self.video_start_time:
                 try:
                     from app import app, db
                     from app.models.recording import Recording
-                    
+
                     # Calculate duration from start time to now
                     duration = (current_time - self.video_start_time).total_seconds()
-                    
+
                     # Get file size if file exists
                     file_size = 0
                     if os.path.exists(self.current_video_path):
                         file_size = os.path.getsize(self.current_video_path)
-                        
+
                         # Only process valid video files (non-zero size)
                         if file_size > 0:
                             # Create database record
@@ -635,7 +659,7 @@ class CameraProcessor:
                                     camera_id=self.camera.id,
                                     file_path=self.current_video_path
                                 ).first()
-                                
+
                                 if not existing_recording:
                                     recording = Recording(
                                         camera_id=self.camera.id,
@@ -645,7 +669,7 @@ class CameraProcessor:
                                         file_size=file_size,
                                         recording_type='continuous'
                                     )
-                                    
+
                                     db.session.add(recording)
                                     db.session.commit()
                                     logger.info(f"Added recording to database: {self.current_video_path}, duration: {duration:.1f}s")
@@ -659,14 +683,14 @@ class CameraProcessor:
                             logger.warning(f"Skip adding empty recording file to database: {self.current_video_path}")
                     else:
                         logger.warning(f"Video file not found: {self.current_video_path}")
-                
+
                 except Exception as e:
                     logger.error(f"Error adding recording to database: {str(e)}")
                     import traceback
                     logger.error(f"Traceback: {traceback.format_exc()}")
-            
-            self.video_writer = None
-        
+
+        self.video_writer = None
+
         # Get storage path from application settings
         try:
             from app.routes.main_routes import get_recording_settings
@@ -675,15 +699,15 @@ class CameraProcessor:
         except Exception as e:
             logger.warning(f"Could not load recording settings: {str(e)}, using defaults")
             storage_base = 'storage/recordings'
-        
+
         # Create recordings directory for this camera
         video_dir = os.path.join(storage_base, 'videos', str(self.camera.id))
         os.makedirs(video_dir, exist_ok=True)
-        
+
         # Create video filename with timestamp
         timestamp = current_time.strftime("%Y%m%d_%H%M%S")
         video_path = os.path.join(video_dir, f"{timestamp}.mp4")
-        
+
         # Get frame dimensions from current frame
         if self.last_frame is not None:
             height, width = self.last_frame.shape[:2]
@@ -695,44 +719,44 @@ class CameraProcessor:
                 self.last_frame = frame
             else:
                 height, width = 720, 1280
-        
+
         # Create video writer
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Use mp4v codec
         fps = 20.0  # Fixed recording FPS
         self.video_writer = cv2.VideoWriter(video_path, fourcc, fps, (width, height))
-        
+
         # Update video information
         self.current_video_path = video_path
         self.video_start_time = current_time
-        
+
         logger.info(f"Created new recording file: {video_path}")
         return video_path
-    
+
     def _report_detection(self, detections):
         """Report detection to the API for database storage and notifications"""
         try:
             from app import app
-            
+
             payload = {
                 'camera_id': self.camera.id,
                 'detections': detections
             }
-            
+
             # Use direct database access if we're running in the same process
             # Otherwise make API call to detection endpoint
             if app:
                 # We're in the Flask app context
                 from app.routes.api_routes import report_detection
-                
+
                 # Create mock request with JSON payload
                 class MockRequest:
                     def get_json(self):
                         return payload
-                    
+
                     @property
                     def headers(self):
                         return {'X-API-Key': app.config.get('API_KEY', '')}
-                
+
                 # Call the API function directly within the app context
                 with app.app_context():
                     report_detection(MockRequest())
@@ -741,48 +765,48 @@ class CameraProcessor:
                 api_url = f"http://localhost:8000/api/detections"
                 headers = {'X-API-Key': 'YOUR_API_KEY'}  # This should be properly configured
                 requests.post(api_url, json=payload, headers=headers, timeout=2.0)
-            
+
             logger.info(f"Reported {len(detections)} detections for camera {self.camera.id}")
-            
+
         except Exception as e:
             logger.error(f"Error reporting detection: {str(e)}")
 
 # Camera Manager to handle multiple camera instances
 class CameraManager:
     """Manage multiple camera processors"""
-    
+
     _instance = None
-    
+
     @classmethod
     def get_instance(cls):
         """Get singleton instance"""
         if cls._instance is None:
             cls._instance = CameraManager()
         return cls._instance
-    
+
     def __init__(self):
         """Initialize camera manager"""
         self.cameras = {}  # Map camera_id to CameraProcessor
         self.lock = threading.Lock()
-    
+
     def get_camera_processor(self, camera_id):
         """Get camera processor by ID"""
         return self.cameras.get(camera_id)
-    
+
     def start_camera(self, camera):
         """Start processing a camera"""
         with self.lock:
             # Stop existing processor if any
             if camera.id in self.cameras:
                 self.stop_camera(camera.id)
-            
+
             # Create new processor
             processor = CameraProcessor(camera)
             if processor.start():
                 self.cameras[camera.id] = processor
                 return True
             return False
-    
+
     def stop_camera(self, camera_id):
         """Stop processing a camera"""
         with self.lock:
@@ -792,37 +816,37 @@ class CameraManager:
                 del self.cameras[camera_id]
                 return True
             return False
-    
+
     def start_all_cameras(self):
         """Start all enabled cameras from database"""
         from app.models import Camera
-        
+
         cameras = Camera.query.filter_by(is_active=True).all()
         started = 0
-        
+
         for camera in cameras:
             if self.start_camera(camera):
                 started += 1
-        
+
         return started
-    
+
     def stop_all_cameras(self):
         """Stop all running cameras"""
         camera_ids = list(self.cameras.keys())
         stopped = 0
-        
+
         for camera_id in camera_ids:
             if self.stop_camera(camera_id):
                 stopped += 1
-        
+
         return stopped
 
     def reload_rois(self, camera_id):
         """Reload ROIs for a specific camera
-        
+
         Args:
             camera_id: ID of the camera to reload ROIs for
-            
+
         Returns:
             int: Number of ROIs loaded or -1 if camera not found
         """

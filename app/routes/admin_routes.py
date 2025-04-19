@@ -5,6 +5,8 @@ import json
 import torch
 import shutil
 from werkzeug.utils import secure_filename
+import requests # Add requests for downloading
+from ultralytics import YOLO # Import YOLO for verification
 
 from app import db
 from app.models import User, Camera
@@ -186,7 +188,7 @@ def add_model():
 @login_required
 @admin_required
 def upload_model():
-    """Upload a new custom YOLOv5 model"""
+    """Upload a new custom YOLO model (.pt)"""
     try:
         # Check if the post request has the file part
         if 'model_file' not in request.files:
@@ -227,12 +229,16 @@ def upload_model():
         # Sanitize filename and save model file
         filename = secure_filename(model_file.filename)
         if not filename.endswith('.pt'):
-            filename = f"{filename}.pt"
-        
-        models_dir = os.path.join('storage', 'models')
+             # Allow only .pt files
+             return jsonify({
+                 'success': False,
+                 'message': 'Invalid file type. Only .pt files are allowed.'
+             }), 400
+
+        models_dir = os.path.join('storage', 'models') # Save custom models to storage/models
         os.makedirs(models_dir, exist_ok=True)
         file_path = os.path.join(models_dir, filename)
-        
+
         # If file exists, add timestamp to filename
         if os.path.exists(file_path):
             import time
@@ -240,32 +246,32 @@ def upload_model():
             name_parts = filename.rsplit('.', 1)
             filename = f"{name_parts[0]}_{timestamp}.{name_parts[1]}"
             file_path = os.path.join(models_dir, filename)
-        
+
         print(f"Saving file to: {file_path}")
         model_file.save(file_path)
         print(f"File saved successfully")
-        
-        # Verify it's a valid YOLOv5 model
+
+        # Verify it's a valid YOLO model using ultralytics
         try:
-            print(f"Attempting to verify model file with PyTorch")
-            # Load model in a safe way - this will validate the file is a PyTorch model
-            model_data = torch.load(file_path, map_location=torch.device('cpu'))
-            print(f"Model verified successfully")
+            print(f"Attempting to verify model file with Ultralytics YOLO")
+            # Try loading the model to verify it
+            _ = YOLO(file_path)
+            print(f"Model verified successfully with Ultralytics YOLO")
         except Exception as e:
             # Remove the invalid file
             if os.path.exists(file_path):
                 os.remove(file_path)
-            
+
             print(f"Model verification failed: {str(e)}")
             return jsonify({
                 'success': False,
-                'message': f'Invalid PyTorch model file: {str(e)}'
+                'message': f'Invalid or incompatible YOLO model file: {str(e)}'
             }), 400
-        
+
         # If this is set to default, clear default flag on all other models
         if is_default:
             AIModel.query.filter_by(is_default=True).update({'is_default': False})
-        
+
         # Create model record
         model = AIModel(
             name=name,
@@ -274,10 +280,10 @@ def upload_model():
             is_custom=True,
             is_default=is_default
         )
-        
+
         db.session.add(model)
         db.session.commit()
-        
+
         return jsonify({
             'success': True,
             'message': 'Model uploaded successfully',
@@ -290,61 +296,134 @@ def upload_model():
         })
     except Exception as e:
         print(f"Unexpected error during model upload: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
         return jsonify({
             'success': False,
             'message': f'Server error: {str(e)}'
         }), 500
 
+# Define model download URLs (Update these URLs if they change)
+PRETRAINED_MODEL_URLS = {
+    # YOLOv5 (Ultralytics)
+    'yolov5n': 'https://github.com/ultralytics/yolov5/releases/download/v7.0/yolov5n.pt',
+    'yolov5s': 'https://github.com/ultralytics/yolov5/releases/download/v7.0/yolov5s.pt',
+    'yolov5m': 'https://github.com/ultralytics/yolov5/releases/download/v7.0/yolov5m.pt',
+    'yolov5l': 'https://github.com/ultralytics/yolov5/releases/download/v7.0/yolov5l.pt',
+    'yolov5x': 'https://github.com/ultralytics/yolov5/releases/download/v7.0/yolov5x.pt',
+    # YOLOv8 (Ultralytics)
+    'yolov8n': 'https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8n.pt',
+    'yolov8s': 'https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8s.pt',
+    'yolov8m': 'https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8m.pt',
+    'yolov8l': 'https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8l.pt',
+    'yolov8x': 'https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8x.pt',
+    # YOLOv9 (WongKinYiu) - Assuming official release structure
+    'yolov9c': 'https://github.com/WongKinYiu/yolov9/releases/download/v0.1/yolov9c.pt',
+    'yolov9e': 'https://github.com/WongKinYiu/yolov9/releases/download/v0.1/yolov9e.pt',
+    # YOLOv10 (THU-MIG)
+    'yolov10n': 'https://github.com/THU-MIG/yolov10/releases/download/v1.1/yolov10n.pt',
+    'yolov10s': 'https://github.com/THU-MIG/yolov10/releases/download/v1.1/yolov10s.pt',
+    'yolov10m': 'https://github.com/THU-MIG/yolov10/releases/download/v1.1/yolov10m.pt',
+    'yolov10b': 'https://github.com/THU-MIG/yolov10/releases/download/v1.1/yolov10b.pt',
+    'yolov10l': 'https://github.com/THU-MIG/yolov10/releases/download/v1.1/yolov10l.pt',
+    'yolov10x': 'https://github.com/THU-MIG/yolov10/releases/download/v1.1/yolov10x.pt',
+}
+
 @admin_bp.route('/models/download-pretrained', methods=['POST'])
 @login_required
 @admin_required
 def download_pretrained_model():
-    """Download a pre-trained YOLOv5 model from the official repository"""
+    """Download a pre-trained YOLO model from a known URL"""
     data = request.json
-    model_name = data.get('model')
-    
-    if not model_name or model_name not in ['yolov5n', 'yolov5s', 'yolov5m', 'yolov5l', 'yolov5x']:
+    model_key = data.get('model') # e.g., 'yolov8s'
+
+    if not model_key or model_key not in PRETRAINED_MODEL_URLS:
         return jsonify({
             'success': False,
-            'message': 'Invalid model name'
+            'message': f'Invalid or unsupported model key: {model_key}'
         }), 400
-    
+
+    model_url = PRETRAINED_MODEL_URLS[model_key]
+    model_filename = os.path.basename(model_url) # e.g., yolov8s.pt
+    model_name = model_filename.replace('.pt', '').upper() # e.g., YOLOV8S
+
+    # Use the 'models' directory at the root for pre-trained models for consistency
+    models_dir = 'models'
+    os.makedirs(models_dir, exist_ok=True)
+    model_path = os.path.join(models_dir, model_filename)
+
+    # Check if model file already exists
+    if os.path.exists(model_path):
+         # Check if it's already in the database
+         existing_model = AIModel.query.filter_by(file_path=model_path).first()
+         if existing_model:
+             return jsonify({
+                 'success': True, # Indicate success, but file already exists
+                 'message': f'Model {model_name} already exists at {model_path}',
+                 'model_path': model_path
+             })
+         else:
+             # File exists but not in DB, add it
+             pass # Continue to add DB record below
+
     try:
-        # Download model using torch hub
-        models_dir = 'models'
-        os.makedirs(models_dir, exist_ok=True)
-        
-        # Load model from PyTorch hub
-        model = torch.hub.load('ultralytics/yolov5', model_name)
-        
-        # Save model
-        model_path = os.path.join(models_dir, f"{model_name}.pt")
-        torch.save(model.state_dict(), model_path)
-        
-        # Add model to database if not already present
-        existing_model = AIModel.query.filter_by(name=model_name.upper()).first()
+        print(f"Downloading {model_name} from {model_url} to {model_path}...")
+        response = requests.get(model_url, stream=True, timeout=300) # 5 min timeout
+        response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+
+        with open(model_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        print(f"Download complete.")
+
+        # Add model to database if not already present (check again just in case)
+        existing_model = AIModel.query.filter(
+            (AIModel.name == model_name) | (AIModel.file_path == model_path)
+        ).first()
+
         if not existing_model:
+            # Determine if this should be the default (e.g., if it's yolov5s and no default exists)
+            is_default_candidate = (model_key == 'yolov5s')
+            make_default = is_default_candidate and (AIModel.query.filter_by(is_default=True).count() == 0)
+
             model_record = AIModel(
-                name=model_name.upper(),
+                name=model_name,
                 file_path=model_path,
-                description=f"Pre-trained {model_name.upper()} model",
+                description=f"Pre-trained {model_name} model",
                 is_custom=False,
-                is_default=(model_name == 'yolov5s' and AIModel.query.filter_by(is_default=True).count() == 0)
+                is_default=make_default
             )
-            
             db.session.add(model_record)
             db.session.commit()
-        
+            print(f"Added {model_name} to database.")
+        else:
+            print(f"Model {model_name} already exists in database.")
+
         return jsonify({
             'success': True,
             'message': f'Model {model_name} downloaded successfully',
             'model_path': model_path
         })
-        
-    except Exception as e:
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error downloading model: {str(e)}")
+        # Clean up potentially incomplete file
+        if os.path.exists(model_path):
+             try: os.remove(model_path)
+             except OSError: pass
         return jsonify({
             'success': False,
             'message': f'Error downloading model: {str(e)}'
+        }), 500
+    except Exception as e:
+        print(f"An unexpected error occurred: {str(e)}")
+        # Clean up potentially incomplete file
+        if os.path.exists(model_path):
+             try: os.remove(model_path)
+             except OSError: pass
+        return jsonify({
+            'success': False,
+            'message': f'An unexpected error occurred: {str(e)}'
         }), 500
 
 @admin_bp.route('/models/<int:model_id>/update', methods=['POST'])

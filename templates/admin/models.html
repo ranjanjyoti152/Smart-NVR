@@ -4,12 +4,10 @@
 <div class="row mb-4">
     <div class="col">
         <h2>AI Model Management</h2>
-        <p class="text-muted">Manage YOLOv5 models for object detection</p>
+        <p class="text-muted">Manage YOLO models (v5, v8, v9, v10) for object detection</p>
     </div>
     <div class="col-auto">
-        <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addModelModal">
-            <i class="bi bi-plus-lg"></i> Add Model
-        </button>
+        <!-- Removed Add Model button, use Upload/Download sections -->
     </div>
 </div>
 
@@ -27,7 +25,7 @@
                         <th>Description</th>
                         <th>File Path</th>
                         <th>Default</th>
-                        <th>Custom</th>
+                        <th>Type</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -41,39 +39,38 @@
                             {% if model.is_default %}
                                 <span class="badge bg-success">Default</span>
                             {% else %}
-                                <span class="badge bg-light text-dark">No</span>
+                                <button type="button" class="btn btn-sm btn-outline-success set-default-btn" 
+                                        data-model-id="{{ model.id }}">
+                                    Set Default
+                                </button>
                             {% endif %}
                         </td>
                         <td>
                             {% if model.is_custom %}
                                 <span class="badge bg-info">Custom</span>
                             {% else %}
-                                <span class="badge bg-light text-dark">Standard</span>
+                                <span class="badge bg-secondary">Pre-trained</span>
                             {% endif %}
                         </td>
                         <td>
                             <div class="btn-group btn-group-sm" role="group">
-                                <button type="button" class="btn btn-outline-primary set-default-btn" 
-                                        data-model-id="{{ model.id }}" {% if model.is_default %}disabled{% endif %}>
-                                    Set Default
-                                </button>
                                 <button type="button" class="btn btn-outline-secondary edit-model-btn" 
                                         data-bs-toggle="modal" data-bs-target="#editModelModal"
                                         data-model-id="{{ model.id }}" 
                                         data-model-name="{{ model.name }}" 
                                         data-model-description="{{ model.description }}">
-                                    Edit
+                                    <i class="bi bi-pencil"></i> Edit
                                 </button>
                                 <button type="button" class="btn btn-outline-danger delete-model-btn" 
                                         data-model-id="{{ model.id }}" {% if model.is_default %}disabled{% endif %}>
-                                    Delete
+                                    <i class="bi bi-trash"></i> Delete
                                 </button>
                             </div>
                         </td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="6" class="text-center">No models available. Please add a model.</td>
+                        <td colspan="6" class="text-center">No models available. Please download or upload a model.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -82,95 +79,98 @@
     </div>
 </div>
 
-<!-- YOLOv5 Hub Models Card -->
+<!-- Download & Upload Section -->
 <div class="row">
-    <div class="col-md-6">
+    <!-- Download Pre-trained Models Column -->
+    <div class="col-lg-7">
         <div class="card mb-4">
             <div class="card-header">
-                <h5>Pre-trained YOLOv5 Models</h5>
+                <h5>Download Pre-trained Models</h5>
             </div>
             <div class="card-body">
-                <p>Download official pre-trained models from the YOLOv5 repository:</p>
-                <div class="table-responsive">
-                    <table class="table table-sm">
-                        <thead>
-                            <tr>
-                                <th>Model</th>
-                                <th>Size</th>
-                                <th>Description</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td>YOLOv5n</td>
-                                <td>1.9 MB</td>
-                                <td>Nano model, fastest</td>
-                                <td>
-                                    <button class="btn btn-sm btn-outline-primary download-pretrained-btn" 
-                                            data-model="yolov5n">
-                                        <i class="bi bi-download"></i> Download
-                                    </button>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>YOLOv5s</td>
-                                <td>7.2 MB</td>
-                                <td>Small model, good balance</td>
-                                <td>
-                                    <button class="btn btn-sm btn-outline-primary download-pretrained-btn" 
-                                            data-model="yolov5s">
-                                        <i class="bi bi-download"></i> Download
-                                    </button>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>YOLOv5m</td>
-                                <td>21.2 MB</td>
-                                <td>Medium model, more accurate</td>
-                                <td>
-                                    <button class="btn btn-sm btn-outline-primary download-pretrained-btn" 
-                                            data-model="yolov5m">
-                                        <i class="bi bi-download"></i> Download
-                                    </button>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>YOLOv5l</td>
-                                <td>46.5 MB</td>
-                                <td>Large model, higher accuracy</td>
-                                <td>
-                                    <button class="btn btn-sm btn-outline-primary download-pretrained-btn" 
-                                            data-model="yolov5l">
-                                        <i class="bi bi-download"></i> Download
-                                    </button>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>YOLOv5x</td>
-                                <td>86.7 MB</td>
-                                <td>Extra large, highest accuracy</td>
-                                <td>
-                                    <button class="btn btn-sm btn-outline-primary download-pretrained-btn" 
-                                            data-model="yolov5x">
-                                        <i class="bi bi-download"></i> Download
-                                    </button>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
+                <p>Download official pre-trained models (.pt files). They will be saved in the <code>models/</code> directory.</p>
+                
+                <!-- Nav tabs -->
+                <ul class="nav nav-tabs mb-3" id="modelTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="yolov5-tab" data-bs-toggle="tab" data-bs-target="#yolov5" type="button" role="tab" aria-controls="yolov5" aria-selected="true">YOLOv5</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="yolov8-tab" data-bs-toggle="tab" data-bs-target="#yolov8" type="button" role="tab" aria-controls="yolov8" aria-selected="false">YOLOv8</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="yolov9-tab" data-bs-toggle="tab" data-bs-target="#yolov9" type="button" role="tab" aria-controls="yolov9" aria-selected="false">YOLOv9</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="yolov10-tab" data-bs-toggle="tab" data-bs-target="#yolov10" type="button" role="tab" aria-controls="yolov10" aria-selected="false">YOLOv10</button>
+                    </li>
+                </ul>
+
+                <!-- Tab panes -->
+                <div class="tab-content" id="modelTabsContent">
+                    <!-- YOLOv5 -->
+                    <div class="tab-pane fade show active" id="yolov5" role="tabpanel" aria-labelledby="yolov5-tab">
+                        <table class="table table-sm table-striped">
+                            <thead><tr><th>Model</th><th>Size</th><th>Action</th></tr></thead>
+                            <tbody>
+                                <tr><td>YOLOv5n</td><td>3.8MB</td><td><button class="btn btn-sm btn-outline-primary download-pretrained-btn" data-model="yolov5n"><i class="bi bi-download"></i> Download</button></td></tr>
+                                <tr><td>YOLOv5s</td><td>14.4MB</td><td><button class="btn btn-sm btn-outline-primary download-pretrained-btn" data-model="yolov5s"><i class="bi bi-download"></i> Download</button></td></tr>
+                                <tr><td>YOLOv5m</td><td>42.7MB</td><td><button class="btn btn-sm btn-outline-primary download-pretrained-btn" data-model="yolov5m"><i class="bi bi-download"></i> Download</button></td></tr>
+                                <tr><td>YOLOv5l</td><td>93.7MB</td><td><button class="btn btn-sm btn-outline-primary download-pretrained-btn" data-model="yolov5l"><i class="bi bi-download"></i> Download</button></td></tr>
+                                <tr><td>YOLOv5x</td><td>174.1MB</td><td><button class="btn btn-sm btn-outline-primary download-pretrained-btn" data-model="yolov5x"><i class="bi bi-download"></i> Download</button></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- YOLOv8 -->
+                    <div class="tab-pane fade" id="yolov8" role="tabpanel" aria-labelledby="yolov8-tab">
+                        <table class="table table-sm table-striped">
+                            <thead><tr><th>Model</th><th>Size</th><th>Action</th></tr></thead>
+                            <tbody>
+                                <tr><td>YOLOv8n</td><td>6.2MB</td><td><button class="btn btn-sm btn-outline-primary download-pretrained-btn" data-model="yolov8n"><i class="bi bi-download"></i> Download</button></td></tr>
+                                <tr><td>YOLOv8s</td><td>21.5MB</td><td><button class="btn btn-sm btn-outline-primary download-pretrained-btn" data-model="yolov8s"><i class="bi bi-download"></i> Download</button></td></tr>
+                                <tr><td>YOLOv8m</td><td>49.7MB</td><td><button class="btn btn-sm btn-outline-primary download-pretrained-btn" data-model="yolov8m"><i class="bi bi-download"></i> Download</button></td></tr>
+                                <tr><td>YOLOv8l</td><td>83.7MB</td><td><button class="btn btn-sm btn-outline-primary download-pretrained-btn" data-model="yolov8l"><i class="bi bi-download"></i> Download</button></td></tr>
+                                <tr><td>YOLOv8x</td><td>130.5MB</td><td><button class="btn btn-sm btn-outline-primary download-pretrained-btn" data-model="yolov8x"><i class="bi bi-download"></i> Download</button></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- YOLOv9 -->
+                    <div class="tab-pane fade" id="yolov9" role="tabpanel" aria-labelledby="yolov9-tab">
+                         <table class="table table-sm table-striped">
+                            <thead><tr><th>Model</th><th>Size</th><th>Action</th></tr></thead>
+                            <tbody>
+                                <tr><td>YOLOv9c</td><td>50.7MB</td><td><button class="btn btn-sm btn-outline-primary download-pretrained-btn" data-model="yolov9c"><i class="bi bi-download"></i> Download</button></td></tr>
+                                <tr><td>YOLOv9e</td><td>116.1MB</td><td><button class="btn btn-sm btn-outline-primary download-pretrained-btn" data-model="yolov9e"><i class="bi bi-download"></i> Download</button></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- YOLOv10 -->
+                    <div class="tab-pane fade" id="yolov10" role="tabpanel" aria-labelledby="yolov10-tab">
+                         <table class="table table-sm table-striped">
+                            <thead><tr><th>Model</th><th>Size</th><th>Action</th></tr></thead>
+                            <tbody>
+                                <tr><td>YOLOv10n</td><td>5.6MB</td><td><button class="btn btn-sm btn-outline-primary download-pretrained-btn" data-model="yolov10n"><i class="bi bi-download"></i> Download</button></td></tr>
+                                <tr><td>YOLOv10s</td><td>10.7MB</td><td><button class="btn btn-sm btn-outline-primary download-pretrained-btn" data-model="yolov10s"><i class="bi bi-download"></i> Download</button></td></tr>
+                                <tr><td>YOLOv10m</td><td>38.8MB</td><td><button class="btn btn-sm btn-outline-primary download-pretrained-btn" data-model="yolov10m"><i class="bi bi-download"></i> Download</button></td></tr>
+                                <tr><td>YOLOv10b</td><td>56.1MB</td><td><button class="btn btn-sm btn-outline-primary download-pretrained-btn" data-model="yolov10b"><i class="bi bi-download"></i> Download</button></td></tr>
+                                <tr><td>YOLOv10l</td><td>104.5MB</td><td><button class="btn btn-sm btn-outline-primary download-pretrained-btn" data-model="yolov10l"><i class="bi bi-download"></i> Download</button></td></tr>
+                                <tr><td>YOLOv10x</td><td>138.1MB</td><td><button class="btn btn-sm btn-outline-primary download-pretrained-btn" data-model="yolov10x"><i class="bi bi-download"></i> Download</button></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-    
-    <div class="col-md-6">
+
+    <!-- Upload Custom Model Column -->
+    <div class="col-lg-5">
         <div class="card mb-4">
             <div class="card-header">
                 <h5>Upload Custom Model</h5>
             </div>
             <div class="card-body">
-                <p>Upload your custom-trained YOLOv5 models (*.pt files):</p>
+                <p>Upload your custom-trained YOLO models (*.pt files). They will be saved in the <code>storage/models/</code> directory.</p>
                 <form id="uploadModelForm" action="{{ url_for('admin.upload_model') }}" method="post" enctype="multipart/form-data">
                     <div class="mb-3">
                         <label for="modelFile" class="form-label">Model File (.pt)</label>
@@ -179,67 +179,25 @@
                     </div>
                     <div class="mb-3">
                         <label for="modelName" class="form-label">Model Name</label>
-                        <input type="text" class="form-control" id="modelName" name="name" placeholder="e.g., my-custom-yolov5" required>
+                        <input type="text" class="form-control" id="modelName" name="name" placeholder="e.g., my-custom-yolo" required>
                     </div>
                     <div class="mb-3">
                         <label for="modelDescription" class="form-label">Description</label>
                         <textarea class="form-control" id="modelDescription" name="description" rows="2" 
-                                  placeholder="e.g., Custom YOLOv5 model trained on my dataset"></textarea>
+                                  placeholder="e.g., Custom YOLOv8 model trained on my dataset"></textarea>
                     </div>
                     <div class="mb-3 form-check">
-                        <input type="checkbox" class="form-check-input" id="setAsDefault" name="is_default">
-                        <label class="form-check-label" for="setAsDefault">Set as default model</label>
+                        <input type="checkbox" class="form-check-input" id="setAsDefaultUpload" name="is_default">
+                        <label class="form-check-label" for="setAsDefaultUpload">Set as default model</label>
                     </div>
                     <button type="submit" class="btn btn-primary">
                         <i class="bi bi-upload"></i> Upload Model
                     </button>
                 </form>
                 <div id="uploadProgress" class="progress mt-3" style="display: none;">
-                    <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
                 </div>
                 <div id="uploadStatus" class="mt-2"></div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Add Model Modal -->
-<div class="modal fade" id="addModelModal" tabindex="-1" aria-labelledby="addModelModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="addModelModalLabel">Add Model</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <form id="addModelForm" action="{{ url_for('admin.add_model') }}" method="post">
-                    <div class="mb-3">
-                        <label for="addModelPath" class="form-label">Model Path</label>
-                        <input type="text" class="form-control" id="addModelPath" name="file_path" required
-                               placeholder="models/my-model.pt">
-                        <div class="form-text">Path to model file relative to application root</div>
-                    </div>
-                    <div class="mb-3">
-                        <label for="addModelName" class="form-label">Model Name</label>
-                        <input type="text" class="form-control" id="addModelName" name="name" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="addModelDescription" class="form-label">Description</label>
-                        <textarea class="form-control" id="addModelDescription" name="description" rows="2"></textarea>
-                    </div>
-                    <div class="mb-3 form-check">
-                        <input type="checkbox" class="form-check-input" id="addModelCustom" name="is_custom" checked>
-                        <label class="form-check-label" for="addModelCustom">Custom model</label>
-                    </div>
-                    <div class="mb-3 form-check">
-                        <input type="checkbox" class="form-check-input" id="addModelDefault" name="is_default">
-                        <label class="form-check-label" for="addModelDefault">Set as default model</label>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" form="addModelForm" class="btn btn-primary">Add Model</button>
             </div>
         </div>
     </div>
@@ -254,7 +212,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <form id="editModelForm" action="{{ url_for('admin.update_model', model_id=0) }}" method="post">
+                <form id="editModelForm" action="" method="post"> <!-- Action set dynamically by JS -->
                     <input type="hidden" id="editModelId" name="model_id">
                     <div class="mb-3">
                         <label for="editModelName" class="form-label">Model Name</label>
@@ -273,6 +231,7 @@
         </div>
     </div>
 </div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -282,26 +241,26 @@
         document.querySelectorAll('.set-default-btn').forEach(button => {
             button.addEventListener('click', function() {
                 const modelId = this.dataset.modelId;
-                if (confirm('Set this as the default model?')) {
-                    fetch(`/admin/models/${modelId}/set-default`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        }
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            window.location.reload();
-                        } else {
-                            alert('Error: ' + data.message);
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                        alert('An error occurred while setting the default model');
-                    });
-                }
+                // No confirmation needed, just set it
+                fetch(`/admin/models/${modelId}/set-default`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        // Add CSRF token if needed
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        window.location.reload(); // Reload to show changes
+                    } else {
+                        alert('Error setting default model: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred while setting the default model');
+                });
             });
         });
         
@@ -314,14 +273,15 @@
                         method: 'DELETE',
                         headers: {
                             'Content-Type': 'application/json',
+                            // Add CSRF token if needed
                         }
                     })
                     .then(response => response.json())
                     .then(data => {
                         if (data.success) {
-                            window.location.reload();
+                            window.location.reload(); // Reload to show changes
                         } else {
-                            alert('Error: ' + data.message);
+                            alert('Error deleting model: ' + data.message);
                         }
                     })
                     .catch(error => {
@@ -333,25 +293,32 @@
         });
         
         // Edit model - populate modal
-        document.querySelectorAll('.edit-model-btn').forEach(button => {
-            button.addEventListener('click', function() {
-                const modelId = this.dataset.modelId;
-                const modelName = this.dataset.modelName;
-                const modelDescription = this.dataset.modelDescription;
+        const editModal = document.getElementById('editModelModal');
+        if (editModal) {
+            editModal.addEventListener('show.bs.modal', function (event) {
+                const button = event.relatedTarget; // Button that triggered the modal
+                const modelId = button.dataset.modelId;
+                const modelName = button.dataset.modelName;
+                const modelDescription = button.dataset.modelDescription;
                 
-                document.getElementById('editModelId').value = modelId;
-                document.getElementById('editModelName').value = modelName;
-                document.getElementById('editModelDescription').value = modelDescription;
+                const modalForm = editModal.querySelector('#editModelForm');
+                const modalTitle = editModal.querySelector('.modal-title');
+                const nameInput = editModal.querySelector('#editModelName');
+                const descriptionInput = editModal.querySelector('#editModelDescription');
+                const idInput = editModal.querySelector('#editModelId');
                 
-                // Update form action
-                document.getElementById('editModelForm').action = `/admin/models/${modelId}/update`;
+                modalTitle.textContent = `Edit Model: ${modelName}`;
+                nameInput.value = modelName;
+                descriptionInput.value = modelDescription;
+                idInput.value = modelId;
+                modalForm.action = `/admin/models/${modelId}/update`;
             });
-        });
+        }
         
         // Download pre-trained model
         document.querySelectorAll('.download-pretrained-btn').forEach(button => {
             button.addEventListener('click', function() {
-                const model = this.dataset.model;
+                const modelKey = this.dataset.model; // e.g., yolov8s
                 this.disabled = true;
                 this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Downloading...';
                 
@@ -359,15 +326,18 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        // Add CSRF token if needed
                     },
-                    body: JSON.stringify({ model: model })
+                    body: JSON.stringify({ model: modelKey })
                 })
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        window.location.reload();
+                        // Optionally show a success message before reload
+                        alert(data.message); 
+                        window.location.reload(); // Reload to show the new model
                     } else {
-                        alert('Error: ' + data.message);
+                        alert('Error downloading model: ' + data.message);
                         this.disabled = false;
                         this.innerHTML = '<i class="bi bi-download"></i> Download';
                     }
@@ -392,6 +362,7 @@
                 event.preventDefault();
                 
                 const formData = new FormData(this);
+                const submitButton = uploadForm.querySelector('button[type="submit"]');
                 
                 // Check file size
                 const fileInput = document.getElementById('modelFile');
@@ -404,10 +375,14 @@
                 }
                 
                 uploadProgress.style.display = 'flex';
+                progressBar.style.width = '0%';
+                progressBar.textContent = '0%';
                 uploadStatus.innerHTML = '<span class="text-info">Uploading model...</span>';
+                submitButton.disabled = true;
                 
                 const xhr = new XMLHttpRequest();
                 xhr.open('POST', uploadForm.action);
+                // Add CSRF token header if needed
                 
                 xhr.upload.addEventListener('progress', function(event) {
                     if (event.lengthComputable) {
@@ -418,25 +393,36 @@
                 });
                 
                 xhr.addEventListener('load', function() {
-                    if (xhr.status === 200) {
+                    submitButton.disabled = false;
+                    uploadProgress.style.display = 'none'; // Hide progress bar on completion
+                    if (xhr.status >= 200 && xhr.status < 300) {
                         try {
                             const response = JSON.parse(xhr.responseText);
                             if (response.success) {
                                 uploadStatus.innerHTML = '<span class="text-success">Upload successful! Refreshing page...</span>';
-                                setTimeout(() => window.location.reload(), 1000);
+                                setTimeout(() => window.location.reload(), 1500);
                             } else {
-                                uploadStatus.innerHTML = `<span class="text-danger">Error: ${response.message}</span>`;
+                                uploadStatus.innerHTML = `<span class="text-danger">Upload Error: ${response.message}</span>`;
                             }
                         } catch (e) {
-                            uploadStatus.innerHTML = '<span class="text-danger">Error parsing response</span>';
+                            uploadStatus.innerHTML = '<span class="text-danger">Error parsing server response.</span>';
+                            console.error("Response parsing error:", xhr.responseText);
                         }
                     } else {
-                        uploadStatus.innerHTML = `<span class="text-danger">Error: ${xhr.statusText}</span>`;
+                        // Try to parse error message from JSON response
+                        let errorMsg = xhr.statusText;
+                        try {
+                            const response = JSON.parse(xhr.responseText);
+                            if(response.message) errorMsg = response.message;
+                        } catch(e) {}
+                        uploadStatus.innerHTML = `<span class="text-danger">Upload Error (${xhr.status}): ${errorMsg}</span>`;
                     }
                 });
                 
                 xhr.addEventListener('error', function() {
-                    uploadStatus.innerHTML = '<span class="text-danger">Upload failed</span>';
+                    submitButton.disabled = false;
+                    uploadProgress.style.display = 'none';
+                    uploadStatus.innerHTML = '<span class="text-danger">Network error during upload.</span>';
                 });
                 
                 xhr.send(formData);
