@@ -305,21 +305,33 @@ def create_camera_roi(camera_id):
         email_notifications=data.get('email_notifications', False)
     )
     
-    db.session.add(roi)
-    db.session.commit()
-    
-    # Reload ROIs for the camera
     try:
-        from app.utils.camera_processor import CameraManager
-        manager = CameraManager.get_instance()
-        manager.reload_rois(camera_id)
+        # Add and commit in a try block to catch database errors
+        db.session.add(roi)
+        db.session.commit()
+        
+        # Now try to reload ROIs for the camera, but in a separate try/except
+        # so if this fails, we still return success for the ROI creation
+        try:
+            from app.utils.camera_processor import CameraManager
+            manager = CameraManager.get_instance()
+            manager.reload_rois(camera_id)
+        except Exception as e:
+            logger.error(f"Failed to reload ROIs: {str(e)}")
+            # Continue execution - this shouldn't fail the whole request
+        
+        return jsonify({
+            'success': True,
+            'roi': roi.to_dict()
+        }), 201
     except Exception as e:
-        logger.error(f"Failed to reload ROIs: {str(e)}")
-    
-    return jsonify({
-        'success': True,
-        'roi': roi.to_dict()
-    }), 201
+        # Roll back the session if there was an error
+        db.session.rollback()
+        logger.error(f"Error creating ROI: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f"Error creating ROI: {str(e)}"
+        }), 500
 
 @api_bp.route('/cameras/<int:camera_id>/roi/<int:roi_id>', methods=['PUT'])
 @login_required

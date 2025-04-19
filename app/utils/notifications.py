@@ -224,6 +224,20 @@ def _send_email_internal(email_data):
                 msg['Subject'] = f"⚠️ WARNING: Smoke Detected - {detection_data['class_name']} in {roi_data['name']} on {camera_data['name']}"
             elif "helmet" in roi_name_lower or "safety" in roi_name_lower:
                 msg['Subject'] = f"👷 Safety Alert: {detection_data['class_name']} detected in {roi_data['name']} on {camera_data['name']}"
+            elif "loitering" in roi_name_lower:
+                msg['Subject'] = f"🚶‍♂️ Loitering Alert: {detection_data['class_name']} in {roi_data['name']} on {camera_data['name']}"
+            elif "parking" in roi_name_lower:
+                msg['Subject'] = f"🅿️ Parking Violation: {detection_data['class_name']} in {roi_data['name']} on {camera_data['name']}"
+            elif "vehicle" in roi_name_lower:
+                msg['Subject'] = f"🚗 Vehicle Alert: {detection_data['class_name']} in {roi_data['name']} on {camera_data['name']}"
+            elif "restricted" in roi_name_lower:
+                msg['Subject'] = f"⛔ Restricted Zone Alert: {detection_data['class_name']} in {roi_data['name']} on {camera_data['name']}"
+            elif "package" in roi_name_lower:
+                msg['Subject'] = f"📦 Package Alert: {detection_data['class_name']} in {roi_data['name']} on {camera_data['name']}"
+            elif "animal" in roi_name_lower:
+                msg['Subject'] = f"🐾 Animal Detection: {detection_data['class_name']} in {roi_data['name']} on {camera_data['name']}"
+            elif "fall" in roi_name_lower:
+                msg['Subject'] = f"❗ Fall Detected: {detection_data['class_name']} in {roi_data['name']} on {camera_data['name']}"
             else:
                 msg['Subject'] = f"SmartNVR Alert: {detection_data['class_name']} detected in {roi_data['name']} on {camera_data['name']}"
         else:
@@ -323,7 +337,151 @@ def _send_email_internal(email_data):
                     <li>Consider additional safety training if violations are frequent</li>
                 </ol>
                 """
-        
+            
+            elif "loitering" in roi_name_lower:
+                header_bg = "#607D8B"  # Blue Grey for loitering
+                alert_box_style = "style='border: 1px solid #607D8B; padding: 15px; margin: 15px 0; border-radius: 5px; background-color: #ECEFF1;'"
+                custom_message = f"""
+                <div {alert_box_style}>
+                    <h3 style='color: #607D8B; margin-top: 0;'>⏱️ LOITERING ALERT ⏱️</h3>
+                    <p>Potential loitering detected in the monitored area.</p>
+                    <p>Detected object: <strong>{detection_data['class_name']}</strong> with {detection_data['confidence']:.1%} confidence.</p>
+                </div>
+                """
+                action_steps = """
+                <h3>Recommended Actions:</h3>
+                <ol>
+                    <li>Monitor the situation via live feed</li>
+                    <li>Assess if the activity is suspicious or benign</li>
+                    <li>If suspicious, contact security or relevant personnel</li>
+                    <li>Note the time and duration for records</li>
+                </ol>
+                """
+
+            elif "vehicle" in roi_name_lower:
+                header_bg = "#03A9F4"  # Light Blue for vehicle
+                alert_box_style = "style='border: 1px solid #03A9F4; padding: 15px; margin: 15px 0; border-radius: 5px; background-color: #E1F5FE;'"
+                custom_message = f"""
+                <div {alert_box_style}>
+                    <h3 style='color: #03A9F4; margin-top: 0;'>🚗 VEHICLE ALERT 🚗</h3>
+                    <p>A vehicle has been detected in the specified zone.</p>
+                    <p>Detected object: <strong>{detection_data['class_name']}</strong> with {detection_data['confidence']:.1%} confidence.</p>
+                </div>
+                """
+                action_steps = """
+                <h3>Recommended Actions:</h3>
+                <ol>
+                    <li>Verify if the vehicle is authorized in this area</li>
+                    <li>Check for parking violations if applicable</li>
+                    <li>Monitor vehicle activity if necessary</li>
+                    <li>Note license plate if possible and required</li>
+                </ol>
+                """
+
+            elif "package" in roi_name_lower:
+                header_bg = "#795548"  # Brown for package
+                alert_box_style = "style='border: 1px solid #795548; padding: 15px; margin: 15px 0; border-radius: 5px; background-color: #EFEBE9;'"
+                custom_message = f"""
+                <div {alert_box_style}>
+                    <h3 style='color: #795548; margin-top: 0;'>📦 PACKAGE DELIVERY DETECTED 📦</h3>
+                    <p>A package-related activity has been detected.</p>
+                    <p>Detected object: <strong>{detection_data['class_name']}</strong> with {detection_data['confidence']:.1%} confidence.</p>
+                </div>
+                """
+                action_steps = """
+                <h3>Recommended Actions:</h3>
+                <ol>
+                    <li>Check the camera feed to confirm delivery</li>
+                    <li>Secure the package as soon as possible</li>
+                    <li>Review footage if package goes missing</li>
+                </ol>
+                """
+
+            elif "animal" in roi_name_lower:
+                header_bg = "#4CAF50"  # Green for animal
+                alert_box_style = "style='border: 1px solid #4CAF50; padding: 15px; margin: 15px 0; border-radius: 5px; background-color: #E8F5E9;'"
+                custom_message = f"""
+                <div {alert_box_style}>
+                    <h3 style='color: #4CAF50; margin-top: 0;'>🐾 ANIMAL DETECTED 🐾</h3>
+                    <p>An animal has been detected in the monitored area.</p>
+                    <p>Detected object: <strong>{detection_data['class_name']}</strong> with {detection_data['confidence']:.1%} confidence.</p>
+                </div>
+                """
+                action_steps = """
+                <h3>Recommended Actions:</h3>
+                <ol>
+                    <li>Identify the type of animal if possible</li>
+                    <li>Assess if the animal poses any risk or nuisance</li>
+                    <li>Take appropriate action based on local wildlife guidelines or pet policies</li>
+                    <li>Ensure pets are safe if wildlife is potentially dangerous</li>
+                </ol>
+                """
+                
+            elif "fall" in roi_name_lower:
+                header_bg = "#9C27B0"  # Purple for fall detection
+                alert_box_style = "style='border: 1px solid #9C27B0; padding: 15px; margin: 15px 0; border-radius: 5px; background-color: #F3E5F5;'"
+                custom_message = f"""
+                <div {alert_box_style}>
+                    <h3 style='color: #9C27B0; margin-top: 0;'>❗ FALL DETECTED - ASSISTANCE MAY BE NEEDED ❗</h3>
+                    <p>A potential fall has been detected.</p>
+                    <p>Detected object: <strong>{detection_data['class_name']}</strong> (likely 'person') with {detection_data['confidence']:.1%} confidence.</p>
+                </div>
+                """
+                action_steps = """
+                <h3>Immediate Actions Recommended:</h3>
+                <ol>
+                    <li>Check the live camera feed immediately to verify the situation</li>
+                    <li>Attempt to contact the person if possible and safe</li>
+                    <li>Call emergency services (ambulance/paramedics) if a fall is confirmed and assistance is needed</li>
+                    <li>Notify designated emergency contacts</li>
+                    <li>Preserve the recording for review</li>
+                </ol>
+                """
+
+            elif "parking" in roi_name_lower:
+                header_bg = "#3F51B5"  # Indigo for parking violations
+                alert_box_style = "style='border: 1px solid #3F51B5; padding: 15px; margin: 15px 0; border-radius: 5px; background-color: #E8EAF6;'"
+                custom_message = f"""
+                <div {alert_box_style}>
+                    <h3 style='color: #3F51B5; margin-top: 0;'>🅿️ PARKING VIOLATION DETECTED 🅿️</h3>
+                    <p>A vehicle appears to be parked in an incorrect zone.</p>
+                    <p>Detected vehicle: <strong>{detection_data['class_name']}</strong> with {detection_data['confidence']:.1%} confidence.</p>
+                    <p>Violation zone: <strong>{roi_data['name']}</strong></p>
+                </div>
+                """
+                action_steps = """
+                <h3>Recommended Actions:</h3>
+                <ol>
+                    <li>Verify that the vehicle is incorrectly parked by checking the camera feed</li>
+                    <li>Determine if the vehicle belongs to a car, motorcycle, or other category</li>
+                    <li>Document the violation including time, location, and vehicle details</li>
+                    <li>Notify parking enforcement personnel if applicable</li>
+                    <li>Monitor how long the vehicle remains in violation</li>
+                </ol>
+                """
+                
+            elif "restricted" in roi_name_lower:
+                header_bg = "#E91E63"  # Pink for restricted zone violations
+                alert_box_style = "style='border: 1px solid #E91E63; padding: 15px; margin: 15px 0; border-radius: 5px; background-color: #FCE4EC;'"
+                custom_message = f"""
+                <div {alert_box_style}>
+                    <h3 style='color: #E91E63; margin-top: 0;'>⛔ RESTRICTED ZONE VIOLATION ⛔</h3>
+                    <p>A heavy vehicle or unauthorized vehicle has entered a restricted zone.</p>
+                    <p>Detected vehicle: <strong>{detection_data['class_name']}</strong> with {detection_data['confidence']:.1%} confidence.</p>
+                    <p>Restricted zone: <strong>{roi_data['name']}</strong></p>
+                </div>
+                """
+                action_steps = """
+                <h3>Immediate Actions Required:</h3>
+                <ol>
+                    <li>Confirm the type of vehicle and whether it's restricted in this zone</li>
+                    <li>Contact the driver or responsible party if possible</li>
+                    <li>Alert security personnel to address the violation</li>
+                    <li>Document the incident including time, location, and vehicle details</li>
+                    <li>Check for any road signs or barriers that may need to be improved</li>
+                </ol>
+                """
+
         # Email body with HTML, using custom content if available
         body = f"""
         <html>
