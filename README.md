@@ -6,7 +6,7 @@ A powerful Network Video Recorder (NVR) application that leverages GPU accelerat
 
 ## Features
 
-- **GPU-Accelerated AI Detection**: Real-time object detection using YOLOv5 models with CUDA acceleration
+- **GPU-Accelerated AI Detection**: Real-time object detection using YOLOv5 ,v8,v9,v10 models with CUDA acceleration
 - **Smart Recording Management**: Automatic recording based on motion or specific AI detection events
 - **Live Camera Dashboard**: Monitor multiple RTSP/IP cameras simultaneously with object detection overlays
 - **Regions of Interest (ROI)**: Define specific areas for detection to reduce false positives
