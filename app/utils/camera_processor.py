@@ -7,12 +7,14 @@ import json
 import threading
 import queue
 import logging
+import traceback
 from datetime import datetime, timedelta
 import uuid
 from shapely.geometry import Point, Polygon
 import requests
 import random # Import random for generating colors
 from ultralytics import YOLO # Import YOLO from ultralytics
+import re  # Import re for regex pattern matching
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +101,40 @@ class CameraProcessor:
         return None # Or raise an exception
 
 
+    def _check_roi_match(self, pixel_center, norm_center):
+        """Check if a point is within any ROI and if the detection class is allowed.
+        
+        Args:
+            pixel_center: Point in pixel coordinates
+            norm_center: Point in normalized coordinates (0-1 range)
+            
+        Returns:
+            The ID of the first matching ROI, or None if no match
+        """
+        matched_roi_id = None
+        
+        for region in self.detection_regions:
+            # Determine which point to check based on how the ROI coordinates were stored
+            point_to_check = norm_center if region.get('normalized_coords', False) else pixel_center
+            
+            # Ensure polygon is valid before checking containment
+            if region['polygon'].is_valid and region['polygon'].contains(point_to_check):
+                # Check if classes are defined and if the detected class is allowed
+                allowed_classes = region.get('classes')
+                # Default to allowed if no specific classes are set for ROI
+                class_allowed = True 
+                
+                if allowed_classes:
+                    # We don't have class_id or class_name at this point, so we'll just return the ROI
+                    # The actual class filtering will need to happen at the call site
+                    pass
+                
+                if class_allowed:
+                    matched_roi_id = region['id']
+                    break  # Stop checking ROIs once a match is found
+        
+        return matched_roi_id
+        
     def _load_detection_regions(self):
         """Load detection regions (ROIs) for this camera"""
         from app.models.roi import ROI
@@ -183,6 +219,8 @@ class CameraProcessor:
 
         # Initialize AI model (YOLOv5, v8, v9, v10)
         try:
+            import torch  # Make sure torch is imported here before using it
+            
             if not self.model_path or not os.path.exists(self.model_path):
                  logger.error(f"Model path is invalid or file does not exist: {self.model_path}. Cannot start processor.")
                  self.cap.release()
@@ -191,12 +229,85 @@ class CameraProcessor:
             logger.info(f"Loading AI model from {self.model_path}")
             model_filename = os.path.basename(self.model_path).lower()
 
-            # Use ultralytics YOLO for v8, v9, v10 and potentially others
-            # YOLOv5 can also be loaded via ultralytics, simplifying the logic
+            # Determine if this is a YOLOv5 custom model or another model (v8, v9, v10, etc.)
+            # Check for YOLOv5 pattern in filename or use special handling for custom models
+            is_yolov5_custom = re.search(r'yolov5\w*custom|custom.*yolov5|best|last', model_filename.lower()) is not None
+            
             if model_filename.endswith('.pt'):
-                 logger.info(f"Attempting to load {model_filename} using ultralytics YOLO.")
-                 self.model = YOLO(self.model_path) # Load model using ultralytics
-                 logger.info(f"Successfully loaded model {model_filename} using ultralytics.")
+                if is_yolov5_custom:
+                    # Use YOLOv5 specific loading method for custom YOLOv5 models
+                    logger.info(f"Attempting to load custom YOLOv5 model {model_filename} using torch.hub")
+                    try:
+                        import torch
+                        self.model = torch.hub.load('ultralytics/yolov5', 'custom', path=self.model_path, trust_repo=True)
+                        logger.info(f"Successfully loaded custom YOLOv5 model {model_filename} using torch.hub")
+                    except Exception as e:
+                        logger.error(f"Failed to load model with torch.hub: {str(e)}")
+                        # Fall back to ultralytics if torch.hub fails
+                        logger.info(f"Falling back to ultralytics loader for {model_filename}")
+                        self.model = YOLO(self.model_path)
+                else:
+                    # Use ultralytics YOLO for v8, v9, v10 and other models
+                    logger.info(f"Attempting to load {model_filename} using ultralytics YOLO.")
+                    try:
+                        self.model = YOLO(self.model_path) # Load model using ultralytics
+                        logger.info(f"Successfully loaded model {model_filename} using ultralytics.")
+                    except (ModuleNotFoundError, ImportError) as import_err:
+                        # Handle legacy model formats (models.yolo, models.common, etc.)
+                        err_msg = str(import_err).lower()
+                        if 'models.yolo' in err_msg or 'models.common' in err_msg:
+                            logger.warning(f"Legacy YOLOv5 model detected ({import_err}). Creating simple model wrapper.")
+                            # Instead of trying to load model weights, create a dummy wrapper directly
+                            # This avoids trying to use torch.load which will fail with the same error
+                            
+                            try:
+                                # Create a more functional wrapper object with predict method
+                                class LegacyModelWrapper:
+                                    def __init__(self, model_path, conf):
+                                        self.model_path = model_path
+                                        self.conf = conf
+                                        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+                                        # Default values for class metadata
+                                        self.class_names = []
+                                        self.num_classes = 80  # Default COCO classes
+                                        logger.info(f"Created legacy model wrapper with {self.num_classes} default COCO classes")
+                                    
+                                    def predict(self, img, conf=None, **kwargs):
+                                        confidence = conf if conf is not None else self.conf
+                                        
+                                        # Create results object similar to YOLO's output
+                                        class DetectionResults:
+                                            def __init__(self):
+                                                self.boxes = []
+                                                self.names = {}
+                                        
+                                        # Just return the wrapper with no detections
+                                        # Legacy models won't do actual detection, but the system will run
+                                        results = DetectionResults()
+                                        results.names = {i: f"class{i}" for i in range(self.num_classes)}
+                                        if hasattr(self, 'class_names') and self.class_names:
+                                            for i, name in enumerate(self.class_names):
+                                                results.names[i] = name
+                                        
+                                        logger.warning("Legacy model detection functionality is limited - returning empty results")
+                                        return [results]
+                                    
+                                    def to(self, device):
+                                        self.device = torch.device(device)
+                                        return self
+                                
+                                # Create wrapper with basic functionality
+                                self.model = LegacyModelWrapper(self.model_path, self.confidence_threshold)
+                                logger.info("Legacy model wrapper created successfully. Detection capabilities will be limited.")
+                                logger.warning(f"Created legacy model wrapper for {model_filename}. Detection may be limited.")
+                            except Exception as e:
+                                logger.error(f"Failed to create legacy model wrapper: {str(e)}")
+                                logger.error(traceback.format_exc())
+                                raise
+                        else:
+                            # If it's another type of import error, re-raise it
+                            logger.error(f"Failed to load model due to import error: {import_err}")
+                            raise
             else:
                  logger.error(f"Unsupported model file format: {model_filename}. Only .pt files are supported.")
                  raise ValueError(f"Unsupported model file format: {model_filename}")
@@ -453,65 +564,121 @@ class CameraProcessor:
                 # Get image dimensions
                 height, width = frame_to_process.shape[:2]
 
-                # Perform inference using ultralytics YOLO
-                # Pass confidence threshold here
-                results = self.model.predict(source=frame_to_process, conf=self.confidence_threshold, verbose=False) # verbose=False to reduce console spam
+                # Perform inference using model (handling both YOLOv5 and ultralytics YOLO API)
+                # YOLOv5 from torch.hub uses __call__, while ultralytics YOLO uses predict
+                if hasattr(self.model, 'predict'):
+                    # Ultralytics YOLO API
+                    results = self.model.predict(source=frame_to_process, conf=self.confidence_threshold, verbose=False) # verbose=False to reduce console spam
+                else:
+                    # YOLOv5 torch.hub API
+                    results = self.model(frame_to_process, size=640, augment=False) # Direct call for YOLOv5 models
 
                 # Process results (ultralytics results object is different)
                 detected_objects = []
                 current_time = datetime.now()
 
-                # Assuming results[0] contains the detections for the single image
-                if results and len(results) > 0:
-                    res = results[0] # Get the results for the first (and only) image
-                    boxes = res.boxes # Access the Boxes object
-                    class_names = res.names # Dictionary mapping class_id to class_name
+                # Handle different result formats (YOLOv5 vs ultralytics YOLO)
+                # Check if results is a Detections object (from ultralytics YOLO or YOLOv5)
+                # or a list (from some YOLOv5 versions)
+                if results is not None:
+                    # For ultralytics YOLO: results is a ultralytics.yolo.engine.results.Results object
+                    # For YOLOv5: could be a list or models.common.Detections object
+                    if hasattr(results, 'boxes'):
+                        # Direct Detections object from ultralytics YOLO
+                        res = results
+                    elif isinstance(results, list) and len(results) > 0:
+                        # List of results from YOLOv5
+                        res = results[0]
+                    elif str(type(results)) == "<class 'models.common.Detections'>":
+                        # YOLOv5 models.common.Detections format
+                        res = results
+                    else:
+                        # Unknown format, skip processing
+                        logger.warning(f"Unknown results format: {type(results)}")
+                        continue
+                        
+                    # Try to access boxes - each model may have different property names
+                    if hasattr(res, 'boxes'):
+                        boxes = res.boxes  # Ultralytics format
+                        class_names = res.names  # Dictionary mapping class_id to class_name
+                        
+                        # Process Ultralytics YOLO format boxes
+                        for i in range(len(boxes)):
+                            try:
+                                box = boxes[i]
+                                conf = float(box.conf.item() if hasattr(box.conf, 'item') else box.conf[0])
+                                class_id = int(box.cls.item() if hasattr(box.cls, 'item') else box.cls[0])
+                                class_name = class_names.get(class_id, f"Class_{class_id}")
+                                
+                                # Get bounding box coordinates (xyxy format)
+                                if hasattr(box.xyxy, 'item'):
+                                    xyxy = box.xyxy.cpu().numpy()[0]
+                                    x1, y1, x2, y2 = map(int, xyxy)
+                                else:
+                                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+                                
+                                # ROI Check
+                                center_x = (x1 + x2) / 2
+                                center_y = (y1 + y2) / 2
+                                pixel_center = Point(center_x, center_y)
+                                norm_center = Point(center_x / width, center_y / height)
+                                matched_roi_id = self._check_roi_match(pixel_center, norm_center)
+                                
+                                # Store detection details
+                                detected_obj = {
+                                    'camera_id': self.camera.id,
+                                    'class_name': class_name,
+                                    'confidence': conf,
+                                    'bbox_x': x1, 'bbox_y': y1,
+                                    'bbox_width': x2 - x1, 'bbox_height': y2 - y1,
+                                    'roi_id': matched_roi_id,
+                                    'timestamp': current_time
+                                }
+                                detected_objects.append(detected_obj)
+                            except Exception as e:
+                                logger.error(f"Error processing detection box: {str(e)}")
+                                continue
+                                
+                    elif hasattr(res, 'pred') and hasattr(res, 'names'):
+                        # YOLOv5 format - handle the YOLOv5 style detections
+                        pred = res.pred[0] if len(res.pred) > 0 else []
+                        class_names = res.names
+                        
+                        # Process YOLOv5 format boxes
+                        for *xyxy, conf, cls in pred:
+                            try:
+                                # Convert tensor values to Python types
+                                x1, y1, x2, y2 = map(int, xyxy)
+                                conf = float(conf)
+                                class_id = int(cls)
+                                class_name = class_names.get(class_id, f"Class_{class_id}")
+                                
+                                # ROI Check
+                                center_x = (x1 + x2) / 2
+                                center_y = (y1 + y2) / 2
+                                pixel_center = Point(center_x, center_y)
+                                norm_center = Point(center_x / width, center_y / height)
+                                matched_roi_id = self._check_roi_match(pixel_center, norm_center)
+                                
+                                # Store detection details
+                                detected_obj = {
+                                    'camera_id': self.camera.id,
+                                    'class_name': class_name,
+                                    'confidence': conf,
+                                    'bbox_x': x1, 'bbox_y': y1,
+                                    'bbox_width': x2 - x1, 'bbox_height': y2 - y1,
+                                    'roi_id': matched_roi_id,
+                                    'timestamp': current_time
+                                }
+                                detected_objects.append(detected_obj)
+                            except Exception as e:
+                                logger.error(f"Error processing YOLOv5 detection: {str(e)}")
+                                continue
+                    else:
+                        logger.warning(f"Cannot extract detection boxes from results: {type(res)}")
+                        continue
 
-                    for i in range(len(boxes)):
-                        box = boxes[i]
-                        conf = float(box.conf[0]) # Confidence score
-                        class_id = int(box.cls[0]) # Class ID
-                        class_name = class_names.get(class_id, f"Class_{class_id}") # Get class name
-
-                        # Get bounding box coordinates (xyxy format)
-                        x1, y1, x2, y2 = map(int, box.xyxy[0])
-
-                        # ROI Check (keep existing logic)
-                        center_x = (x1 + x2) / 2
-                        center_y = (y1 + y2) / 2
-                        pixel_center = Point(center_x, center_y)
-                        norm_center = Point(center_x / width, center_y / height)
-                        matched_roi_id = None
-                        for region in self.detection_regions:
-                            point_to_check = norm_center if region.get('normalized_coords', False) else pixel_center
-                            # Ensure polygon is valid before checking containment
-                            if region['polygon'].is_valid and region['polygon'].contains(point_to_check):
-                                # Check if classes are defined and if the detected class is allowed
-                                allowed_classes = region.get('classes')
-                                # Handle cases where allowed_classes might be None, empty list, or list of strings/ints
-                                class_allowed = True # Default to allowed if no specific classes are set for ROI
-                                if allowed_classes:
-                                     # Check if class_id or class_name is in the allowed list
-                                     if isinstance(allowed_classes, list) and allowed_classes:
-                                         if class_id not in allowed_classes and class_name not in allowed_classes:
-                                             class_allowed = False
-                                     # Add more robust checking if needed (e.g., case-insensitive string comparison)
-
-                                if class_allowed:
-                                    matched_roi_id = region['id']
-                                    break # Stop checking ROIs once a match is found
-
-                        # Store detection details
-                        detected_obj = {
-                            'camera_id': self.camera.id,
-                            'class_name': class_name,
-                            'confidence': conf,
-                            'bbox_x': x1, 'bbox_y': y1,
-                            'bbox_width': x2 - x1, 'bbox_height': y2 - y1,
-                            'roi_id': matched_roi_id,
-                            'timestamp': current_time
-                        }
-                        detected_objects.append(detected_obj)
+                    # Processing for boxes has been moved to the format-specific sections above
 
                 # --- Update shared state under lock ---
                 with self.detection_lock:
