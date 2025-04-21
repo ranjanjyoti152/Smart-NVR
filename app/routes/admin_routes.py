@@ -257,6 +257,22 @@ def upload_model():
             # Try loading the model to verify it
             _ = YOLO(file_path)
             print(f"Model verified successfully with Ultralytics YOLO")
+        except (ModuleNotFoundError, ImportError) as import_err:
+            # Allow upload if the error is specifically about missing 'models.yolo' or similar legacy structure
+            # This indicates an older YOLOv5 model structure
+            err_msg = str(import_err).lower()
+            if 'models.yolo' in err_msg or 'models.common' in err_msg: # Add other potential legacy modules if needed
+                print(f"Warning: Model verification skipped due to potential legacy structure ({import_err}). Upload allowed, but runtime compatibility not guaranteed.")
+                # Continue with upload despite this specific error
+            else:
+                # If it's a different import error, treat it as a failure
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                print(f"Model verification failed due to unexpected import error: {import_err}")
+                return jsonify({
+                    'success': False,
+                    'message': f'Incompatible model file (Import Error): {import_err}'
+                }), 400
         except Exception as e:
             # Remove the invalid file
             if os.path.exists(file_path):
