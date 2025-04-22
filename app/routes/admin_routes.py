@@ -30,37 +30,34 @@ def user_management():
     users = User.query.all()
     return render_template('admin/users.html', title='User Management', users=users)
 
-@admin_bp.route('/users/create', methods=['GET', 'POST'])
+@admin_bp.route('/users/create', methods=['POST'])
 @login_required
 @admin_required
 def create_user():
     """Create a new user"""
-    if request.method == 'POST':
-        username = request.form.get('username')
-        email = request.form.get('email')
-        password = request.form.get('password')
-        is_admin = True if request.form.get('is_admin') else False
-        
-        # Check if user already exists
-        if User.query.filter_by(username=username).first():
-            flash('Username already exists.', 'danger')
-            return redirect(url_for('admin.create_user'))
-        
-        if User.query.filter_by(email=email).first():
-            flash('Email already registered.', 'danger')
-            return redirect(url_for('admin.create_user'))
-        
-        # Create new user
-        user = User(username=username, email=email, is_admin=is_admin)
-        user.set_password(password)
-        
-        db.session.add(user)
-        db.session.commit()
-        
-        flash('User created successfully.', 'success')
+    username = request.form.get('username')
+    email = request.form.get('email')
+    password = request.form.get('password')
+    is_admin = True if request.form.get('is_admin') else False
+    
+    # Check if user already exists
+    if User.query.filter_by(username=username).first():
+        flash('Username already exists.', 'danger')
         return redirect(url_for('admin.user_management'))
     
-    return render_template('admin/create_user.html', title='Create User')
+    if User.query.filter_by(email=email).first():
+        flash('Email already registered.', 'danger')
+        return redirect(url_for('admin.user_management'))
+    
+    # Create new user
+    user = User(username=username, email=email, is_admin=is_admin)
+    user.set_password(password)
+    
+    db.session.add(user)
+    db.session.commit()
+    
+    flash('User created successfully.', 'success')
+    return redirect(url_for('admin.user_management'))
 
 @admin_bp.route('/users/<int:user_id>', methods=['GET', 'POST'])
 @login_required
