@@ -128,6 +128,9 @@ class BackgroundScheduler:
         # Register database sync task - Run every 4 hours to keep database in sync with filesystem
         self.register_task('sync_recordings', self._sync_recordings_task, interval=14400)  # Every 4 hours
         
+        # Register detection images cleanup task - Run every minute (for testing)
+        self.register_task('cleanup_detection_images', self._cleanup_detection_images_task, interval=60)  # Every minute
+        
     def _cleanup_task(self):
         """Clean up old recordings based on retention settings"""
         from app.routes.main_routes import get_recording_settings
@@ -220,6 +223,125 @@ class BackgroundScheduler:
             logger.error(f"Error in sync_recordings task: {str(e)}")
             import traceback
             logger.error(traceback.format_exc())
+    
+    def _cleanup_detection_images_task(self):
+        """Clean up old detection images based on retention settings"""
+        from app.routes.main_routes import get_detection_settings
+        from app import app
+        import os
+        import re
+        from datetime import datetime, timedelta
+        from pathlib import Path
+        
+        logger.info("Running detection images cleanup task")
+        
+        with app.app_context():
+            try:
+                # Get detection settings
+                detection_settings = get_detection_settings()
+                save_images = detection_settings.get('save_images', True)
+                
+                # Skip if image saving is disabled
+                if not save_images:
+                    logger.info("Detection image saving is disabled, skipping cleanup")
+                    return
+                
+                image_retention_days = int(detection_settings.get('image_retention_days', 7))
+                # Max images per camera (keep this number reasonably high but not excessive)
+                max_images_per_camera = 1000
+                
+                # Calculate cutoff date
+                cutoff_date = datetime.now() - timedelta(days=image_retention_days)
+                
+                # Get storage path from application settings
+                from app.routes.main_routes import get_recording_settings
+                try:
+                    recording_settings = get_recording_settings()
+                    storage_base = recording_settings.get('storage_path', 'storage/recordings')
+                except Exception as e:
+                    logger.warning(f"Could not load recording settings: {str(e)}, using defaults")
+                    storage_base = 'storage/recordings'
+                
+                # Get all camera directories in images folder
+                images_base = os.path.join(storage_base, 'images')
+                if not os.path.exists(images_base):
+                    logger.warning(f"Images directory does not exist: {images_base}")
+                    return
+                
+                # Process each camera's images directory
+                total_deleted = 0
+                
+                for camera_dir in Path(images_base).iterdir():
+                    if not camera_dir.is_dir():
+                        continue
+                    
+                    logger.info(f"Processing images for camera ID: {camera_dir.name}")
+                    
+                    # Process all jpg files in the camera directory and sort them by timestamp
+                    jpg_files = list(camera_dir.glob('*.jpg'))
+                    
+                    # Parse timestamps and associate with files
+                    timestamped_files = []
+                    for jpg_path in jpg_files:
+                        try:
+                            # Parse timestamp from filename (format: YYYYMMDD_HHMMSS_uuid.jpg)
+                            timestamp_pattern = r'(\d{8}_\d{6})_'
+                            match = re.search(timestamp_pattern, jpg_path.name)
+                            
+                            if match:
+                                timestamp_str = match.group(1)
+                                try:
+                                    timestamp = datetime.strptime(timestamp_str, '%Y%m%d_%H%M%S')
+                                    timestamped_files.append((timestamp, jpg_path))
+                                except ValueError:
+                                    logger.warning(f"Could not parse timestamp from filename: {jpg_path.name}, skipping")
+                            else:
+                                logger.warning(f"Could not match timestamp pattern in filename: {jpg_path.name}, skipping")
+                        except Exception as e:
+                            logger.error(f"Error processing image {jpg_path}: {str(e)}")
+                    
+                    # Sort by timestamp (oldest first)
+                    timestamped_files.sort(key=lambda x: x[0])
+                    
+                    logger.info(f"Found {len(timestamped_files)} images for camera {camera_dir.name}")
+                    deleted_count = 0
+                    
+                    # First pass: Delete files older than retention period
+                    files_to_delete = []
+                    for timestamp, file_path in timestamped_files:
+                        if timestamp < cutoff_date:
+                            files_to_delete.append(file_path)
+                    
+                    # Second pass: If we still have more than max_images_per_camera, delete oldest ones
+                    if len(timestamped_files) - len(files_to_delete) > max_images_per_camera:
+                        # Calculate how many more we need to delete to get down to max_images_per_camera
+                        extra_to_delete = len(timestamped_files) - len(files_to_delete) - max_images_per_camera
+                        # Get the oldest files that weren't already marked for deletion
+                        remaining_files = [f[1] for f in timestamped_files if f[1] not in files_to_delete]
+                        # Add the oldest extra_to_delete files to our deletion list
+                        files_to_delete.extend(remaining_files[:extra_to_delete])
+                    
+                    # Actually delete the files
+                    for file_path in files_to_delete:
+                        try:
+                            os.remove(file_path)
+                            deleted_count += 1
+                            total_deleted += 1
+                        except Exception as e:
+                            logger.error(f"Error deleting image {file_path}: {str(e)}")
+                    
+                    if deleted_count > 0:
+                        logger.info(f"Deleted {deleted_count} images for camera {camera_dir.name} "
+                                    f"({len(files_to_delete) - deleted_count} deletion failures)")
+                    else:
+                        logger.info(f"No images deleted for camera {camera_dir.name}")
+                
+                logger.info(f"Detection images cleanup completed. Deleted {total_deleted} images.")
+                
+            except Exception as e:
+                logger.error(f"Error in detection images cleanup task: {str(e)}")
+                import traceback
+                logger.error(traceback.format_exc())
 
 # Global scheduler instance
 _scheduler = None

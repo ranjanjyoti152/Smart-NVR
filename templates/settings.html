@@ -90,6 +90,22 @@
                                 </a>
                             </div>
                         </div>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" id="save_detection_images" name="save_detection_images" 
+                                        {% if settings.detection.save_images %}checked{% endif %}>
+                                    <label class="form-check-label" for="save_detection_images">Save Detection Images</label>
+                                    <div class="form-text">When enabled, saves an image for each detection event</div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="image_retention_days" class="form-label">Image Retention (days)</label>
+                                <input type="number" class="form-control" id="image_retention_days" name="image_retention_days" 
+                                    value="{{ settings.detection.image_retention_days|default(7) }}" min="1" max="90">
+                                <div class="form-text">Number of days to keep detection images before deletion</div>
+                            </div>
+                        </div>
                     </div>
                     
                     <div class="mb-3">

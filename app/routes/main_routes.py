@@ -78,7 +78,9 @@ def add_camera():
         password=password,
         model_id=model_id,
         confidence_threshold=confidence,
-        is_active=True
+        is_active=True,
+        recording_enabled='recording_enabled' in request.form,
+        detection_enabled='detection_enabled' in request.form
     )
     
     # Save to database
@@ -366,7 +368,9 @@ def create_default_settings():
         },
         'detection': {
             'default_confidence': 0.45,
-            'default_model': 'yolov5s'
+            'default_model': 'yolov5s',
+            'save_images': True,
+            'image_retention_days': 1
         }
     }
 
@@ -391,6 +395,11 @@ def get_recording_settings():
     """Get recording settings for camera processor"""
     settings = load_settings()
     return settings.get('recording', {})
+
+def get_detection_settings():
+    """Get detection settings for camera processor"""
+    settings = load_settings()
+    return settings.get('detection', {})
 
 @main_bp.route('/save-settings', methods=['POST'])
 @login_required
@@ -422,7 +431,9 @@ def save_settings():
         },
         'detection': {
             'default_confidence': float(request.form.get('default_confidence', 0.45)),
-            'default_model': request.form.get('default_model', 'yolov5s')
+            'default_model': request.form.get('default_model', 'yolov5s'),
+            'save_images': 'save_detection_images' in request.form,
+            'image_retention_days': int(request.form.get('image_retention_days', 7))
         }
     }
     

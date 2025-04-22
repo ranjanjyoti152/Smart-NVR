@@ -698,7 +698,14 @@ class CameraProcessor:
                     self.last_detection_time = current_time # Update last detection time
 
                     # Save detection image (optional)
-                    save_image = True # Or based on a setting
+                    try:
+                        from app.routes.main_routes import get_detection_settings
+                        detection_settings = get_detection_settings()
+                        save_image = detection_settings.get('save_images', True) # Default to True if not specified
+                    except Exception as e:
+                        logger.warning(f"Could not load detection settings: {str(e)}, using defaults")
+                        save_image = True
+
                     if save_image:
                         # Draw boxes on a *copy* of the processed frame for saving
                         frame_with_boxes = frame_to_process.copy()
