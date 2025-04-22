@@ -346,6 +346,11 @@ class CameraProcessor:
             self.recording_thread = threading.Thread(target=self._record_frames)
             self.recording_thread.daemon = True
             self.recording_thread.start()
+            logger.info(f"Started recording thread for camera {self.camera.name}")
+        else:
+            self.recording = False
+            self.recording_thread = None
+            logger.info(f"Recording disabled for camera {self.camera.name}")
 
         # Start detection thread if enabled
         if self.camera.detection_enabled:
