@@ -132,6 +132,19 @@ def send_detection_email(camera, detection, roi=None):
         logger.debug(f"Email notification skipped - no ROI or ROI email not enabled")
         return False
     
+    # Check if detection class is included in the ROI's detection classes
+    if roi and roi.detection_classes:
+        try:
+            roi_classes = json.loads(roi.detection_classes) if isinstance(roi.detection_classes, str) else roi.detection_classes
+            # If ROI has specified classes (not empty) and the detected class isn't in the list, skip
+            if roi_classes and detection.class_name not in roi_classes:
+                logger.debug(f"Email notification skipped - {detection.class_name} not in ROI's detection classes: {roi_classes}")
+                return False
+        except Exception as e:
+            # If there's any error parsing the classes, log the error and skip notification
+            logger.error(f"Error parsing detection classes for ROI {roi.id}: {str(e)}")
+            return False
+    
     # Apply rate limiting for this ROI
     roi_id = getattr(roi, 'id', 'unknown')
     now = datetime.now()
