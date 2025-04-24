@@ -502,6 +502,114 @@ def get_latest_camera_detections(camera_id):
     
     return jsonify(results)
 
+@api_bp.route('/cameras/<camera_id>/recordings', methods=['GET'])
+@login_required
+def get_camera_recordings_by_date(camera_id):
+    """Get recordings for a specific camera by date"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # Verify camera exists
+    camera = Camera.get_by_id(camera_id)
+    if not camera:
+        return jsonify({
+            'success': False,
+            'message': 'Camera not found'
+        }), 404
+    
+    # Get query parameters
+    date = request.args.get('date')
+    events_only = request.args.get('events_only', '').lower() in ('true', '1', 'yes')
+    object_type = request.args.get('object_type')
+    
+    logger.info(f"Getting recordings for camera {camera_id} on date {date}, events_only={events_only}, object_type={object_type}")
+    
+    # Date is required
+    if not date:
+        return jsonify({
+            'success': False,
+            'message': 'Date parameter is required in format YYYY-MM-DD'
+        }), 400
+    
+    try:
+        # Parse date
+        date_obj = datetime.strptime(date, '%Y-%m-%d')
+        next_day = date_obj + timedelta(days=1)
+        
+        # Build MongoDB query for recordings
+        recordings_query = {
+            'camera_id': str(camera_id),
+            'timestamp': {
+                '$gte': date_obj,
+                '$lt': next_day
+            }
+        }
+        
+        # Get recordings matching our criteria, sorted by timestamp
+        recordings_cursor = db.recordings.find(recordings_query).sort('timestamp', 1)
+        recordings = [Recording(rec) for rec in recordings_cursor]
+        
+        logger.info(f"Found {len(recordings)} recordings for camera {camera_id} on date {date}")
+        
+        # Build query for detections - used both for filtering recordings and returning detections
+        detections_query = {
+            'camera_id': str(camera_id),
+            'timestamp': {
+                '$gte': date_obj,
+                '$lt': next_day
+            }
+        }
+        
+        # Filter by object type if provided
+        if object_type:
+            detections_query['class_name'] = object_type
+        
+        # Get detections
+        detections_cursor = db.detections.find(detections_query).sort('timestamp', 1)
+        detections = [Detection(det) for det in detections_cursor]
+        
+        logger.info(f"Found {len(detections)} detections for camera {camera_id} on date {date}")
+        
+        # If events_only is true, filter recordings to only include those with detections
+        if events_only and detections:
+            # Get unique recording_ids from detections that have them
+            recording_ids_with_detections = set()
+            for det in detections:
+                if det.recording_id:
+                    recording_ids_with_detections.add(det.recording_id)
+            
+            # Filter recordings to only include those with detections
+            if recording_ids_with_detections:
+                recordings = [rec for rec in recordings if rec.id in recording_ids_with_detections]
+                logger.info(f"Filtered to {len(recordings)} recordings with detections")
+        
+        # Convert to dictionaries for JSON response
+        recordings_dict = [r.to_dict() for r in recordings]
+        detections_dict = [d.to_dict() for d in detections]
+        
+        # Return formatted response
+        return jsonify({
+            'success': True,
+            'date': date,
+            'camera_id': camera_id,
+            'recordings': recordings_dict,
+            'detections': detections_dict
+        })
+        
+    except ValueError:
+        return jsonify({
+            'success': False,
+            'message': 'Invalid date format. Use YYYY-MM-DD'
+        }), 400
+    except Exception as e:
+        logger.error(f"Error getting recordings for camera {camera_id}: {str(e)}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return jsonify({
+            'success': False,
+            'message': f'Error: {str(e)}'
+        }), 500
+
 # --- Recordings API Endpoints ---
 
 @api_bp.route('/recordings')

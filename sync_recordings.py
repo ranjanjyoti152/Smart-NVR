@@ -1,70 +1,67 @@
 #!/usr/bin/env python3
 """
-Script to synchronize video recordings with database entries.
-This ensures all video files in the storage directory are properly registered in the database.
+Synchronize recording files with database
+Scans the recordings directory and updates database with any new recordings
 """
 
 import os
-import sys
+import time
 import logging
-import re
-from datetime import datetime
+import sys
 from pathlib import Path
+import cv2
+from datetime import datetime, timedelta
+import re
+from bson.objectid import ObjectId
 
-# Set up logging
+# Configure logging
 logging.basicConfig(
-    filename='logs/sync_recordings.log',
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
 )
-logger = logging.getLogger('sync_recordings')
 
-# Add stdout handler for console output
-console = logging.StreamHandler(sys.stdout)
-console.setLevel(logging.INFO)
-formatter = logging.Formatter('%(name)s - %(levelname)s - %(message)s')
-console.setFormatter(formatter)
-logger.addHandler(console)
+logger = logging.getLogger(__name__)
 
 def parse_timestamp_from_filename(filename):
-    """Parse timestamp from filename in format YYYYMMDD_HHMMSS.mp4"""
-    timestamp_pattern = r'(\d{8}_\d{6})\.mp4$'
-    match = re.search(timestamp_pattern, filename)
-    
+    """Parse timestamp from a recording filename"""
+    # Match patterns like "20230131_145523.mp4" or similar
+    pattern = r'(\d{8}_\d{6})'
+    match = re.search(pattern, filename)
     if match:
         timestamp_str = match.group(1)
         try:
+            # Parse the timestamp string
             return datetime.strptime(timestamp_str, '%Y%m%d_%H%M%S')
         except ValueError:
-            return None
+            logger.warning(f"Could not parse timestamp from {timestamp_str}")
     return None
 
 def get_file_duration(file_path):
-    """Get video duration using ffprobe"""
-    import subprocess
-    
+    """Get the duration of a video file in seconds"""
     try:
-        # Check if ffprobe is available
-        result = subprocess.run(['which', 'ffprobe'], capture_output=True, text=True)
-        if result.returncode != 0:
-            logger.warning("ffprobe not found, estimating duration")
-            return 3600.0  # Default to 1 hour for files where we can't determine duration
+        # Open the video file
+        cap = cv2.VideoCapture(file_path)
+        if not cap.isOpened():
+            logger.warning(f"Could not open video file: {file_path}")
+            return 0
+            
+        # Get the frame rate and frame count
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         
-        # Get duration from ffprobe
-        cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', 
-               '-of', 'default=noprint_wrappers=1:nokey=1', file_path]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        # Calculate duration
+        duration = frame_count / fps if fps > 0 else 0
         
-        if result.returncode == 0 and result.stdout.strip():
-            duration = float(result.stdout.strip())
-            return duration
-        else:
-            logger.warning(f"Could not determine duration for {file_path}")
-            return 3600.0  # Default to 1 hour
+        # Release the video capture object
+        cap.release()
+        
+        return duration
     except Exception as e:
-        logger.error(f"Error getting duration for {file_path}: {str(e)}")
-        return 3600.0  # Default to 1 hour
+        logger.warning(f"Error getting duration for {file_path}: {str(e)}")
+        return 0
 
 def sync_recordings():
     """Synchronize video files in storage with database records"""
@@ -101,14 +98,27 @@ def sync_recordings():
             
             # Process each camera's recordings
             for camera in cameras:
-                camera_id = camera.id
+                camera_id = str(camera.id)  # Ensure camera_id is a string for MongoDB
+                logger.info(f"Camera ID type: {type(camera_id)}, value: {camera_id}")
                 camera_dir = os.path.join(videos_base, str(camera_id))
                 
                 if not os.path.exists(camera_dir):
                     logger.info(f"No recordings directory for camera {camera.name} (ID: {camera_id})")
-                    continue
+                    # Try alternative directory format - MongoDB ObjectIds are used as directory names now
+                    alt_dirs = list(Path(videos_base).glob('*'))
+                    for alt_dir in alt_dirs:
+                        if alt_dir.is_dir():
+                            logger.info(f"Checking alternative directory: {alt_dir.name}")
+                            if str(alt_dir.name) == camera_id:
+                                camera_dir = str(alt_dir)
+                                logger.info(f"Found matching directory: {camera_dir}")
+                                break
+                    
+                    if not os.path.exists(camera_dir):
+                        logger.info(f"No matching directory found for camera {camera.name} (ID: {camera_id})")
+                        continue
                 
-                logger.info(f"Scanning recordings for camera {camera.name} (ID: {camera_id})")
+                logger.info(f"Scanning recordings for camera {camera.name} (ID: {camera_id}) in directory: {camera_dir}")
                 
                 # Get all MP4 files in the camera's recording directory
                 mp4_files = list(Path(camera_dir).glob('*.mp4'))
@@ -158,7 +168,7 @@ def sync_recordings():
                         
                         # Create new database entry
                         recording_data = {
-                            'camera_id': camera_id,
+                            'camera_id': camera_id,  # Store camera_id as string
                             'file_path': file_path,
                             'timestamp': timestamp,
                             'duration': duration,
@@ -167,7 +177,8 @@ def sync_recordings():
                             'created_at': datetime.utcnow()
                         }
                         
-                        db.recordings.insert_one(recording_data)
+                        result = db.recordings.insert_one(recording_data)
+                        logger.info(f"Added recording with ID: {result.inserted_id}")
                         new_entries += 1
                         logger.info(f"Added new recording to database: {file_path}")
             
@@ -180,7 +191,7 @@ def sync_recordings():
                 'new_entries': new_entries,
                 'updated_entries': updated_entries
             }
-                
+            
     except Exception as e:
         logger.error(f"Error synchronizing recordings: {str(e)}")
         import traceback
@@ -190,15 +201,6 @@ def sync_recordings():
             'error': str(e)
         }
 
-if __name__ == '__main__':
-    logger.info("Starting recording synchronization")
-    result = sync_recordings()
-    
-    if result and result.get('success'):
-        summary = result
-        print(f"\nSynchronization complete!")
-        print(f"Total files scanned: {summary['total_files']}")
-        print(f"New entries added: {summary['new_entries']}")
-        print(f"Existing entries updated: {summary['updated_entries']}")
-    else:
-        print("\nSynchronization failed. Check logs for details.")
+if __name__ == "__main__":
+    # Run the synchronization function
+    sync_recordings()
