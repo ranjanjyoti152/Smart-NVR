@@ -21,8 +21,8 @@ def api_key_required(f):
         if not api_key:
             return jsonify({'error': 'No API key provided'}), 401
             
-        user = User.query.filter_by(api_key=api_key, is_active=True).first()
-        if not user:
+        user = User.get_by_api_key(api_key)
+        if not user or not user.is_active:
             return jsonify({'error': 'Invalid API key'}), 401
             
         return f(*args, **kwargs)

@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Simple database initialization script for SmartNVR
-This script uses direct SQLite connections to create the database and tables
+Database initialization script for Smart-NVR using MongoDB
+This script creates the required collections and indexes in MongoDB
 """
 import os
 import sys
-import sqlite3
 import logging
-import shutil
 from datetime import datetime
+from pymongo import MongoClient, ASCENDING, DESCENDING
 from werkzeug.security import generate_password_hash
+import json
 
 # Setup basic logging
 logging.basicConfig(
@@ -24,181 +24,131 @@ def hash_password(password):
     return generate_password_hash(password)
 
 def main():
-    """Main function to initialize the database"""
-    # Create or ensure instance directory exists with full permissions
-    instance_dir = os.path.join(os.getcwd(), 'instance')
-    os.makedirs(instance_dir, exist_ok=True)
-    os.chmod(instance_dir, 0o777)  # Full permissions
-    
-    # Path to database file
-    db_path = os.path.join(instance_dir, 'smart_nvr.db')
-    
-    # Remove existing database if it exists
-    if os.path.exists(db_path):
-        logger.info(f"Removing existing database at {db_path}")
-        os.remove(db_path)
-        logger.info("Database file removed")
-    
-    # Create a new empty database file with full permissions
-    with open(db_path, 'w') as f:
-        pass
-    os.chmod(db_path, 0o666)  # Read/write permissions
-    
-    logger.info(f"Creating new database at {db_path}")
+    """Main function to initialize the MongoDB database"""
+    # Load configuration
+    try:
+        from config import Config
+        mongo_uri = Config.MONGO_URI
+        mongo_dbname = Config.MONGO_DBNAME
+    except ImportError:
+        mongo_uri = "mongodb://localhost:27017/smart_nvr"
+        mongo_dbname = "smart_nvr"
+        
+    logger.info(f"Connecting to MongoDB at {mongo_uri}")
     
     try:
-        # Connect to the database
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        logger.info("Successfully connected to the database")
+        # Connect to MongoDB
+        client = MongoClient(mongo_uri)
+        db = client[mongo_dbname]
         
-        # Create User table
-        logger.info("Creating User table")
-        cursor.execute('''
-        CREATE TABLE user (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT NOT NULL UNIQUE,
-            email TEXT NOT NULL UNIQUE,
-            password_hash TEXT NOT NULL,
-            api_key TEXT UNIQUE,
-            is_admin BOOLEAN NOT NULL DEFAULT 0,
-            is_active BOOLEAN NOT NULL DEFAULT 1,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            last_login TIMESTAMP
-        )
-        ''')
+        # Check connection
+        client.admin.command('ping')
+        logger.info("Successfully connected to MongoDB")
         
-        # Create AIModel table
-        logger.info("Creating AIModel table")
-        cursor.execute('''
-        CREATE TABLE ai_model (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE,
-            file_path TEXT NOT NULL,
-            description TEXT,
-            is_default BOOLEAN NOT NULL DEFAULT 0,
-            is_custom BOOLEAN NOT NULL DEFAULT 0,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-        )
-        ''')
+        # Drop existing collections if they exist
+        existing_collections = db.list_collection_names()
         
-        # Create Camera table
-        logger.info("Creating Camera table")
-        cursor.execute('''
-        CREATE TABLE camera (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            rtsp_url TEXT NOT NULL,
-            username TEXT,
-            password TEXT,
-            is_active BOOLEAN NOT NULL DEFAULT 1,
-            recording_enabled BOOLEAN NOT NULL DEFAULT 1,
-            detection_enabled BOOLEAN NOT NULL DEFAULT 1,
-            model_id INTEGER,
-            confidence_threshold REAL NOT NULL DEFAULT 0.45,
-            location TEXT,
-            status TEXT DEFAULT 'offline',
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (model_id) REFERENCES ai_model (id)
-        )
-        ''')
+        collections_to_create = [
+            'users', 'ai_models', 'cameras', 'recordings', 
+            'detections', 'regions_of_interest'
+        ]
         
-        # Create ROI table
-        logger.info("Creating ROI table")
-        cursor.execute('''
-        CREATE TABLE roi (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            camera_id INTEGER NOT NULL,
-            name TEXT NOT NULL,
-            coordinates TEXT NOT NULL,
-            detection_classes TEXT,
-            is_active BOOLEAN NOT NULL DEFAULT 1,
-            email_notifications BOOLEAN NOT NULL DEFAULT 0,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (camera_id) REFERENCES camera (id)
-        )
-        ''')
+        for collection in collections_to_create:
+            if collection in existing_collections:
+                logger.info(f"Dropping existing collection: {collection}")
+                db.drop_collection(collection)
         
-        # Create Recording table
-        logger.info("Creating Recording table")
-        cursor.execute('''
-        CREATE TABLE recording (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            camera_id INTEGER NOT NULL,
-            file_path TEXT NOT NULL,
-            thumbnail_path TEXT,
-            timestamp TIMESTAMP NOT NULL,
-            duration INTEGER,
-            file_size INTEGER,
-            recording_type TEXT NOT NULL DEFAULT 'continuous',
-            is_flagged BOOLEAN NOT NULL DEFAULT 0,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (camera_id) REFERENCES camera (id)
-        )
-        ''')
+        # Create collections and indexes
         
-        # Create Detection table
-        logger.info("Creating Detection table")
-        cursor.execute('''
-        CREATE TABLE detection (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            camera_id INTEGER NOT NULL,
-            recording_id INTEGER,
-            roi_id INTEGER,
-            timestamp TIMESTAMP NOT NULL,
-            class_name TEXT NOT NULL,
-            confidence REAL NOT NULL,
-            bbox_x REAL NOT NULL,
-            bbox_y REAL NOT NULL,
-            bbox_width REAL NOT NULL,
-            bbox_height REAL NOT NULL,
-            image_path TEXT,
-            video_path TEXT,
-            notified BOOLEAN NOT NULL DEFAULT 0,
-            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (camera_id) REFERENCES camera (id),
-            FOREIGN KEY (recording_id) REFERENCES recording (id),
-            FOREIGN KEY (roi_id) REFERENCES roi (id)
-        )
-        ''')
+        # Users collection
+        logger.info("Creating users collection and indexes")
+        db.create_collection("users")
+        db.users.create_index([("username", ASCENDING)], unique=True)
+        db.users.create_index([("email", ASCENDING)], unique=True)
+        db.users.create_index([("api_key", ASCENDING)], unique=True, sparse=True)
+        
+        # AI Models collection
+        logger.info("Creating ai_models collection and indexes")
+        db.create_collection("ai_models")
+        db.ai_models.create_index([("name", ASCENDING)], unique=True)
+        
+        # Cameras collection
+        logger.info("Creating cameras collection and indexes")
+        db.create_collection("cameras")
+        db.cameras.create_index([("name", ASCENDING)])
+        
+        # Regions of Interest collection
+        logger.info("Creating regions_of_interest collection and indexes")
+        db.create_collection("regions_of_interest")
+        db.regions_of_interest.create_index([("camera_id", ASCENDING)])
+        
+        # Recordings collection
+        logger.info("Creating recordings collection and indexes")
+        db.create_collection("recordings")
+        db.recordings.create_index([("camera_id", ASCENDING)])
+        db.recordings.create_index([("timestamp", DESCENDING)])
+        db.recordings.create_index([("file_path", ASCENDING)], unique=True)
+        
+        # Detections collection
+        logger.info("Creating detections collection and indexes")
+        db.create_collection("detections")
+        db.detections.create_index([("camera_id", ASCENDING)])
+        db.detections.create_index([("recording_id", ASCENDING)])
+        db.detections.create_index([("roi_id", ASCENDING)])
+        db.detections.create_index([("timestamp", DESCENDING)])
+        db.detections.create_index([("class_name", ASCENDING)])
         
         # Insert default admin user
         logger.info("Creating default admin user: admin/admin")
-        cursor.execute('''
-        INSERT INTO user (username, email, password_hash, is_admin, created_at)
-        VALUES (?, ?, ?, ?, ?)
-        ''', ('admin', 'admin@example.com', hash_password('admin'), 1, datetime.now()))
+        default_user = {
+            "username": "admin",
+            "email": "admin@example.com",
+            "password_hash": hash_password("admin"),
+            "is_admin": True,
+            "is_active": True,
+            "created_at": datetime.utcnow()
+        }
+        db.users.insert_one(default_user)
         
         # Insert default YOLOv5 models
         logger.info("Creating default AI models")
         models = [
-            ('YOLOv5s', 'models/yolov5s.pt', 'Small version of YOLOv5', 1, 0),
-            ('YOLOv5m', 'models/yolov5m.pt', 'Medium version of YOLOv5', 0, 0),
-            ('YOLOv5l', 'models/yolov5l.pt', 'Large version of YOLOv5', 0, 0)
+            {
+                "name": "YOLOv5s",
+                "file_path": "models/yolov5s.pt",
+                "description": "Small version of YOLOv5",
+                "is_default": True,
+                "is_custom": False,
+                "created_at": datetime.utcnow()
+            },
+            {
+                "name": "YOLOv5m",
+                "file_path": "models/yolov5m.pt",
+                "description": "Medium version of YOLOv5",
+                "is_default": False,
+                "is_custom": False,
+                "created_at": datetime.utcnow()
+            },
+            {
+                "name": "YOLOv5l",
+                "file_path": "models/yolov5l.pt",
+                "description": "Large version of YOLOv5",
+                "is_default": False,
+                "is_custom": False,
+                "created_at": datetime.utcnow()
+            }
         ]
         
-        cursor.executemany('''
-        INSERT INTO ai_model (name, file_path, description, is_default, is_custom)
-        VALUES (?, ?, ?, ?, ?)
-        ''', models)
+        db.ai_models.insert_many(models)
         
-        # Commit changes and close connection
-        conn.commit()
-        conn.close()
-        
-        logger.info("Database initialization complete!")
+        logger.info("MongoDB database initialization complete!")
         logger.info("You can now run 'python run.py' to start the application")
         logger.info("Login with username: admin, password: admin")
         
-    except sqlite3.Error as e:
-        logger.error(f"SQLite error: {e}")
-        if os.path.exists(db_path):
-            os.remove(db_path)
-        sys.exit(1)
     except Exception as e:
-        logger.error(f"Error: {e}")
-        if os.path.exists(db_path):
-            os.remove(db_path)
+        logger.error(f"Error initializing MongoDB: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         sys.exit(1)
 
 if __name__ == "__main__":

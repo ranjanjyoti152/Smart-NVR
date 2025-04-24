@@ -76,7 +76,7 @@ def sync_recordings():
         
         with app.app_context():
             # Get all active cameras
-            cameras = Camera.query.filter_by(is_active=True).all()
+            cameras = Camera.get_active_cameras()
             
             if not cameras:
                 logger.warning("No active cameras found in the database")
@@ -130,20 +130,26 @@ def sync_recordings():
                         continue
                     
                     # Check if recording already exists in database
-                    existing = Recording.query.filter_by(
-                        camera_id=camera_id,
-                        file_path=file_path
-                    ).first()
+                    existing_recordings = list(db.recordings.find({
+                        'camera_id': camera_id,
+                        'file_path': file_path
+                    }))
                     
-                    if existing:
+                    if existing_recordings:
+                        existing = existing_recordings[0]
                         # Update existing record if file size changed
-                        if existing.file_size != file_size:
+                        if existing.get('file_size') != file_size:
                             # Get video duration
                             duration = get_file_duration(file_path)
                             
-                            existing.file_size = file_size
-                            existing.duration = duration
-                            db.session.commit()
+                            # Update the existing recording in MongoDB
+                            db.recordings.update_one(
+                                {'_id': existing['_id']},
+                                {'$set': {
+                                    'file_size': file_size,
+                                    'duration': duration
+                                }}
+                            )
                             updated_entries += 1
                             logger.info(f"Updated existing recording: {file_path}")
                     else:
@@ -151,17 +157,17 @@ def sync_recordings():
                         duration = get_file_duration(file_path)
                         
                         # Create new database entry
-                        new_recording = Recording(
-                            camera_id=camera_id,
-                            file_path=file_path,
-                            timestamp=timestamp,
-                            duration=duration,
-                            file_size=file_size,
-                            recording_type='continuous'
-                        )
+                        recording_data = {
+                            'camera_id': camera_id,
+                            'file_path': file_path,
+                            'timestamp': timestamp,
+                            'duration': duration,
+                            'file_size': file_size,
+                            'recording_type': 'continuous',
+                            'created_at': datetime.utcnow()
+                        }
                         
-                        db.session.add(new_recording)
-                        db.session.commit()
+                        db.recordings.insert_one(recording_data)
                         new_entries += 1
                         logger.info(f"Added new recording to database: {file_path}")
             

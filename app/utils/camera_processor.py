@@ -15,6 +15,7 @@ import requests
 import random # Import random for generating colors
 from ultralytics import YOLO # Import YOLO from ultralytics
 import re  # Import re for regex pattern matching
+from bson.objectid import ObjectId  # Add missing import for MongoDB ObjectId
 
 logger = logging.getLogger(__name__)
 
@@ -68,18 +69,21 @@ class CameraProcessor:
         """Get path to AI model file from camera config or use default"""
         from app import db
         from app.models.ai_model import AIModel
+        from bson.objectid import ObjectId
 
         if self.camera.model_id:
-            model = AIModel.query.get(self.camera.model_id)
-            if model and os.path.exists(model.file_path):
-                logger.info(f"Using model specified by camera: {model.file_path}")
-                return model.file_path
+            # Use MongoDB style query instead of SQLAlchemy
+            model_data = db.ai_models.find_one({'_id': ObjectId(self.camera.model_id)})
+            if model_data and os.path.exists(model_data.get('file_path')):
+                logger.info(f"Using model specified by camera: {model_data.get('file_path')}")
+                return model_data.get('file_path')
 
         # Use default model if camera model not found or invalid
-        default_model = AIModel.query.filter_by(is_default=True).first()
-        if default_model and os.path.exists(default_model.file_path):
-            logger.info(f"Using default model: {default_model.file_path}")
-            return default_model.file_path
+        # Use MongoDB style query instead of SQLAlchemy
+        default_model_data = db.ai_models.find_one({'is_default': True})
+        if default_model_data and os.path.exists(default_model_data.get('file_path')):
+            logger.info(f"Using default model: {default_model_data.get('file_path')}")
+            return default_model_data.get('file_path')
 
         # Fallback logic (e.g., to yolov5s or a known existing model)
         fallback_path = os.path.join('models', 'yolov5s.pt') # Default fallback
@@ -137,39 +141,38 @@ class CameraProcessor:
         
     def _load_detection_regions(self):
         """Load detection regions (ROIs) for this camera"""
-        from app.models.roi import ROI
+        from app import db
+        from bson.objectid import ObjectId
 
         regions = []
-        rois = ROI.query.filter_by(camera_id=self.camera.id).all()
+        # Use MongoDB style query instead of SQLAlchemy
+        rois_data = db.regions_of_interest.find({'camera_id': str(self.camera.id), 'is_active': True})
 
-        for roi in rois:
-            if not roi.is_active:
-                continue
-
+        for roi_data in rois_data:
             try:
                 # Parse ROI coordinates and allowed classes
                 import json
-                coords = json.loads(roi.coordinates) if isinstance(roi.coordinates, str) else roi.coordinates
-                classes = json.loads(roi.detection_classes) if roi.detection_classes and isinstance(roi.detection_classes, str) else None
+                coords = json.loads(roi_data['coordinates']) if isinstance(roi_data['coordinates'], str) else roi_data['coordinates']
+                classes = json.loads(roi_data['detection_classes']) if roi_data.get('detection_classes') and isinstance(roi_data['detection_classes'], str) else None
 
                 # Log the loaded ROI for debugging
-                logger.info(f"Loading ROI {roi.id}: {roi.name}, classes: {classes}, email_notifications: {roi.email_notifications}")
+                logger.info(f"Loading ROI {roi_data['_id']}: {roi_data['name']}, classes: {classes}, email_notifications: {roi_data.get('email_notifications', False)}")
                 logger.info(f"ROI coordinates: {coords}")
 
                 if len(coords) >= 4:  # Need at least 3 points for a polygon
                     # Create polygon from coordinates - note these are normalized (0-1 range)
                     # We store them as normalized but need to keep track of this when checking points
                     regions.append({
-                        'id': roi.id,
-                        'name': roi.name,
+                        'id': str(roi_data['_id']),
+                        'name': roi_data['name'],
                         'normalized_coords': True,  # Flag to indicate coordinates are normalized
                         'polygon': Polygon(coords),
                         'classes': classes,
-                        'email_notifications': roi.email_notifications
+                        'email_notifications': roi_data.get('email_notifications', False)
                     })
-                    logger.info(f"Successfully created ROI polygon for {roi.name}")
+                    logger.info(f"Successfully created ROI polygon for {roi_data['name']}")
             except Exception as e:
-                logger.error(f"Error loading ROI {roi.id}: {str(e)}")
+                logger.error(f"Error loading ROI {roi_data.get('_id')}: {str(e)}")
                 import traceback
                 logger.error(traceback.format_exc())
 
@@ -818,7 +821,7 @@ class CameraProcessor:
             # Create database entry for the completed recording
             if self.current_video_path and self.video_start_time:
                 try:
-                    from app import app, db
+                    from app import db
                     from app.models.recording import Recording
 
                     # Calculate duration from start time to now
@@ -831,33 +834,31 @@ class CameraProcessor:
 
                         # Only process valid video files (non-zero size)
                         if file_size > 0:
-                            # Create database record
-                            with app.app_context():
-                                # Check if a record already exists
-                                existing_recording = Recording.query.filter_by(
+                            # Create or update database record using MongoDB
+                            # Check if a record already exists
+                            existing_recording_data = db.recordings.find_one({
+                                'camera_id': str(self.camera.id),
+                                'file_path': self.current_video_path
+                            })
+
+                            if not existing_recording_data:
+                                # Create new recording
+                                Recording.create(
                                     camera_id=self.camera.id,
-                                    file_path=self.current_video_path
-                                ).first()
-
-                                if not existing_recording:
-                                    recording = Recording(
-                                        camera_id=self.camera.id,
-                                        file_path=self.current_video_path,
-                                        timestamp=self.video_start_time,
-                                        duration=duration,
-                                        file_size=file_size,
-                                        recording_type='continuous'
-                                    )
-
-                                    db.session.add(recording)
-                                    db.session.commit()
-                                    logger.info(f"Added recording to database: {self.current_video_path}, duration: {duration:.1f}s")
-                                else:
-                                    # Update existing recording with latest info
-                                    existing_recording.duration = duration
-                                    existing_recording.file_size = file_size
-                                    db.session.commit()
-                                    logger.debug(f"Updated existing recording in database: {self.current_video_path}")
+                                    file_path=self.current_video_path,
+                                    timestamp=self.video_start_time,
+                                    duration=duration,
+                                    file_size=file_size,
+                                    recording_type='continuous'
+                                )
+                                logger.info(f"Added recording to database: {self.current_video_path}, duration: {duration:.1f}s")
+                            else:
+                                # Update existing recording
+                                recording = Recording(existing_recording_data)
+                                recording.duration = duration
+                                recording.file_size = file_size
+                                recording.save()
+                                logger.debug(f"Updated existing recording in database: {self.current_video_path}")
                         else:
                             logger.warning(f"Skip adding empty recording file to database: {self.current_video_path}")
                     else:
@@ -998,9 +999,10 @@ class CameraManager:
 
     def start_all_cameras(self):
         """Start all enabled cameras from database"""
-        from app.models import Camera
-
-        cameras = Camera.query.filter_by(is_active=True).all()
+        from app.models.camera import Camera
+        
+        # Use MongoDB style query instead of SQLAlchemy
+        cameras = Camera.get_active_cameras()
         started = 0
 
         for camera in cameras:

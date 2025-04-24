@@ -55,20 +55,16 @@ def signal_handler(sig, frame):
 
 def initialize_database():
     """Verify database exists and is accessible"""
-    db_path = 'instance/smart_nvr.db'
-    if not os.path.exists(db_path):
-        logger.error(f"Database not found at {db_path}")
-        logger.info("Please run 'python initialize_db.py' first to set up the database")
-        sys.exit(1)
+    logger.info("Verifying MongoDB connection...")
     
     with app.app_context():
         try:
-            # Verify we can connect to the database
-            User.query.first()
-            logger.info("Database connection verified")
+            # Verify we can connect to the MongoDB database
+            user_count = db.users.count_documents({})
+            logger.info(f"MongoDB connection verified. Found {user_count} users.")
         except Exception as e:
-            logger.error(f"Database connection failed: {str(e)}")
-            logger.info("Please run 'python initialize_db.py' to reinitialize the database")
+            logger.error(f"MongoDB connection failed: {str(e)}")
+            logger.info("Please run 'python initialize_db.py' to initialize the database")
             sys.exit(1)
 
 def download_models():

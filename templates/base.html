@@ -98,10 +98,16 @@
     <!-- Main Content Area -->
     <main class="mac-content {% if not current_user.is_authenticated %}no-sidebar{% endif %}">
         <div class="container-fluid py-3">
-            <!-- Flash messages -->
+            <!-- Flash messages with category support -->
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
-                    {% for category, message in messages %}
+                    {% for message_item in messages %}
+                        {% set category = 'info' %} {# Default category #}
+                        {% set message = message_item %}
+                        {% if message_item is iterable and message_item is not string and message_item|length == 2 %}
+                            {% set category = message_item[0] %}
+                            {% set message = message_item[1] %}
+                        {% endif %}
                         <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
                             {{ message }}
                             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>

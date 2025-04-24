@@ -18,11 +18,14 @@ _email_disabled_logged = False
 
 # Email rate limiting
 _last_email_time = {}  # Dictionary to track last email time for each ROI
-_email_cooldown = 10  # Seconds between emails for the same ROI (1 minute)
+_email_cooldown = 10  # Seconds between emails for the same ROI (10 seconds)
 _email_queue = []  # Queue for emails to be sent
 _email_thread = None  # Thread for sending emails asynchronously
 _email_thread_running = False
 _email_thread_lock = threading.Lock()
+# Track objects that have already triggered notifications for each ROI
+_tracked_objects = {}  # Format: {roi_id: {'class_name': timestamp}}
+_object_expiry = 30  # Seconds before an object is considered "new" again (5 minutes)
 
 def load_config():
     """Load email configuration from settings file"""
@@ -112,7 +115,7 @@ def send_detection_email(camera, detection, roi=None):
         detection: Detection object from database
         roi: Optional ROI object if detection was within a specific region
     """
-    global _email_disabled_logged, _last_email_time
+    global _email_disabled_logged, _last_email_time, _tracked_objects
     
     # Start the email worker thread if not running
     _start_email_worker()
@@ -133,29 +136,92 @@ def send_detection_email(camera, detection, roi=None):
         return False
     
     # Check if detection class is included in the ROI's detection classes
-    if roi and roi.detection_classes:
+    if roi and hasattr(roi, 'detection_classes') and roi.detection_classes:
         try:
-            roi_classes = json.loads(roi.detection_classes) if isinstance(roi.detection_classes, str) else roi.detection_classes
-            # If ROI has specified classes (not empty) and the detected class isn't in the list, skip
-            if roi_classes and detection.class_name not in roi_classes:
-                logger.debug(f"Email notification skipped - {detection.class_name} not in ROI's detection classes: {roi_classes}")
-                return False
+            # First, convert to a list regardless of format (string JSON or list)
+            if isinstance(roi.detection_classes, str) and roi.detection_classes.strip():
+                # Try to parse JSON string
+                try:
+                    roi_classes = json.loads(roi.detection_classes)
+                except json.JSONDecodeError:
+                    # If it's not valid JSON, try comma-separated format
+                    roi_classes = [c.strip() for c in roi.detection_classes.split(',')]
+            elif isinstance(roi.detection_classes, (list, tuple)):
+                roi_classes = roi.detection_classes
+            else:
+                roi_classes = []
+            
+            # If ROI has specified classes (not empty list) and the detected class isn't in the list, skip
+            if roi_classes:
+                # Convert class IDs to class names if needed
+                if all(isinstance(c, int) or (isinstance(c, str) and c.isdigit()) for c in roi_classes):
+                    # These are class IDs - detection.class_name is the actual name, need to check by ID
+                    # This is a simplification - you might need to look up class ID to name mapping
+                    # in your actual implementation
+                    logger.debug(f"ROI classes specified by ID: {roi_classes}, detected class: {detection.class_name}")
+                    
+                    # If detection has class_id attribute, use it for comparison
+                    if hasattr(detection, 'class_id'):
+                        detection_class_id = detection.class_id
+                        match_found = str(detection_class_id) in [str(c) for c in roi_classes]
+                    else:
+                        # Try to infer class ID from name using COCO classes (if applicable)
+                        # This is just an example, adjust based on your actual class mapping
+                        coco_classes = {
+                            'person': 0, 'bicycle': 1, 'car': 2, 'motorcycle': 3, 'airplane': 4, 
+                            'bus': 5, 'train': 6, 'truck': 7, 'boat': 8, 'traffic light': 9,
+                            'fire hydrant': 10, 'stop sign': 11, 'parking meter': 12, 'bench': 13, 
+                            'bird': 14, 'cat': 15, 'dog': 16, 'horse': 17, 'sheep': 18, 'cow': 19, 
+                            'elephant': 20, 'bear': 21, 'zebra': 22, 'giraffe': 23, 'backpack': 24, 
+                            'umbrella': 25, 'handbag': 26, 'tie': 27, 'suitcase': 28, 'frisbee': 29, 
+                            'skis': 30, 'snowboard': 31, 'sports ball': 32, 'kite': 33, 'baseball bat': 34, 
+                            'baseball glove': 35, 'skateboard': 36, 'surfboard': 37, 'tennis racket': 38, 
+                            'bottle': 39, 'wine glass': 40, 'cup': 41, 'fork': 42, 'knife': 43, 
+                            'spoon': 44, 'bowl': 45, 'banana': 46, 'apple': 47, 'sandwich': 48, 
+                            'orange': 49, 'broccoli': 50, 'carrot': 51, 'hot dog': 52, 'pizza': 53, 
+                            'donut': 54, 'cake': 55, 'chair': 56, 'couch': 57, 'potted plant': 58, 
+                            'bed': 59, 'dining table': 60, 'toilet': 61, 'tv': 62, 'laptop': 63, 
+                            'mouse': 64, 'remote': 65, 'keyboard': 66, 'cell phone': 67, 'microwave': 68, 
+                            'oven': 69, 'toaster': 70, 'sink': 71, 'refrigerator': 72, 'book': 73, 
+                            'clock': 74, 'vase': 75, 'scissors': 76, 'teddy bear': 77, 'hair drier': 78, 
+                            'toothbrush': 79
+                        }
+                        # Try direct lookup, fall back to lower case if needed
+                        detection_class_id = coco_classes.get(detection.class_name, 
+                                                                coco_classes.get(detection.class_name.lower(), -1))
+                        # Check if detected class ID is in the ROI's class list
+                        match_found = str(detection_class_id) in [str(c) for c in roi_classes]
+                else:
+                    # These are class names, direct comparison
+                    match_found = detection.class_name in roi_classes or detection.class_name.lower() in [c.lower() for c in roi_classes]
+                
+                if not match_found:
+                    logger.info(f"Email notification skipped - {detection.class_name} not in ROI's detection classes: {roi_classes}")
+                    return False
+                    
         except Exception as e:
             # If there's any error parsing the classes, log the error and skip notification
             logger.error(f"Error parsing detection classes for ROI {roi.id}: {str(e)}")
             return False
     
-    # Apply rate limiting for this ROI
+    # Apply rate limiting for this ROI and object
     roi_id = getattr(roi, 'id', 'unknown')
     now = datetime.now()
-    last_email_time = _last_email_time.get(roi_id)
     
-    if last_email_time and (now - last_email_time).total_seconds() < _email_cooldown:
-        logger.info(f"Email notification for ROI {roi.name} (id={roi_id}) skipped due to cooldown period")
+    # Check if the object has already triggered a notification recently
+    tracked_objects = _tracked_objects.get(roi_id, {})
+    object_last_seen = tracked_objects.get(detection.class_name)
+    
+    if object_last_seen and (now - object_last_seen).total_seconds() < _object_expiry:
+        logger.info(f"Email notification for {detection.class_name} in ROI {roi.name} (id={roi_id}) skipped due to duplicate object tracking")
         return False
     
     # Update the last email time for this ROI
     _last_email_time[roi_id] = now
+    
+    # Update tracked objects for this ROI
+    tracked_objects[detection.class_name] = now
+    _tracked_objects[roi_id] = tracked_objects
     
     # Extract only the necessary attributes from the database objects to avoid
     # SQLAlchemy detached instance errors in the background thread

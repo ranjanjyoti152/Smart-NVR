@@ -7,9 +7,11 @@ import shutil
 from werkzeug.utils import secure_filename
 import requests # Add requests for downloading
 from ultralytics import YOLO # Import YOLO for verification
+from datetime import datetime
 
 from app import db
-from app.models import User, Camera
+from app.models.user import User # Fix import for User model
+from app.models.camera import Camera
 from app.models.ai_model import AIModel
 from app.utils.decorators import admin_required
 
@@ -27,7 +29,7 @@ def admin_index():
 @admin_required
 def user_management():
     """User management page"""
-    users = User.query.all()
+    users = User.get_all()
     return render_template('admin/users.html', title='User Management', users=users)
 
 @admin_bp.route('/users/create', methods=['POST'])
@@ -41,30 +43,29 @@ def create_user():
     is_admin = True if request.form.get('is_admin') else False
     
     # Check if user already exists
-    if User.query.filter_by(username=username).first():
+    if User.get_by_username(username):
         flash('Username already exists.', 'danger')
         return redirect(url_for('admin.user_management'))
     
-    if User.query.filter_by(email=email).first():
+    if User.get_by_email(email):
         flash('Email already registered.', 'danger')
         return redirect(url_for('admin.user_management'))
     
     # Create new user
-    user = User(username=username, email=email, is_admin=is_admin)
-    user.set_password(password)
-    
-    db.session.add(user)
-    db.session.commit()
+    User.create(username, email, password, is_admin=is_admin)
     
     flash('User created successfully.', 'success')
     return redirect(url_for('admin.user_management'))
 
-@admin_bp.route('/users/<int:user_id>', methods=['GET', 'POST'])
+@admin_bp.route('/users/<user_id>', methods=['GET', 'POST'])
 @login_required
 @admin_required
 def edit_user(user_id):
     """Edit a user"""
-    user = User.query.get_or_404(user_id)
+    user = User.get_by_id(user_id)
+    if not user:
+        flash('User not found.', 'danger')
+        return redirect(url_for('admin.user_management'))
     
     # Prevent admins from editing themselves (to avoid removing their own admin rights)
     if user.id == current_user.id:
@@ -78,36 +79,43 @@ def edit_user(user_id):
         
         # Update user
         if email != user.email:
-            if User.query.filter_by(email=email).first():
+            if User.get_by_email(email):
                 flash('Email already registered.', 'danger')
                 return redirect(url_for('admin.edit_user', user_id=user_id))
+            # Update the email in MongoDB
+            db.users.update_one({'_id': user._id}, {'$set': {'email': email}})
             user.email = email
         
+        # Update admin status
+        db.users.update_one({'_id': user._id}, {'$set': {'is_admin': is_admin}})
         user.is_admin = is_admin
         
+        # Update password if provided
         if password:
             user.set_password(password)
         
-        db.session.commit()
         flash('User updated successfully.', 'success')
         return redirect(url_for('admin.user_management'))
     
     return render_template('admin/edit_user.html', title='Edit User', user=user)
 
-@admin_bp.route('/users/<int:user_id>/delete', methods=['POST'])
+@admin_bp.route('/users/<user_id>/delete', methods=['POST'])
 @login_required
 @admin_required
 def delete_user(user_id):
     """Delete a user"""
-    user = User.query.get_or_404(user_id)
+    user = User.get_by_id(user_id)
+    if not user:
+        flash('User not found.', 'danger')
+        return redirect(url_for('admin.user_management'))
     
     # Prevent admins from deleting themselves
     if user.id == current_user.id:
         flash('You cannot delete your own account.', 'danger')
         return redirect(url_for('admin.user_management'))
     
-    db.session.delete(user)
-    db.session.commit()
+    # Delete from MongoDB
+    db.users.delete_one({'_id': user._id})
     
     flash('User deleted successfully.', 'success')
     return redirect(url_for('admin.user_management'))
@@ -118,22 +126,15 @@ def delete_user(user_id):
 @admin_required
 def api_get_users():
     """API endpoint to get all users"""
-    users = User.query.all()
-    return jsonify([{
-        'id': user.id,
-        'username': user.username,
-        'email': user.email,
-        'is_admin': user.is_admin,
-        'last_login': user.last_login.isoformat() if user.last_login else None,
-        'created_at': user.created_at.isoformat()
-    } for user in users])
+    users = User.get_all()
+    return jsonify([user.to_dict(include_email=True) for user in users])
 
 @admin_bp.route('/models')
 @login_required
 @admin_required
 def manage_models():
     """AI model management page"""
-    models = AIModel.query.all()
+    models = AIModel.get_all()
     return render_template('admin/models.html', title='AI Model Management', models=models)
 
 @admin_bp.route('/models/add', methods=['POST'])
@@ -158,25 +159,12 @@ def add_model():
         return redirect(url_for('admin.manage_models'))
     
     # Check if model name already exists
-    if AIModel.query.filter_by(name=name).first():
+    if AIModel.get_by_name(name):
         flash('A model with this name already exists.', 'danger')
         return redirect(url_for('admin.manage_models'))
     
-    # If this is set to default, clear default flag on all other models
-    if is_default:
-        AIModel.query.filter_by(is_default=True).update({'is_default': False})
-    
     # Create new model
-    model = AIModel(
-        name=name,
-        file_path=file_path,
-        description=description,
-        is_custom=is_custom,
-        is_default=is_default
-    )
-    
-    db.session.add(model)
-    db.session.commit()
+    AIModel.create(name, file_path, description=description, is_default=is_default, is_custom=is_custom)
     
     flash('Model added successfully.', 'success')
     return redirect(url_for('admin.manage_models'))
@@ -214,7 +202,7 @@ def upload_model():
             }), 400
         
         # Check if model name already exists
-        if AIModel.query.filter_by(name=name).first():
+        if AIModel.get_by_name(name):
             return jsonify({
                 'success': False,
                 'message': 'A model with this name already exists'
@@ -281,21 +269,14 @@ def upload_model():
                 'message': f'Invalid or incompatible YOLO model file: {str(e)}'
             }), 400
 
-        # If this is set to default, clear default flag on all other models
-        if is_default:
-            AIModel.query.filter_by(is_default=True).update({'is_default': False})
-
-        # Create model record
-        model = AIModel(
+        # Create model in MongoDB
+        model = AIModel.create(
             name=name,
             file_path=file_path,
             description=description,
-            is_custom=True,
-            is_default=is_default
+            is_default=is_default,
+            is_custom=True
         )
-
-        db.session.add(model)
-        db.session.commit()
 
         return jsonify({
             'success': True,
@@ -368,7 +349,7 @@ def download_pretrained_model():
     # Check if model file already exists
     if os.path.exists(model_path):
          # Check if it's already in the database
-         existing_model = AIModel.query.filter_by(file_path=model_path).first()
+         existing_model = AIModel.get_by_name(model_name)
          if existing_model:
              return jsonify({
                  'success': True, # Indicate success, but file already exists
@@ -389,25 +370,21 @@ def download_pretrained_model():
                 f.write(chunk)
         print(f"Download complete.")
 
-        # Add model to database if not already present (check again just in case)
-        existing_model = AIModel.query.filter(
-            (AIModel.name == model_name) | (AIModel.file_path == model_path)
-        ).first()
+        # Add model to database if not already present
+        existing_model = AIModel.get_by_name(model_name)
 
         if not existing_model:
             # Determine if this should be the default (e.g., if it's yolov5s and no default exists)
             is_default_candidate = (model_key == 'yolov5s')
-            make_default = is_default_candidate and (AIModel.query.filter_by(is_default=True).count() == 0)
-
-            model_record = AIModel(
+            make_default = is_default_candidate and not AIModel.get_default_model()
+            
+            model_record = AIModel.create(
                 name=model_name,
                 file_path=model_path,
                 description=f"Pre-trained {model_name} model",
                 is_custom=False,
                 is_default=make_default
             )
-            db.session.add(model_record)
-            db.session.commit()
             print(f"Added {model_name} to database.")
         else:
             print(f"Model {model_name} already exists in database.")
@@ -439,12 +416,15 @@ def download_pretrained_model():
             'message': f'An unexpected error occurred: {str(e)}'
         }), 500
 
-@admin_bp.route('/models/<int:model_id>/update', methods=['POST'])
+@admin_bp.route('/models/<model_id>/update', methods=['POST'])
 @login_required
 @admin_required
 def update_model(model_id):
     """Update an AI model's metadata"""
-    model = AIModel.query.get_or_404(model_id)
+    model = AIModel.get_by_id(model_id)
+    if not model:
+        flash('Model not found.', 'danger')
+        return redirect(url_for('admin.manage_models'))
     
     name = request.form.get('name')
     description = request.form.get('description', '')
@@ -455,45 +435,50 @@ def update_model(model_id):
         return redirect(url_for('admin.manage_models'))
     
     # Check if name already exists for a different model
-    existing = AIModel.query.filter_by(name=name).first()
-    if existing and existing.id != model_id:
+    existing = AIModel.get_by_name(name)
+    if existing and existing.id != model.id:
         flash('A model with this name already exists.', 'danger')
         return redirect(url_for('admin.manage_models'))
     
     # Update model
     model.name = name
     model.description = description
-    
-    db.session.commit()
+    model.save()
     
     flash('Model updated successfully.', 'success')
     return redirect(url_for('admin.manage_models'))
 
-@admin_bp.route('/models/<int:model_id>/set-default', methods=['POST'])
+@admin_bp.route('/models/<model_id>/set-default', methods=['POST'])
 @login_required
 @admin_required
 def set_default_model(model_id):
     """Set an AI model as the default"""
-    model = AIModel.query.get_or_404(model_id)
+    model = AIModel.get_by_id(model_id)
+    if not model:
+        return jsonify({
+            'success': False,
+            'message': 'Model not found'
+        }), 404
     
-    # Clear default flag on all models
-    AIModel.query.filter_by(is_default=True).update({'is_default': False})
-    
-    # Set this model as default
-    model.is_default = True
-    db.session.commit()
+    # Set as default (this method handles clearing other defaults)
+    model.set_as_default()
     
     return jsonify({
         'success': True,
         'message': f'{model.name} set as default model'
     })
 
-@admin_bp.route('/models/<int:model_id>/delete', methods=['DELETE'])
+@admin_bp.route('/models/<model_id>/delete', methods=['DELETE'])
 @login_required
 @admin_required
 def delete_model(model_id):
     """Delete an AI model"""
-    model = AIModel.query.get_or_404(model_id)
+    model = AIModel.get_by_id(model_id)
+    if not model:
+        return jsonify({
+            'success': False,
+            'message': 'Model not found'
+        }), 404
     
     # Prevent deleting default model
     if model.is_default:
@@ -511,8 +496,7 @@ def delete_model(model_id):
             print(f"Error deleting model file: {str(e)}")
     
     # Delete from database
-    db.session.delete(model)
-    db.session.commit()
+    model.delete()
     
     return jsonify({
         'success': True,

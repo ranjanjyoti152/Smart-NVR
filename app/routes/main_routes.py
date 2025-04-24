@@ -20,14 +20,14 @@ def index():
 @login_required
 def dashboard():
     """Dashboard route with live camera feeds"""
-    cameras = Camera.query.filter_by(is_active=True).all()
+    cameras = Camera.get_active_cameras()
     return render_template('dashboard.html', title='Dashboard', cameras=cameras)
 
 @main_bp.route('/playback')
 @login_required
 def playback():
     """Video playback route"""
-    cameras = Camera.query.filter_by(is_active=True).all()
+    cameras = Camera.get_active_cameras()
     return render_template('playback.html', title='Playback', cameras=cameras)
 
 @main_bp.route('/monitor')
@@ -48,8 +48,8 @@ def profile():
 @login_required
 def camera_management():
     """Camera management route"""
-    cameras = Camera.query.all()
-    models = AIModel.query.all()
+    cameras = Camera.get_all()
+    models = AIModel.get_all()
     return render_template('camera_management.html', title='Camera Management', cameras=cameras, models=models)
 
 @main_bp.route('/add-camera', methods=['POST'])
@@ -63,15 +63,15 @@ def add_camera():
     username = request.form.get('username')
     password = request.form.get('password')
     model_id = request.form.get('model_id')
-    confidence = request.form.get('confidence', 0.45)
+    confidence = float(request.form.get('confidence', 0.45))
     
     # Validate inputs
     if not name or not rtsp_url:
         flash('Camera name and RTSP URL are required', 'danger')
         return redirect(url_for('main.camera_management'))
     
-    # Create new camera
-    camera = Camera(
+    # Create new camera using MongoDB model
+    camera = Camera.create(
         name=name,
         rtsp_url=rtsp_url,
         username=username,
@@ -82,11 +82,6 @@ def add_camera():
         recording_enabled='recording_enabled' in request.form,
         detection_enabled='detection_enabled' in request.form
     )
-    
-    # Save to database
-    from app import db
-    db.session.add(camera)
-    db.session.commit()
     
     # Start camera processor after adding the camera
     try:
@@ -101,14 +96,17 @@ def add_camera():
     
     return redirect(url_for('main.camera_management'))
 
-@main_bp.route('/edit-camera/<int:camera_id>', methods=['POST'])
+@main_bp.route('/edit-camera/<camera_id>', methods=['POST'])
 @login_required
 def edit_camera(camera_id):
     """Edit existing camera"""
     from flask import request, flash
     
     # Find camera
-    camera = Camera.query.get_or_404(camera_id)
+    camera = Camera.get_by_id(camera_id)
+    if not camera:
+        flash('Camera not found', 'danger')
+        return redirect(url_for('main.camera_management'))
     
     # Store old active state to check if we need to start/stop the camera
     old_is_active = camera.is_active
@@ -118,7 +116,6 @@ def edit_camera(camera_id):
     camera.rtsp_url = request.form.get('rtsp_url', camera.rtsp_url)
     camera.username = request.form.get('username')
     camera.password = request.form.get('password')
-    camera.location = request.form.get('location')
     camera.is_active = 'enabled' in request.form
     camera.recording_enabled = 'recording_enabled' in request.form
     camera.detection_enabled = 'detection_enabled' in request.form
@@ -130,8 +127,7 @@ def edit_camera(camera_id):
         camera.confidence_threshold = float(request.form.get('confidence'))
     
     # Save to database
-    from app import db
-    db.session.commit()
+    camera.save()
     
     # Restart camera processor if needed
     try:
@@ -159,7 +155,7 @@ def edit_camera(camera_id):
     
     return redirect(url_for('main.camera_management'))
 
-@main_bp.route('/delete-camera/<int:camera_id>', methods=['POST'])
+@main_bp.route('/delete-camera/<camera_id>', methods=['POST'])
 @login_required
 def delete_camera(camera_id):
     """Delete camera"""
@@ -167,7 +163,11 @@ def delete_camera(camera_id):
     import os
     
     # Find camera
-    camera = Camera.query.get_or_404(camera_id)
+    camera = Camera.get_by_id(camera_id)
+    if not camera:
+        flash('Camera not found', 'danger')
+        return redirect(url_for('main.camera_management'))
+    
     camera_name = camera.name
     
     # Stop camera processor first if it's running
@@ -180,9 +180,7 @@ def delete_camera(camera_id):
     
     # Import models and db
     from app import db
-    from app.models.detection import Detection
-    from app.models.recording import Recording
-    from app.models.roi import ROI
+    from app.models import Recording, Detection, ROI
     from app.routes.main_routes import get_recording_settings
     import logging
     
@@ -190,7 +188,7 @@ def delete_camera(camera_id):
     
     try:
         # Get all recordings for this camera - we need to get the file paths before deleting them
-        recordings = Recording.query.filter_by(camera_id=camera_id).all()
+        recordings = Recording.get_by_camera(camera_id)
         
         # Store the recording file paths so we can delete them after DB records are gone
         recording_files = []
@@ -225,23 +223,22 @@ def delete_camera(camera_id):
         
         logger.info(f"Deleting camera {camera_id} with {len(recordings)} recordings")
         
-        # Delete related detections first
-        Detection.query.filter_by(camera_id=camera_id).delete()
+        # Delete related detections
+        db.detections.delete_many({'camera_id': camera_id})
         logger.info(f"Deleted detections for camera {camera_id}")
         
-        # Delete related recordings from database
-        Recording.query.filter_by(camera_id=camera_id).delete()
+        # Delete related recordings
+        db.recordings.delete_many({'camera_id': camera_id})
         logger.info(f"Deleted recording records for camera {camera_id}")
         
         # Delete related ROIs
-        ROI.query.filter_by(camera_id=camera_id).delete()
+        db.regions_of_interest.delete_many({'camera_id': camera_id})
         logger.info(f"Deleted ROIs for camera {camera_id}")
         
-        # Now delete the camera from database
-        db.session.delete(camera)
-        db.session.commit()
+        # Delete the camera
+        camera.delete()
         
-        # After successful DB commit, delete physical files
+        # After successful DB deletion, delete physical files
         deleted_count = 0
         for file_path in recording_files:
             try:
@@ -283,7 +280,6 @@ def delete_camera(camera_id):
         
         flash(f'Camera {camera_name} and {deleted_count} recording files deleted successfully', 'success')
     except Exception as e:
-        db.session.rollback()
         flash(f'Error deleting camera: {str(e)}', 'danger')
     
     return redirect(url_for('main.camera_management'))
@@ -340,8 +336,7 @@ def settings():
         settings = create_default_settings()
         
     # Get available AI models
-    from app.models.ai_model import AIModel
-    ai_models = AIModel.query.all()
+    ai_models = AIModel.get_all()
     
     return render_template('settings.html', title='Settings', settings=settings, ai_models=ai_models)
 

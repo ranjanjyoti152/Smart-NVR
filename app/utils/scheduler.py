@@ -148,11 +148,13 @@ class BackgroundScheduler:
                 # Calculate cutoff date
                 cutoff_date = datetime.now() - timedelta(days=retention_days)
                 
-                # Get recordings older than cutoff
-                old_recordings = Recording.query.filter(
-                    Recording.timestamp < cutoff_date,
-                    Recording.is_flagged == False  # Don't delete flagged recordings
-                ).all()
+                # Get recordings older than cutoff using MongoDB query
+                old_recordings_data = db.recordings.find({
+                    'timestamp': {'$lt': cutoff_date},
+                    'is_flagged': False  # Don't delete flagged recordings
+                })
+                
+                old_recordings = [Recording(rec) for rec in old_recordings_data]
                 
                 deleted_count = 0
                 for recording in old_recordings:
@@ -162,18 +164,17 @@ class BackgroundScheduler:
                             os.remove(recording.file_path)
                             logger.info(f"Deleted recording file: {recording.file_path}")
                             
-                        # Delete database record
-                        db.session.delete(recording)
+                        # Delete database record using MongoDB
+                        db.recordings.delete_one({'_id': recording._id})
                         deleted_count += 1
                     except Exception as e:
                         logger.error(f"Error deleting recording {recording.id}: {str(e)}")
                 
-                # Commit changes
-                db.session.commit()
-                
                 logger.info(f"Cleanup completed. Deleted {deleted_count} old recordings.")
             except Exception as e:
                 logger.error(f"Error in cleanup task: {str(e)}")
+                import traceback
+                logger.error(traceback.format_exc())
             
     def _health_check_task(self):
         """Check system health"""

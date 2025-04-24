@@ -8,6 +8,7 @@ import os
 import json
 from datetime import datetime, timedelta
 import time
+from bson.objectid import ObjectId
 
 from app import db
 from app.models.camera import Camera
@@ -41,7 +42,7 @@ def report_detection(request):
             }), 400
             
         camera_id = data['camera_id']
-        camera = Camera.query.get(camera_id)
+        camera = Camera.get_by_id(camera_id)
         
         if not camera:
             return jsonify({
@@ -68,12 +69,14 @@ def report_detection(request):
                 detection_timestamp = datetime.fromisoformat(detection_timestamp)
                 
             # Look for existing recording in the last minute
-            recent_recording = Recording.query.filter(
-                Recording.camera_id == camera_id,
-                Recording.timestamp >= detection_timestamp - timedelta(minutes=1)
-            ).order_by(Recording.timestamp.desc()).first()
+            recent_recordings = list(db.recordings.find({
+                'camera_id': str(camera_id),
+                'timestamp': {'$gte': detection_timestamp - timedelta(minutes=1)}
+            }).sort('timestamp', -1).limit(1))
             
-            recording = recent_recording
+            if recent_recordings:
+                recording_data = recent_recordings[0]
+                recording = Recording(recording_data)
         
         # Process each detection
         new_detections = []
@@ -83,27 +86,22 @@ def report_detection(request):
             logger.debug(f"Processing detection with ROI ID: {roi_id}")
             
             # Create detection object
-            detection = Detection(
+            detection = Detection.create(
                 camera_id=camera_id,
-                recording_id=recording.id if recording else None,
-                roi_id=roi_id,
-                timestamp=det_data.get('timestamp', datetime.now()) if isinstance(det_data.get('timestamp'), datetime) else datetime.now(),
                 class_name=det_data.get('class_name', 'unknown'),
                 confidence=det_data.get('confidence', 0.0),
                 bbox_x=det_data.get('bbox_x', 0),
                 bbox_y=det_data.get('bbox_y', 0),
                 bbox_width=det_data.get('bbox_width', 0),
                 bbox_height=det_data.get('bbox_height', 0),
+                timestamp=det_data.get('timestamp', datetime.now()) if isinstance(det_data.get('timestamp'), datetime) else datetime.now(),
+                recording_id=recording.id if recording else None,
+                roi_id=roi_id,
                 image_path=det_data.get('image_path'),
-                video_path=det_data.get('video_path'),
-                notified=False
+                video_path=det_data.get('video_path')
             )
             
-            db.session.add(detection)
             new_detections.append(detection)
-        
-        # Commit all detections to database first
-        db.session.commit()
         
         # Process email notifications for new detections
         for detection in new_detections:
@@ -112,7 +110,7 @@ def report_detection(request):
                 roi = None
                 
                 if detection.roi_id:
-                    roi = ROI.query.get(detection.roi_id)
+                    roi = ROI.get_by_id(detection.roi_id)
                     
                     # Process email notifications (non-blocking since it's now handled asynchronously)
                     if roi and getattr(roi, 'email_notifications', False):
@@ -144,30 +142,41 @@ def report_detection(request):
 @login_required
 def get_cameras():
     """Get all active cameras"""
-    cameras = Camera.query.filter_by(is_active=True).all()
+    cameras = Camera.get_active_cameras()
     return jsonify({
         'success': True,
         'cameras': [camera.to_dict() for camera in cameras]
     })
 
-@api_bp.route('/cameras/<int:camera_id>')
+@api_bp.route('/cameras/<camera_id>')
 @login_required
 def get_camera(camera_id):
     """Get camera details"""
-    camera = Camera.query.get_or_404(camera_id)
+    camera = Camera.get_by_id(camera_id)
+    if not camera:
+        return jsonify({
+            'success': False,
+            'message': 'Camera not found'
+        }), 404
+        
     return jsonify({
         'success': True,
         'camera': camera.to_dict()
     })
 
-@api_bp.route('/cameras/<int:camera_id>/frame')
+@api_bp.route('/cameras/<camera_id>/frame')
 @login_required
 def get_camera_frame(camera_id):
     """Get a single frame from camera as JPEG image"""
     from app.utils.camera_processor import CameraManager
     import cv2
     
-    camera = Camera.query.get_or_404(camera_id)
+    camera = Camera.get_by_id(camera_id)
+    if not camera:
+        return jsonify({
+            'success': False,
+            'message': 'Camera not found'
+        }), 404
     
     # Get camera processor or start it if not running
     manager = CameraManager.get_instance()
@@ -205,14 +214,19 @@ def get_camera_frame(camera_id):
     # Return as response
     return Response(buffer.tobytes(), mimetype='image/jpeg')
 
-@api_bp.route('/cameras/<int:camera_id>/stream')
+@api_bp.route('/cameras/<camera_id>/stream')
 @login_required
 def get_camera_stream(camera_id):
     """Get camera stream (MJPEG)"""
     from app.utils.camera_processor import CameraManager
     import cv2
     
-    camera = Camera.query.get_or_404(camera_id)
+    camera = Camera.get_by_id(camera_id)
+    if not camera:
+        return jsonify({
+            'success': False,
+            'message': 'Camera not found'
+        }), 404
     
     # Get camera processor or start it if not running
     manager = CameraManager.get_instance()
@@ -257,30 +271,42 @@ def get_camera_stream(camera_id):
     return Response(generate(),
                    mimetype='multipart/x-mixed-replace; boundary=frame')
 
-@api_bp.route('/cameras/<int:camera_id>/snapshot')
+@api_bp.route('/cameras/<camera_id>/snapshot')
 @login_required
 def get_camera_snapshot(camera_id):
     """Get current camera snapshot"""
     # This is just an alias for the frame endpoint
     return get_camera_frame(camera_id)
 
-@api_bp.route('/cameras/<int:camera_id>/roi', methods=['GET'])
+@api_bp.route('/cameras/<camera_id>/roi', methods=['GET'])
 @login_required
 def get_camera_roi(camera_id):
     """Get camera regions of interest"""
-    camera = Camera.query.get_or_404(camera_id)
-    rois = ROI.query.filter_by(camera_id=camera.id).all()
+    camera = Camera.get_by_id(camera_id)
+    if not camera:
+        return jsonify({
+            'success': False,
+            'message': 'Camera not found'
+        }), 404
+        
+    rois = ROI.get_by_camera(camera_id)
     
     return jsonify({
         'success': True,
         'roi': [roi.to_dict() for roi in rois]
     })
 
-@api_bp.route('/cameras/<int:camera_id>/roi', methods=['POST'])
+@api_bp.route('/cameras/<camera_id>/roi', methods=['POST'])
 @login_required
 def create_camera_roi(camera_id):
     """Create new region of interest for camera"""
-    camera = Camera.query.get_or_404(camera_id)
+    camera = Camera.get_by_id(camera_id)
+    if not camera:
+        return jsonify({
+            'success': False,
+            'message': 'Camera not found'
+        }), 404
+        
     data = request.json
     
     if not data:
@@ -296,27 +322,24 @@ def create_camera_roi(camera_id):
         }), 400
     
     # Create new ROI
-    roi = ROI(
-        camera_id=camera.id,
-        name=data['name'],
-        coordinates=json.dumps(data['coordinates']),
-        detection_classes=json.dumps(data.get('detection_classes', [])),
-        is_active=data.get('is_active', True),
-        email_notifications=data.get('email_notifications', False)
-    )
-    
     try:
-        # Add and commit in a try block to catch database errors
-        db.session.add(roi)
-        db.session.commit()
+        roi = ROI.create(
+            camera_id=camera_id,
+            name=data['name'],
+            coordinates=data['coordinates'],  # Pass as-is, ROI.create handles conversion
+            detection_classes=data.get('detection_classes', []),  # Pass as-is
+            is_active=data.get('is_active', True),
+            email_notifications=data.get('email_notifications', False)
+        )
         
-        # Now try to reload ROIs for the camera, but in a separate try/except
-        # so if this fails, we still return success for the ROI creation
+        # Now try to reload ROIs for the camera
         try:
             from app.utils.camera_processor import CameraManager
             manager = CameraManager.get_instance()
             manager.reload_rois(camera_id)
         except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
             logger.error(f"Failed to reload ROIs: {str(e)}")
             # Continue execution - this shouldn't fail the whole request
         
@@ -325,19 +348,25 @@ def create_camera_roi(camera_id):
             'roi': roi.to_dict()
         }), 201
     except Exception as e:
-        # Roll back the session if there was an error
-        db.session.rollback()
+        import logging
+        logger = logging.getLogger(__name__)
         logger.error(f"Error creating ROI: {str(e)}")
         return jsonify({
             'success': False,
             'message': f"Error creating ROI: {str(e)}"
         }), 500
 
-@api_bp.route('/cameras/<int:camera_id>/roi/<int:roi_id>', methods=['PUT'])
+@api_bp.route('/cameras/<camera_id>/roi/<roi_id>', methods=['PUT'])
 @login_required
 def update_camera_roi(camera_id, roi_id):
     """Update region of interest for camera"""
-    roi = ROI.query.filter_by(id=roi_id, camera_id=camera_id).first_or_404()
+    roi = ROI.get_by_id(roi_id)
+    if not roi or roi.camera_id != camera_id:
+        return jsonify({
+            'success': False,
+            'message': 'ROI not found for this camera'
+        }), 404
+        
     data = request.json
     
     if not data:
@@ -350,15 +379,16 @@ def update_camera_roi(camera_id, roi_id):
     if 'name' in data:
         roi.name = data['name']
     if 'coordinates' in data:
-        roi.coordinates = json.dumps(data['coordinates'])
+        roi.coordinates = data['coordinates']  # Store as native array
     if 'detection_classes' in data:
-        roi.detection_classes = json.dumps(data['detection_classes'])
+        roi.detection_classes = data['detection_classes']  # Store as native array
     if 'is_active' in data:
         roi.is_active = data['is_active']
     if 'email_notifications' in data:
         roi.email_notifications = data['email_notifications']
     
-    db.session.commit()
+    # Save the updated ROI
+    roi.save()
     
     # Reload ROIs for the camera
     try:
@@ -375,14 +405,19 @@ def update_camera_roi(camera_id, roi_id):
         'roi': roi.to_dict()
     })
 
-@api_bp.route('/cameras/<int:camera_id>/roi/<int:roi_id>', methods=['DELETE'])
+@api_bp.route('/cameras/<camera_id>/roi/<roi_id>', methods=['DELETE'])
 @login_required
 def delete_camera_roi(camera_id, roi_id):
     """Delete region of interest for camera"""
-    roi = ROI.query.filter_by(id=roi_id, camera_id=camera_id).first_or_404()
+    roi = ROI.get_by_id(roi_id)
+    if not roi or roi.camera_id != camera_id:
+        return jsonify({
+            'success': False,
+            'message': 'ROI not found for this camera'
+        }), 404
     
-    db.session.delete(roi)
-    db.session.commit()
+    # Delete the ROI
+    roi.delete()
     
     # Reload ROIs for the camera
     try:
@@ -399,12 +434,17 @@ def delete_camera_roi(camera_id, roi_id):
         'message': 'ROI deleted successfully'
     })
 
-@api_bp.route('/cameras/<int:camera_id>/detections/latest')
+@api_bp.route('/cameras/<camera_id>/detections/latest')
 @login_required
 def get_latest_camera_detections(camera_id):
     """Get latest detections for a specific camera"""
     # Verify camera exists
-    camera = Camera.query.get_or_404(camera_id)
+    camera = Camera.get_by_id(camera_id)
+    if not camera:
+        return jsonify({
+            'success': False,
+            'message': 'Camera not found'
+        }), 404
     
     try:
         # Get real-time detections directly from camera processor
@@ -423,21 +463,19 @@ def get_latest_camera_detections(camera_id):
     # Fall back to database detections if no real-time detections available
     try:
         # Try directly getting camera detections
-        detections = Detection.query.filter_by(camera_id=camera_id).order_by(
-            Detection.timestamp.desc()
-        ).limit(20).all()
+        detections = Detection.get_by_camera(camera_id, limit=20)
         
         # If no direct camera detections, try via recordings
         if not detections:
-            recording_ids = db.session.query(Recording.id).filter_by(camera_id=camera_id).all()
-            recording_ids = [r[0] for r in recording_ids]
+            recordings = Recording.get_by_camera(camera_id)
+            recording_ids = [rec.id for rec in recordings]
             
             if recording_ids:
-                detections = Detection.query.filter(
-                    Detection.recording_id.in_(recording_ids)
-                ).order_by(
-                    Detection.timestamp.desc()
-                ).limit(20).all()
+                all_detections = []
+                for recording_id in recording_ids:
+                    all_detections.extend(Detection.get_by_recording(recording_id))
+                # Sort by timestamp and take latest 20
+                detections = sorted(all_detections, key=lambda d: d.timestamp, reverse=True)[:20]
     except Exception as e:
         print(f"Error getting database detections: {str(e)}")
         detections = []
@@ -446,156 +484,23 @@ def get_latest_camera_detections(camera_id):
     results = []
     for det in detections:
         # Skip detections without coordinates
-        if not all(hasattr(det, attr) for attr in ['bbox_x', 'bbox_y', 'bbox_w', 'bbox_h']):
+        if not all(hasattr(det, attr) for attr in ['bbox_x', 'bbox_y', 'bbox_width', 'bbox_height']):
             continue
         
         results.append({
             'id': det.id,
-            'class_name': det.object_class,  # Using object_class from model
+            'class_name': det.class_name,
             'confidence': det.confidence,
             'coordinates': {
                 'x_min': float(det.bbox_x),
                 'y_min': float(det.bbox_y),
-                'x_max': float(det.bbox_x) + float(det.bbox_w),
-                'y_max': float(det.bbox_y) + float(det.bbox_h)
+                'x_max': float(det.bbox_x) + float(det.bbox_width),
+                'y_max': float(det.bbox_y) + float(det.bbox_height)
             },
-            'timestamp': det.timestamp.isoformat() if det.timestamp else None
+            'timestamp': det.timestamp.isoformat() if isinstance(det.timestamp, datetime) else det.timestamp
         })
     
     return jsonify(results)
-
-@api_bp.route('/cameras/<int:camera_id>/recordings')
-@login_required
-def get_camera_recordings(camera_id):
-    """Get recordings for a specific camera with filters"""
-    import logging
-    logger = logging.getLogger(__name__)
-    
-    # Verify camera exists
-    camera = Camera.query.get_or_404(camera_id)
-    
-    # Get query parameters
-    date = request.args.get('date')  # Format: YYYY-MM-DD
-    events_only = request.args.get('events_only', 'false').lower() == 'true'
-    object_type = request.args.get('object_type', '')
-    
-    # Log incoming request parameters for debugging
-    logger.debug(f"API request for recordings: camera_id={camera_id}, date={date}, events_only={events_only}, object_type={object_type}")
-    
-    # Build query
-    query = Recording.query.filter_by(camera_id=camera_id)
-    
-    # Filter by date
-    if date:
-        try:
-            # Parse date string to datetime object
-            date_obj = datetime.strptime(date, '%Y-%m-%d')
-            next_day = date_obj + timedelta(days=1)
-            
-            # Log the date range for debugging
-            logger.debug(f"Filtering recordings between {date_obj} and {next_day}")
-            
-            # Use explicit timestamp filtering with string conversion to avoid timezone issues
-            date_str = date_obj.strftime('%Y-%m-%d')
-            next_day_str = next_day.strftime('%Y-%m-%d')
-            
-            # Convert recording timestamps to date strings for comparison
-            query = query.filter(
-                db.func.date(Recording.timestamp) == date_str
-            )
-        except ValueError as e:
-            logger.error(f"Invalid date format: {date}. Error: {str(e)}")
-            return jsonify({
-                'success': False,
-                'message': 'Invalid date format. Use YYYY-MM-DD',
-                'error': str(e)
-            }), 400
-    
-    # Filter by recording type (events only)
-    if events_only:
-        # Join with detections to find recordings with events
-        detections_subquery = db.session.query(Detection.recording_id).distinct().subquery()
-        query = query.filter(Recording.id.in_(detections_subquery))
-    
-    # Filter by object type
-    if object_type:
-        # Join with detections to filter by object type
-        recording_ids = db.session.query(Detection.recording_id).filter(
-            Detection.class_name == object_type
-        ).distinct().all()
-        recording_ids = [r[0] for r in recording_ids]
-        if recording_ids:
-            query = query.filter(Recording.id.in_(recording_ids))
-        else:
-            # If no recordings match the object type, return empty list
-            logger.debug(f"No recordings found with object type: {object_type}")
-            return jsonify({
-                'recordings': [],
-                'detections': []
-            })
-    
-    # Order by timestamp
-    query = query.order_by(Recording.timestamp.desc())
-    
-    # Execute query
-    recordings = query.all()
-    logger.debug(f"Found {len(recordings)} recordings for camera {camera_id} on date {date}")
-    
-    # Group detections by recording
-    recording_detections = {}
-    if recordings:
-        recording_ids = [rec.id for rec in recordings]
-        all_detections = Detection.query.filter(Detection.recording_id.in_(recording_ids)).all()
-        
-        # Group detections by recording_id
-        for det in all_detections:
-            if det.recording_id not in recording_detections:
-                recording_detections[det.recording_id] = []
-            recording_detections[det.recording_id].append(det)
-    
-    # Format results
-    recording_results = []
-    for rec in recordings:
-        # Get detections for this recording if any
-        detections_for_recording = recording_detections.get(rec.id, [])
-        detections_data = []
-        
-        for det in detections_for_recording:
-            detections_data.append({
-                'id': det.id,
-                'class_name': det.class_name,
-                'confidence': det.confidence,
-                'timestamp': det.timestamp.isoformat() if det.timestamp else None
-            })
-            
-        recording_results.append({
-            'id': rec.id,
-            'timestamp': rec.timestamp.isoformat() if rec.timestamp else None,
-            'duration': rec.duration,
-            'file_path': rec.file_path,
-            'thumbnail_path': rec.thumbnail_path,
-            'recording_type': rec.recording_type,
-            'is_flagged': rec.is_flagged,
-            'file_size': rec.file_size,
-            'video_url': f'/api/recordings/{rec.id}/video',
-            'thumbnail_url': f'/api/recordings/{rec.id}/thumbnail',
-            'detections': detections_data
-        })
-    
-    # Get all unique detections for this date
-    all_detections_data = []
-    detection_ids = set()
-    
-    for rec_data in recording_results:
-        for det in rec_data['detections']:
-            if det['id'] not in detection_ids:
-                all_detections_data.append(det)
-                detection_ids.add(det['id'])
-    
-    return jsonify({
-        'recordings': recording_results,
-        'detections': all_detections_data
-    })
 
 # --- Recordings API Endpoints ---
 
@@ -604,22 +509,24 @@ def get_camera_recordings(camera_id):
 def get_recordings():
     """Get recordings with filters"""
     # Get query parameters
-    camera_id = request.args.get('camera_id', type=int)
+    camera_id = request.args.get('camera_id')
     date_from = request.args.get('date_from')
     date_to = request.args.get('date_to')
     recording_type = request.args.get('type')
-    has_detections = request.args.get('has_detections', type=bool)
+    has_detections = request.args.get('has_detections', '').lower() in ('true', '1', 'yes')
     
-    # Build query
-    query = Recording.query
+    # Build MongoDB query
+    query = {}
     
     if camera_id:
-        query = query.filter_by(camera_id=camera_id)
+        query['camera_id'] = str(camera_id)
     
+    # Date range filtering
+    date_filter = {}
     if date_from:
         try:
-            date_from = datetime.strptime(date_from, '%Y-%m-%d')
-            query = query.filter(Recording.timestamp >= date_from)
+            date_from_obj = datetime.strptime(date_from, '%Y-%m-%d')
+            date_filter['$gte'] = date_from_obj
         except ValueError:
             return jsonify({
                 'success': False,
@@ -628,57 +535,75 @@ def get_recordings():
     
     if date_to:
         try:
-            date_to = datetime.strptime(date_to, '%Y-%m-%d') + timedelta(days=1)
-            query = query.filter(Recording.timestamp < date_to)
+            date_to_obj = datetime.strptime(date_to, '%Y-%m-%d') + timedelta(days=1)
+            date_filter['$lt'] = date_to_obj
         except ValueError:
             return jsonify({
                 'success': False,
                 'message': 'Invalid date_to format. Use YYYY-MM-DD'
             }), 400
     
-    if recording_type:
-        query = query.filter_by(recording_type=recording_type)
+    if date_filter:
+        query['timestamp'] = date_filter
     
+    if recording_type:
+        query['recording_type'] = recording_type
+    
+    # For has_detections, we need to handle differently
     if has_detections is not None:
+        # Get distinct recording IDs from detections collection
+        recordings_with_detections = list(db.detections.distinct('recording_id'))
+        
         if has_detections:
-            # Recordings with detections
-            query = query.join(Detection, Recording.id == Detection.recording_id)
+            # Only include recordings with detections
+            query['_id'] = {'$in': [ObjectId(rid) for rid in recordings_with_detections if rid]}
         else:
-            # Recordings without detections
-            # This is more complex - need to find IDs not in the join
-            detection_recording_ids = db.session.query(Detection.recording_id).distinct()
-            query = query.filter(~Recording.id.in_(detection_recording_ids))
+            # Only include recordings without detections
+            query['_id'] = {'$nin': [ObjectId(rid) for rid in recordings_with_detections if rid]}
     
     # Paginate results
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     
-    pagination = query.order_by(Recording.timestamp.desc()).paginate(
-        page=page, per_page=per_page, error_out=False)
+    # Calculate skip and limit for pagination
+    skip = (page - 1) * per_page
+    
+    # Query MongoDB with pagination
+    total = db.recordings.count_documents(query)
+    recordings_cursor = db.recordings.find(query).sort('timestamp', -1).skip(skip).limit(per_page)
+    recordings = [Recording(rec) for rec in recordings_cursor]
+    
+    # Calculate pagination info
+    total_pages = (total + per_page - 1) // per_page  # ceiling division
     
     return jsonify({
         'success': True,
-        'recordings': [recording.to_dict() for recording in pagination.items],
+        'recordings': [recording.to_dict() for recording in recordings],
         'pagination': {
-            'total': pagination.total,
-            'pages': pagination.pages,
-            'page': pagination.page,
-            'per_page': pagination.per_page
+            'total': total,
+            'pages': total_pages,
+            'page': page,
+            'per_page': per_page
         }
     })
 
-@api_bp.route('/recordings/<int:recording_id>')
+@api_bp.route('/recordings/<recording_id>')
 @login_required
 def get_recording(recording_id):
     """Get recording details"""
-    recording = Recording.query.get_or_404(recording_id)
+    recording = Recording.get_by_id(recording_id)
+    if not recording:
+        return jsonify({
+            'success': False,
+            'message': 'Recording not found'
+        }), 404
     
     return jsonify({
         'success': True,
         'recording': recording.to_dict()
     })
 
-@api_bp.route('/recordings/<int:recording_id>/video')
+@api_bp.route('/recordings/<recording_id>/video')
 @login_required
 def get_recording_video(recording_id):
     """Stream recording video with transcoding support if needed"""
@@ -691,7 +616,12 @@ def get_recording_video(recording_id):
 
     logger = logging.getLogger(__name__)
     
-    recording = Recording.query.get_or_404(recording_id)
+    recording = Recording.get_by_id(recording_id)
+    if not recording:
+        return jsonify({
+            'success': False,
+            'message': 'Recording not found'
+        }), 404
     
     if not os.path.exists(recording.file_path):
         logger.error(f"Recording file not found: {recording.file_path}")
@@ -701,7 +631,7 @@ def get_recording_video(recording_id):
     
     # Check if the browser supports direct playback (mobile browsers often have better codec support)
     user_agent = request.headers.get('User-Agent', '').lower()
-    mobile = 'mobile' in user_agent or 'android' in user_agent or 'iphone' in user_agent or 'ipad' in user_agent
+    mobile = 'mobile' in user_agent or 'android' in user_agent or 'iphone' in user_agent or 'ipad'
     
     # Check video format - if it's MPEG-4 and not mobile, we'll transcode
     need_transcode = False
@@ -767,11 +697,16 @@ def get_recording_video(recording_id):
             etag=True,
         )
 
-@api_bp.route('/recordings/<int:recording_id>/thumbnail')
+@api_bp.route('/recordings/<recording_id>/thumbnail')
 @login_required
 def get_recording_thumbnail(recording_id):
     """Get recording thumbnail"""
-    recording = Recording.query.get_or_404(recording_id)
+    recording = Recording.get_by_id(recording_id)
+    if not recording:
+        return jsonify({
+            'success': False,
+            'message': 'Recording not found'
+        }), 404
     
     if recording.thumbnail_path and os.path.exists(recording.thumbnail_path):
         return send_file(recording.thumbnail_path, mimetype='image/jpeg')
@@ -779,19 +714,24 @@ def get_recording_thumbnail(recording_id):
     # Return default thumbnail if none exists
     return send_file('static/img/no-thumbnail.png', mimetype='image/jpeg')
 
-@api_bp.route('/recordings/<int:recording_id>/download')
+@api_bp.route('/recordings/<recording_id>/download')
 @login_required
 def download_recording(recording_id):
     """Download recording file"""
-    recording = Recording.query.get_or_404(recording_id)
+    recording = Recording.get_by_id(recording_id)
+    if not recording:
+        return jsonify({
+            'success': False,
+            'message': 'Recording not found'
+        }), 404
     
     if not os.path.exists(recording.file_path):
         abort(404, description="Recording file not found")
     
     # Generate a download filename based on camera name and timestamp
-    camera = Camera.query.get(recording.camera_id)
+    camera = Camera.get_by_id(recording.camera_id)
     camera_name = camera.name if camera else f"camera-{recording.camera_id}"
-    timestamp = recording.timestamp.strftime('%Y%m%d-%H%M%S')
+    timestamp = recording.timestamp.strftime('%Y%m%d-%H%M%S') if isinstance(recording.timestamp, datetime) else "unknown"
     filename = f"{camera_name}-{timestamp}.mp4"
     
     return send_file(
@@ -801,37 +741,54 @@ def download_recording(recording_id):
         mimetype='video/mp4'
     )
 
-@api_bp.route('/recordings/<int:recording_id>/flag', methods=['POST'])
+@api_bp.route('/recordings/<recording_id>/flag', methods=['POST'])
 @login_required
 def flag_recording(recording_id):
     """Flag recording as important"""
-    recording = Recording.query.get_or_404(recording_id)
+    recording = Recording.get_by_id(recording_id)
+    if not recording:
+        return jsonify({
+            'success': False,
+            'message': 'Recording not found'
+        }), 404
+        
     recording.is_flagged = True
-    db.session.commit()
+    recording.save()
     
     return jsonify({
         'success': True,
         'message': 'Recording flagged successfully'
     })
 
-@api_bp.route('/recordings/<int:recording_id>/unflag', methods=['POST'])
+@api_bp.route('/recordings/<recording_id>/unflag', methods=['POST'])
 @login_required
 def unflag_recording(recording_id):
     """Remove flag from recording"""
-    recording = Recording.query.get_or_404(recording_id)
+    recording = Recording.get_by_id(recording_id)
+    if not recording:
+        return jsonify({
+            'success': False,
+            'message': 'Recording not found'
+        }), 404
+        
     recording.is_flagged = False
-    db.session.commit()
+    recording.save()
     
     return jsonify({
         'success': True,
         'message': 'Recording unflagged successfully'
     })
 
-@api_bp.route('/recordings/<int:recording_id>', methods=['DELETE'])
+@api_bp.route('/recordings/<recording_id>', methods=['DELETE'])
 @login_required
 def delete_recording(recording_id):
     """Delete recording and file"""
-    recording = Recording.query.get_or_404(recording_id)
+    recording = Recording.get_by_id(recording_id)
+    if not recording:
+        return jsonify({
+            'success': False,
+            'message': 'Recording not found'
+        }), 404
     
     # Delete file if it exists
     if recording.file_path and os.path.exists(recording.file_path):
@@ -842,8 +799,7 @@ def delete_recording(recording_id):
         os.remove(recording.thumbnail_path)
     
     # Delete from database
-    db.session.delete(recording)
-    db.session.commit()
+    recording.delete()
     
     return jsonify({
         'success': True,
@@ -857,27 +813,26 @@ def delete_recording(recording_id):
 def get_detections():
     """Get detections with filters"""
     # Get query parameters
-    camera_id = request.args.get('camera_id', type=int)
+    camera_id = request.args.get('camera_id')
     class_name = request.args.get('class_name')
     date_from = request.args.get('date_from')
     date_to = request.args.get('date_to')
     
-    # Build query
-    query = Detection.query
+    # Build MongoDB query
+    query = {}
     
     if camera_id:
-        # Need to join with recordings to filter by camera
-        recordings = Recording.query.filter_by(camera_id=camera_id).all()
-        recording_ids = [r.id for r in recordings]
-        query = query.filter(Detection.recording_id.in_(recording_ids))
+        query['camera_id'] = str(camera_id)
     
     if class_name:
-        query = query.filter_by(class_name=class_name)
+        query['class_name'] = class_name
     
+    # Date range filtering
+    date_filter = {}
     if date_from:
         try:
-            date_from = datetime.strptime(date_from, '%Y-%m-%d')
-            query = query.filter(Detection.timestamp >= date_from)
+            date_from_obj = datetime.strptime(date_from, '%Y-%m-%d')
+            date_filter['$gte'] = date_from_obj
         except ValueError:
             return jsonify({
                 'success': False,
@@ -886,29 +841,40 @@ def get_detections():
     
     if date_to:
         try:
-            date_to = datetime.strptime(date_to, '%Y-%m-%d') + timedelta(days=1)
-            query = query.filter(Detection.timestamp < date_to)
+            date_to_obj = datetime.strptime(date_to, '%Y-%m-%d') + timedelta(days=1)
+            date_filter['$lt'] = date_to_obj
         except ValueError:
             return jsonify({
                 'success': False,
                 'message': 'Invalid date_to format. Use YYYY-MM-DD'
             }), 400
     
+    if date_filter:
+        query['timestamp'] = date_filter
+    
     # Paginate results
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     
-    pagination = query.order_by(Detection.timestamp.desc()).paginate(
-        page=page, per_page=per_page, error_out=False)
+    # Calculate skip and limit for pagination
+    skip = (page - 1) * per_page
+    
+    # Query MongoDB with pagination
+    total = db.detections.count_documents(query)
+    detections_cursor = db.detections.find(query).sort('timestamp', -1).skip(skip).limit(per_page)
+    detections = [Detection(det) for det in detections_cursor]
+    
+    # Calculate pagination info
+    total_pages = (total + per_page - 1) // per_page  # ceiling division
     
     return jsonify({
         'success': True,
-        'detections': [detection.to_dict() for detection in pagination.items],
+        'detections': [detection.to_dict() for detection in detections],
         'pagination': {
-            'total': pagination.total,
-            'pages': pagination.pages,
-            'page': pagination.page,
-            'per_page': pagination.per_page
+            'total': total,
+            'pages': total_pages,
+            'page': page,
+            'per_page': per_page
         }
     })
 
@@ -920,62 +886,70 @@ def get_detection_summary():
     days = request.args.get('days', 7, type=int)
     start_date = datetime.now() - timedelta(days=days)
     
-    # Get detection counts by class
-    class_counts = db.session.query(
-        Detection.class_name,
-        db.func.count(Detection.id)
-    ).filter(
-        Detection.timestamp >= start_date
-    ).group_by(
-        Detection.class_name
-    ).all()
+    # Get detection counts by class using MongoDB aggregation
+    class_pipeline = [
+        {'$match': {'timestamp': {'$gte': start_date}}},
+        {'$group': {'_id': '$class_name', 'count': {'$sum': 1}}}
+    ]
+    
+    class_counts = list(db.detections.aggregate(class_pipeline))
     
     # Get detection counts by camera
-    camera_counts = db.session.query(
-        Camera.id,
-        Camera.name,
-        db.func.count(Detection.id)
-    ).join(
-        Recording, Camera.id == Recording.camera_id
-    ).join(
-        Detection, Recording.id == Detection.recording_id
-    ).filter(
-        Detection.timestamp >= start_date
-    ).group_by(
-        Camera.id
-    ).all()
+    camera_pipeline = [
+        {'$match': {'timestamp': {'$gte': start_date}}},
+        {'$group': {'_id': '$camera_id', 'count': {'$sum': 1}}}
+    ]
+    
+    camera_counts = list(db.detections.aggregate(camera_pipeline))
     
     # Format results
-    class_summary = {name: count for name, count in class_counts}
-    camera_summary = {name: count for id, name, count in camera_counts}
+    class_summary = {item['_id']: item['count'] for item in class_counts if item['_id']}
+    
+    # Get camera names for the summary
+    camera_summary = {}
+    for item in camera_counts:
+        if item['_id']:
+            camera = Camera.get_by_id(item['_id'])
+            camera_name = camera.name if camera else f"camera-{item['_id']}"
+            camera_summary[camera_name] = item['count']
     
     return jsonify({
         'success': True,
         'class_summary': class_summary,
         'camera_summary': camera_summary,
-        'total': sum(count for _, count in class_counts),
+        'total': sum(item['count'] for item in class_counts),
         'time_range': {
             'days': days,
             'start_date': start_date.strftime('%Y-%m-%d')
         }
     })
 
-@api_bp.route('/detections/<int:detection_id>')
+@api_bp.route('/detections/<detection_id>')
 @login_required
 def get_detection(detection_id):
     """Get detection details"""
-    detection = Detection.query.get_or_404(detection_id)
+    detection = Detection.get_by_id(detection_id)
+    if not detection:
+        return jsonify({
+            'success': False,
+            'message': 'Detection not found'
+        }), 404
     
     return jsonify({
         'success': True,
         'detection': detection.to_dict()
     })
 
-@api_bp.route('/detections/<int:detection_id>/image')
+@api_bp.route('/detections/<detection_id>/image')
 @login_required
 def get_detection_image(detection_id):
     """Get detection image"""
-    detection = Detection.query.get_or_404(detection_id)
+    detection = Detection.get_by_id(detection_id)
+    if not detection:
+        return jsonify({
+            'success': False,
+            'message': 'Detection not found'
+        }), 404
     
     if detection.image_path and os.path.exists(detection.image_path):
         return send_file(detection.image_path, mimetype='image/jpeg')
@@ -999,28 +973,33 @@ def get_stats():
 @login_required
 def get_storage():
     """Get storage statistics"""
-    # Total recordings size
-    total_size = db.session.query(db.func.sum(Recording.file_size)).scalar() or 0
+    # Total recordings size using MongoDB aggregation
+    size_pipeline = [
+        {'$group': {'_id': None, 'total_size': {'$sum': '$file_size'}}}
+    ]
     
-    # Size by camera
-    camera_sizes = db.session.query(
-        Camera.id,
-        Camera.name,
-        db.func.sum(Recording.file_size)
-    ).join(
-        Recording, Camera.id == Recording.camera_id
-    ).group_by(
-        Camera.id
-    ).all()
+    total_size_result = list(db.recordings.aggregate(size_pipeline))
+    total_size = total_size_result[0]['total_size'] if total_size_result else 0
+    
+    # Size by camera using MongoDB aggregation
+    camera_size_pipeline = [
+        {'$group': {'_id': '$camera_id', 'size': {'$sum': '$file_size'}}}
+    ]
+    
+    camera_sizes_result = list(db.recordings.aggregate(camera_size_pipeline))
     
     # Format camera sizes
     camera_storage = []
-    for id, name, size in camera_sizes:
-        camera_storage.append({
-            'id': id,
-            'name': name,
-            'size': size or 0
-        })
+    for item in camera_sizes_result:
+        camera_id = item['_id']
+        if camera_id:
+            camera = Camera.get_by_id(camera_id)
+            if camera:
+                camera_storage.append({
+                    'id': camera.id,
+                    'name': camera.name,
+                    'size': item['size'] or 0
+                })
     
     return jsonify({
         'success': True,
@@ -1070,6 +1049,19 @@ def get_system_info():
             'uptime': int(time.time() - psutil.Process(os.getpid()).create_time())
         }
     }
+    
+    # Add MongoDB statistics
+    try:
+        info['database'] = {
+            'type': 'MongoDB',
+            'cameras': db.cameras.count_documents({}),
+            'recordings': db.recordings.count_documents({}),
+            'detections': db.detections.count_documents({}),
+            'rois': db.regions_of_interest.count_documents({}),
+            'users': db.users.count_documents({})
+        }
+    except Exception as e:
+        info['database'] = {'error': str(e)}
     
     # Add GPU information if available
     try:
@@ -1178,7 +1170,7 @@ def hook_detection():
         }), 400
     
     # Validate camera exists
-    camera = Camera.query.get(data['camera_id'])
+    camera = Camera.get_by_id(data['camera_id'])
     if not camera:
         return jsonify({
             'success': False,
@@ -1200,23 +1192,28 @@ def hook_detection():
     # Find or create recording
     recording = None
     
-    # TODO: Find existing recording or create a new one based on the timestamp
-    # This is a placeholder implementation
+    # Find recordings in the last minute
+    recent_recordings = list(db.recordings.find({
+        'camera_id': str(data['camera_id']),
+        'timestamp': {'$gte': timestamp - timedelta(minutes=1)}
+    }).sort('timestamp', -1).limit(1))
     
-    # Create detection
-    detection = Detection(
-        recording_id=recording.id if recording else None,
-        timestamp=timestamp,
+    if recent_recordings:
+        recording_data = recent_recordings[0]
+        recording = Recording(recording_data)
+    
+    # Create detection using our model
+    detection = Detection.create(
+        camera_id=data['camera_id'],
         class_name=data['class_name'],
         confidence=float(data['confidence']),
         bbox_x=data['bbox'][0],
         bbox_y=data['bbox'][1],
         bbox_width=data['bbox'][2],
         bbox_height=data['bbox'][3],
+        timestamp=timestamp,
+        recording_id=recording.id if recording else None
     )
-    
-    db.session.add(detection)
-    db.session.commit()
     
     return jsonify({
         'success': True,
@@ -1236,7 +1233,7 @@ def get_model_classes():
         from app.models.ai_model import AIModel
         
         if model_id:
-            model = AIModel.query.get(model_id)
+            model = AIModel.get_by_id(model_id)
             if not model:
                 return jsonify({'success': False, 'message': 'Model not found'}), 404
             model_path = model.file_path
@@ -1246,12 +1243,19 @@ def get_model_classes():
             settings = load_settings()
             default_model_name = settings.get('detection', {}).get('default_model', 'yolov5s')
             
-            model = AIModel.query.filter_by(name=default_model_name).first()
+            # Get the default model from MongoDB
+            model = AIModel.get_default_model()
+            if not model:
+                # Try getting by name if no default is set
+                model = AIModel.get_by_name(default_model_name)
+            
             if model:
                 model_path = model.file_path
+                logger.info(f"Using model: {model.name} at path: {model_path}")
             else:
                 # Fall back to standard yolov5s
                 model_path = os.path.join('models', 'yolov5s.pt')
+                logger.warning(f"No model found, falling back to: {model_path}")
         
         # Get classes from the model
         import torch

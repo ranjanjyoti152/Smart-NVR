@@ -9,11 +9,9 @@ class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY', os.urandom(24).hex())
     DEBUG = False
     
-    # Database settings
-    BASE_DIR = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URI', 
-        f'sqlite:///{os.path.join(os.path.dirname(os.path.abspath(__file__)), "instance", "smart_nvr.db")}')
-    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    # Database settings (MongoDB)
+    MONGO_URI = os.environ.get('MONGO_URI', 'mongodb://localhost:27017/smart_nvr')
+    MONGO_DBNAME = 'smart_nvr'
     
     # File storage
     UPLOAD_FOLDER = os.path.join('storage', 'uploads')
@@ -34,6 +32,8 @@ class Config:
 class DevelopmentConfig(Config):
     """Development configuration"""
     DEBUG = True
+    MONGO_URI = os.environ.get('MONGO_URI', 'mongodb://localhost:27017/smart_nvr_dev')
+    MONGO_DBNAME = 'smart_nvr_dev'
 
 class ProductionConfig(Config):
     """Production configuration"""
@@ -43,7 +43,8 @@ class ProductionConfig(Config):
 class TestingConfig(Config):
     """Testing configuration"""
     TESTING = True
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    MONGO_URI = os.environ.get('MONGO_URI', 'mongodb://localhost:27017/smart_nvr_test')
+    MONGO_DBNAME = 'smart_nvr_test'
 
 # Select the appropriate configuration
 config_name = os.environ.get('FLASK_CONFIG', 'development')

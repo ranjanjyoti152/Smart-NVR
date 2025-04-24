@@ -5,31 +5,129 @@ from datetime import datetime
 import secrets
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_login import UserMixin
-from app import db, login_manager
+from bson.objectid import ObjectId
+from app import db
 
-@login_manager.user_loader
-def load_user(user_id):
-    """Load user by id for Flask-Login"""
-    return User.query.get(int(user_id))
-
-class User(UserMixin, db.Model):
+class User(UserMixin):
     """User model for authentication"""
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(64), unique=True, nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(128), nullable=False)
-    api_key = db.Column(db.String(64), unique=True, nullable=True)
-    is_admin = db.Column(db.Boolean, default=False)
-    is_active = db.Column(db.Boolean, default=True)
-    last_login = db.Column(db.DateTime)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    def __init__(self, user_data):
+        if user_data is None:
+            raise ValueError("User data cannot be None")
+            
+        # Assign properties from user_data
+        self._id = user_data.get('_id')
+        self.username = user_data.get('username')
+        self.email = user_data.get('email')
+        self.password_hash = user_data.get('password_hash')
+        self.api_key = user_data.get('api_key')
+        # Use internal variables directly to avoid property setter issues during initialization
+        self._is_admin = user_data.get('is_admin', False)
+        self._is_active = user_data.get('is_active', True)
+        self.last_login = user_data.get('last_login')
+        self.created_at = user_data.get('created_at', datetime.utcnow())
     
     def __repr__(self):
         return f'<User {self.username}>'
     
+    @property
+    def id(self):
+        """Return the string representation of the ObjectId as the user ID"""
+        return str(self._id)
+    
+    @property
+    def is_active(self):
+        """Required by Flask-Login, check if user account is active"""
+        return self._is_active
+    
+    @is_active.setter
+    def is_active(self, value):
+        """Set is_active status"""
+        self._is_active = value
+        
+    @property
+    def is_admin(self):
+        """Check if user has admin role"""
+        return self._is_admin
+        
+    @is_admin.setter
+    def is_admin(self, value):
+        """Set admin status"""
+        self._is_admin = value
+    
+    def get_id(self):
+        """Required by Flask-Login, return the user ID as a string"""
+        return str(self._id)
+    
+    @classmethod
+    def get_by_id(cls, user_id):
+        """Get user by ID"""
+        try:
+            user_data = db.users.find_one({'_id': ObjectId(user_id)})
+            return User(user_data) if user_data else None
+        except Exception as e:
+            from app import app
+            app.logger.error(f"Error retrieving user by ID {user_id}: {str(e)}")
+            return None
+    
+    @classmethod
+    def get_by_username(cls, username):
+        """Get user by username"""
+        try:
+            user_data = db.users.find_one({'username': username})
+            return User(user_data) if user_data else None
+        except Exception as e:
+            from app import app
+            app.logger.error(f"Error retrieving user by username {username}: {str(e)}")
+            return None
+    
+    @classmethod
+    def get_by_email(cls, email):
+        """Get user by email"""
+        try:
+            user_data = db.users.find_one({'email': email})
+            return User(user_data) if user_data else None
+        except Exception as e:
+            from app import app
+            app.logger.error(f"Error retrieving user by email {email}: {str(e)}")
+            return None
+    
+    @classmethod
+    def get_by_api_key(cls, api_key):
+        """Get user by API key"""
+        try:
+            user_data = db.users.find_one({'api_key': api_key})
+            return User(user_data) if user_data else None
+        except Exception as e:
+            from app import app
+            app.logger.error(f"Error retrieving user by API key: {str(e)}")
+            return None
+    
+    @classmethod
+    def create(cls, username, email, password, is_admin=False):
+        """Create a new user"""
+        user_data = {
+            'username': username,
+            'email': email,
+            'password_hash': generate_password_hash(password),
+            'is_admin': is_admin,
+            'is_active': True,
+            'created_at': datetime.utcnow()
+        }
+        result = db.users.insert_one(user_data)
+        user_data['_id'] = result.inserted_id
+        return User(user_data)
+    
+    @classmethod
+    def get_all(cls):
+        """Get all users from the database"""
+        users_data = db.users.find()
+        return [User(user_data) for user_data in users_data]
+    
     def set_password(self, password):
         """Set password hash"""
         self.password_hash = generate_password_hash(password)
+        db.users.update_one({'_id': self._id}, {'$set': {'password_hash': self.password_hash}})
     
     def check_password(self, password):
         """Check password"""
@@ -38,22 +136,29 @@ class User(UserMixin, db.Model):
     def generate_api_key(self):
         """Generate API key for user"""
         self.api_key = secrets.token_urlsafe(32)
+        db.users.update_one({'_id': self._id}, {'$set': {'api_key': self.api_key}})
         return self.api_key
     
     def update_last_login(self):
         """Update last login timestamp"""
         self.last_login = datetime.utcnow()
-        db.session.commit()
+        db.users.update_one({'_id': self._id}, {'$set': {'last_login': self.last_login}})
+    
+    def save(self):
+        """Save user changes to database"""
+        user_data = self.to_dict(include_email=True, include_api_key=True)
+        user_data['_id'] = self._id
+        db.users.update_one({'_id': self._id}, {'$set': user_data})
     
     def to_dict(self, include_email=False, include_api_key=False):
         """Convert user to dictionary for API"""
         data = {
-            'id': self.id,
+            'id': str(self._id),
             'username': self.username,
             'is_admin': self.is_admin,
             'is_active': self.is_active,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'last_login': self.last_login.isoformat() if self.last_login else None,
+            'created_at': self.created_at.isoformat() if isinstance(self.created_at, datetime) else self.created_at,
+            'last_login': self.last_login.isoformat() if isinstance(self.last_login, datetime) else self.last_login,
         }
         
         if include_email:
