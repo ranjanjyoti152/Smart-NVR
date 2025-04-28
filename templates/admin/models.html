@@ -402,28 +402,19 @@
                                 uploadStatus.innerHTML = '<span class="text-success">Upload successful! Refreshing page...</span>';
                                 setTimeout(() => window.location.reload(), 1500);
                             } else {
-                                uploadStatus.innerHTML = `<span class="text-danger">Upload Error: ${response.message || 'Unknown error'}</span>`;
+                                uploadStatus.innerHTML = `<span class="text-danger">Upload Error: ${response.message}</span>`;
                             }
                         } catch (e) {
-                            console.error("Error parsing response:", e);
-                            uploadStatus.innerHTML = `<span class="text-danger">Error parsing server response. Response was: "${xhr.responseText.substring(0, 100)}${xhr.responseText.length > 100 ? '...' : ''}"</span>`;
+                            uploadStatus.innerHTML = '<span class="text-danger">Error parsing server response.</span>';
+                            console.error("Response parsing error:", xhr.responseText);
                         }
                     } else {
                         // Try to parse error message from JSON response
-                        let errorMsg = xhr.statusText || 'Unknown error';
+                        let errorMsg = xhr.statusText;
                         try {
-                            if (xhr.responseText && xhr.responseText.trim()) {
-                                const response = JSON.parse(xhr.responseText);
-                                if (response.message) errorMsg = response.message;
-                            }
-                        } catch(e) {
-                            console.error("Error parsing error response:", e);
-                            // If parsing fails, try to use the raw response text
-                            if (xhr.responseText && xhr.responseText.trim()) {
-                                errorMsg = xhr.responseText.substring(0, 100);
-                                if (xhr.responseText.length > 100) errorMsg += '...';
-                            }
-                        }
+                            const response = JSON.parse(xhr.responseText);
+                            if(response.message) errorMsg = response.message;
+                        } catch(e) {}
                         uploadStatus.innerHTML = `<span class="text-danger">Upload Error (${xhr.status}): ${errorMsg}</span>`;
                     }
                 });
