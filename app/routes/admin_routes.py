@@ -502,3 +502,87 @@ def delete_model(model_id):
         'success': True,
         'message': 'Model deleted successfully'
     })
+
+@admin_bp.route('/config', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def config():
+    """Admin system configuration page"""
+    from app.utils.system_monitor import get_system_stats
+    import os
+    import json
+    
+    config_file = os.path.join('config', 'settings.json')
+    
+    # Load current configuration
+    try:
+        with open(config_file, 'r') as f:
+            config = json.load(f)
+    except FileNotFoundError:
+        # Default configuration if file doesn't exist
+        config = {
+            "notifications": {
+                "email_enabled": False,
+                "smtp_server": "",
+                "smtp_port": 587,
+                "smtp_username": "",
+                "smtp_password": "",
+                "from_email": "",
+                "email_to": ""
+            },
+            "recording": {
+                "retention_days": 30
+            },
+            "detection": {
+                "default_confidence": 0.45,
+                "default_model": "yolov5s"
+            }
+        }
+    
+    if request.method == 'POST':
+        # Update configuration from form submission
+        email_enabled = request.form.get('email_enabled') == 'on'
+        
+        # Build updated config dictionary
+        updated_config = {
+            "notifications": {
+                "email_enabled": email_enabled,
+                "smtp_server": request.form.get('smtp_server', ''),
+                "smtp_port": int(request.form.get('smtp_port', 587)),
+                "smtp_username": request.form.get('smtp_username', ''),
+                "from_email": request.form.get('from_email', ''),
+                "email_to": request.form.get('email_to', '')
+            },
+            "recording": {
+                "retention_days": int(request.form.get('retention_days', 30))
+            },
+            "detection": {
+                "default_confidence": float(request.form.get('default_confidence', 0.45)),
+                "default_model": request.form.get('default_model', 'yolov5s')
+            }
+        }
+        
+        # Only update password if a new one was provided
+        password = request.form.get('smtp_password', '')
+        if password:
+            updated_config["notifications"]["smtp_password"] = password
+        else:
+            # Keep existing password
+            updated_config["notifications"]["smtp_password"] = config["notifications"].get("smtp_password", "")
+        
+        # Save updated config to file
+        try:
+            os.makedirs(os.path.dirname(config_file), exist_ok=True)
+            with open(config_file, 'w') as f:
+                json.dump(updated_config, f, indent=4)
+            
+            config = updated_config
+            flash('Configuration saved successfully.', 'success')
+        except Exception as e:
+            flash(f'Error saving configuration: {str(e)}', 'danger')
+    
+    # Get system stats for display
+    system_stats = get_system_stats()
+    
+    return render_template('admin/config.html', title='System Configuration', 
+                          config=config, system_stats=system_stats)

@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="h3 mb-4 text-gray-800">Admin Dashboard</h1>
+    
+    <div class="row">
+        <!-- Admin Navigation Cards -->
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">User Management</div>
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                Manage users and permissions
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-users fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                    <a href="{{ url_for('admin.user_management') }}" class="stretched-link"></a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">AI Models</div>
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                Manage AI detection models
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-brain fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                    <a href="{{ url_for('admin.manage_models') }}" class="stretched-link"></a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-4 col-md-6 mb-4">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">System Configuration</div>
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                                Advanced system settings
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-cogs fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                    <a href="{{ url_for('admin.config') }}" class="stretched-link"></a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-6">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">System Information</h6>
+                </div>
+                <div class="card-body">
+                    <div class="mb-2">
+                        <strong>System Version:</strong> Smart-NVR v1.0.0
+                    </div>
+                    <div class="mb-2">
+                        <strong>Database Status:</strong> Connected
+                    </div>
+                    <div class="mb-2">
+                        <strong>Storage Usage:</strong> 
+                        <div class="progress mb-4">
+                            <div class="progress-bar" role="progressbar" style="width: 25%"
+                                aria-valuenow="25" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <strong>Memory Usage:</strong>
+                        <div class="progress mb-4">
+                            <div class="progress-bar bg-info" role="progressbar" style="width: 40%"
+                                aria-valuenow="40" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-6">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Recent Activity</h6>
+                </div>
+                <div class="card-body">
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item">System started (Server Time)</li>
+                        <li class="list-group-item">Default AI model loaded</li>
+                        <li class="list-group-item">Camera connections established</li>
+                        <li class="list-group-item">Admin login (Current Session)</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

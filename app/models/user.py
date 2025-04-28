@@ -24,8 +24,33 @@ class User(UserMixin):
         # Use internal variables directly to avoid property setter issues during initialization
         self._is_admin = user_data.get('is_admin', False)
         self._is_active = user_data.get('is_active', True)
-        self.last_login = user_data.get('last_login')
-        self.created_at = user_data.get('created_at', datetime.utcnow())
+        
+        # Handle last_login as datetime (convert from string if needed)
+        last_login = user_data.get('last_login')
+        if last_login and isinstance(last_login, str):
+            try:
+                # Try to parse the ISO format string
+                self.last_login = datetime.fromisoformat(last_login)
+            except (ValueError, TypeError):
+                # If we can't parse it, use None
+                self.last_login = None
+        else:
+            self.last_login = last_login
+        
+        # Handle created_at as datetime (convert from string if needed)
+        created_at = user_data.get('created_at', datetime.utcnow())
+        if created_at and isinstance(created_at, str):
+            try:
+                # Try to parse the ISO format string
+                self.created_at = datetime.fromisoformat(created_at)
+            except (ValueError, TypeError):
+                # If we can't parse it, use current time
+                self.created_at = datetime.utcnow()
+        else:
+            self.created_at = created_at
+            
+        # Initialize user preferences
+        self.preferences = user_data.get('preferences', {})
     
     def __repr__(self):
         return f'<User {self.username}>'
@@ -112,7 +137,11 @@ class User(UserMixin):
             'password_hash': generate_password_hash(password),
             'is_admin': is_admin,
             'is_active': True,
-            'created_at': datetime.utcnow()
+            'created_at': datetime.utcnow(),
+            'preferences': {
+                'email_notifications': False,
+                'push_notifications': False
+            }
         }
         result = db.users.insert_one(user_data)
         user_data['_id'] = result.inserted_id
@@ -146,11 +175,24 @@ class User(UserMixin):
     
     def save(self):
         """Save user changes to database"""
-        user_data = self.to_dict(include_email=True, include_api_key=True)
+        user_data = self.to_dict(include_email=True, include_api_key=True, include_preferences=True)
         user_data['_id'] = self._id
         db.users.update_one({'_id': self._id}, {'$set': user_data})
     
-    def to_dict(self, include_email=False, include_api_key=False):
+    def get_preference(self, key, default=None):
+        """Get user preference with fallback to default"""
+        if not hasattr(self, 'preferences') or self.preferences is None:
+            return default
+        return self.preferences.get(key, default)
+    
+    def set_preference(self, key, value):
+        """Set a user preference"""
+        if not hasattr(self, 'preferences') or self.preferences is None:
+            self.preferences = {}
+        self.preferences[key] = value
+        db.users.update_one({'_id': self._id}, {'$set': {f'preferences.{key}': value}})
+    
+    def to_dict(self, include_email=False, include_api_key=False, include_preferences=False):
         """Convert user to dictionary for API"""
         data = {
             'id': str(self._id),
@@ -166,5 +208,8 @@ class User(UserMixin):
             
         if include_api_key and self.api_key:
             data['api_key'] = self.api_key
+            
+        if include_preferences and hasattr(self, 'preferences'):
+            data['preferences'] = self.preferences
             
         return data

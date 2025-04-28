@@ -63,10 +63,13 @@
                     <h4>No Video Selected</h4>
                     <p class="text-muted">Select a camera and date to view recordings</p>
                 </div>
-                <div class="video-loading-overlay" id="video-loading-overlay" style="display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 100;">
+                <div class="video-loading-overlay" id="video-loading-overlay" style="display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100;">
                     <div class="text-center text-white">
                         <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;" role="status"></div>
-                        <p class="mb-0">Loading video...</p>
+                        <p class="mb-2" id="loading-progress-text">Loading video... 0%</p>
+                        <div class="progress w-75 mb-2">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" id="loading-progress-bar" role="progressbar" style="width: 0%"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -500,7 +503,12 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Show loading overlay
         const loadingOverlay = document.getElementById('video-loading-overlay');
+        const loadingProgressBar = document.getElementById('loading-progress-bar');
+        const loadingProgressText = document.getElementById('loading-progress-text');
+        
         loadingOverlay.style.display = 'flex';
+        loadingProgressBar.style.width = '0%';
+        loadingProgressText.textContent = 'Loading video... 0%';
         
         // Show video player and hide message
         noVideoMessage.style.display = 'none';
@@ -527,21 +535,67 @@ document.addEventListener('DOMContentLoaded', function() {
         // Handle video loading events
         videoPlayer.onloadstart = function() {
             console.log("Video loading started");
+            loadingProgressBar.style.width = '0%';
+            loadingProgressText.textContent = 'Loading video... 0%';
         };
+        
+        // Track loading progress
+        videoPlayer.onprogress = function(e) {
+            if (e.lengthComputable && e.total > 0) {
+                const percentComplete = Math.round((e.loaded / e.total) * 100);
+                loadingProgressBar.style.width = percentComplete + '%';
+                loadingProgressText.textContent = `Loading video... ${percentComplete}%`;
+                console.log(`Video loading progress: ${percentComplete}%`);
+            }
+        };
+        
+        // Alternative progress tracking using buffered property
+        function updateBufferedAmount() {
+            if (!videoPlayer.buffered || !videoPlayer.buffered.length || !videoPlayer.duration) return;
+            
+            const bufferedEnd = videoPlayer.buffered.end(videoPlayer.buffered.length - 1);
+            const duration = videoPlayer.duration;
+            
+            if (duration > 0) {
+                const loadedPercentage = Math.round((bufferedEnd / duration) * 100);
+                loadingProgressBar.style.width = loadedPercentage + '%';
+                loadingProgressText.textContent = `Loading video... ${loadedPercentage}%`;
+                console.log(`Video buffering progress: ${loadedPercentage}%`);
+                
+                // Once fully loaded, clear the interval
+                if (loadedPercentage >= 100) {
+                    clearInterval(bufferCheckInterval);
+                }
+            }
+        }
+        
+        // Check buffering progress every 500ms
+        const bufferCheckInterval = setInterval(updateBufferedAmount, 500);
         
         videoPlayer.oncanplay = function() {
             console.log("Video is ready to play");
             loadingOverlay.style.display = 'none';
+            clearInterval(bufferCheckInterval);
         };
         
         videoPlayer.onloadedmetadata = function() {
             console.log("Video metadata loaded");
         };
         
+        videoPlayer.onloadeddata = function() {
+            console.log("Video data loaded");
+            // Update progress to at least 50% when data starts loading
+            if (parseFloat(loadingProgressBar.style.width) < 50) {
+                loadingProgressBar.style.width = '50%';
+                loadingProgressText.textContent = 'Loading video... 50%';
+            }
+        };
+        
         videoPlayer.ontimeupdate = function() {
             // Once we get the first timeupdate event, we know playback has started
             // Hide loading overlay if still visible
             loadingOverlay.style.display = 'none';
+            clearInterval(bufferCheckInterval);
             
             // Only need to handle this once
             videoPlayer.ontimeupdate = updatePlayhead;
@@ -551,16 +605,33 @@ document.addEventListener('DOMContentLoaded', function() {
         videoPlayer.onerror = function() {
             console.error('Video loading error:', videoPlayer.error);
             const errorCode = videoPlayer.error ? videoPlayer.error.code : 'unknown';
+            clearInterval(bufferCheckInterval);
+            
+            // Update progress bar to show error state
+            loadingProgressBar.style.width = '100%';
+            loadingProgressBar.classList.remove('progress-bar-animated', 'progress-bar-striped');
+            loadingProgressBar.classList.add('bg-danger');
+            loadingProgressText.textContent = 'Error loading video. Trying alternative format...';
             
             // Try loading the video with a web-compatible format
             const webCompatibleUrl = `/api/recordings/${recording.id}/video?convert=true&quality=medium`;
             console.log("Trying web-compatible format:", webCompatibleUrl);
+            
+            // Reset progress bar for second attempt
+            setTimeout(() => {
+                loadingProgressBar.style.width = '0%';
+                loadingProgressBar.classList.remove('bg-danger');
+                loadingProgressBar.classList.add('progress-bar-animated', 'progress-bar-striped');
+                loadingProgressText.textContent = 'Loading video... 0%';
+            }, 1000);
+            
             videoPlayer.src = webCompatibleUrl;
             videoPlayer.load();
             
             // If this also fails, show proper error
             videoPlayer.onerror = function() {
                 loadingOverlay.style.display = 'none';
+                clearInterval(bufferCheckInterval);
                 console.error('Video loading error (second attempt):', videoPlayer.error);
                 const errorMessage = document.createElement('div');
                 errorMessage.className = 'alert alert-danger mt-3';
@@ -579,6 +650,7 @@ document.addEventListener('DOMContentLoaded', function() {
         setTimeout(() => {
             if (loadingOverlay.style.display === 'flex') {
                 loadingOverlay.style.display = 'none';
+                clearInterval(bufferCheckInterval);
             }
         }, 15000); // 15 second timeout
         
@@ -589,6 +661,7 @@ document.addEventListener('DOMContentLoaded', function() {
             videoPlayer.play().catch(err => {
                 console.error('Error playing video:', err);
                 loadingOverlay.style.display = 'none';
+                clearInterval(bufferCheckInterval);
                 const playbackErrorMsg = document.createElement('div');
                 playbackErrorMsg.className = 'alert alert-warning mt-3';
                 playbackErrorMsg.innerHTML = `<strong>Playback Error:</strong> ${err.message}`;

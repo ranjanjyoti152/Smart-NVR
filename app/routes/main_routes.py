@@ -456,3 +456,81 @@ def save_settings():
     
     flash('Settings saved successfully', 'success')
     return redirect(url_for('main.settings'))
+
+@main_bp.route('/update-profile', methods=['POST'])
+@login_required
+def update_profile():
+    """Update user profile information"""
+    from flask import request, flash
+    from werkzeug.security import check_password_hash
+    
+    # Get form data
+    email = request.form.get('email')
+    current_password = request.form.get('current_password')
+    new_password = request.form.get('new_password')
+    confirm_password = request.form.get('confirm_password')
+    
+    # Validate email
+    if not email:
+        flash('Email is required', 'danger')
+        return redirect(url_for('main.profile'))
+    
+    # Check if another user already has this email
+    from app.models.user import User
+    existing_user = User.get_by_email(email)
+    if existing_user and existing_user.id != current_user.id:
+        flash('This email is already in use by another account', 'danger')
+        return redirect(url_for('main.profile'))
+    
+    # Update email if changed
+    if email != current_user.email:
+        current_user.email = email
+        current_user.save()
+        flash('Email updated successfully', 'success')
+    
+    # Handle password change if requested
+    if new_password:
+        # Verify current password
+        if not current_password or not check_password_hash(current_user.password_hash, current_password):
+            flash('Current password is incorrect', 'danger')
+            return redirect(url_for('main.profile'))
+        
+        # Validate new password
+        if new_password != confirm_password:
+            flash('New passwords do not match', 'danger')
+            return redirect(url_for('main.profile'))
+        
+        # Update password
+        current_user.set_password(new_password)
+        current_user.save()
+        flash('Password updated successfully', 'success')
+    
+    return redirect(url_for('main.profile'))
+
+@main_bp.route('/update-notification-preferences', methods=['POST'])
+@login_required
+def update_notification_preferences():
+    """Update user notification preferences"""
+    from flask import request, flash
+    from app import db
+    
+    # Get preferences from form
+    email_notifications = 'email_notifications' in request.form
+    push_notifications = 'push_notifications' in request.form
+    
+    # Initialize preferences if they don't exist
+    if not hasattr(current_user, 'preferences') or current_user.preferences is None:
+        current_user.preferences = {}
+    
+    # Update preferences
+    current_user.preferences['email_notifications'] = email_notifications
+    current_user.preferences['push_notifications'] = push_notifications
+    
+    # Update in database
+    db.users.update_one(
+        {'_id': current_user._id},
+        {'$set': {'preferences': current_user.preferences}}
+    )
+    
+    flash('Notification preferences updated', 'success')
+    return redirect(url_for('main.profile'))

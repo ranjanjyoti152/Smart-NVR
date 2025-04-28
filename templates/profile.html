@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="h3 mb-4 text-gray-800">My Profile</h1>
+    
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Profile Information</h6>
+                </div>
+                <div class="card-body">
+                    <form method="post" action="{{ url_for('main.update_profile') }}">
+                        <div class="mb-3">
+                            <label for="username" class="form-label">Username</label>
+                            <input type="text" class="form-control" id="username" name="username" value="{{ current_user.username }}" readonly>
+                            <small class="text-muted">Username cannot be changed</small>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="email" class="form-label">Email Address</label>
+                            <input type="email" class="form-control" id="email" name="email" value="{{ current_user.email }}" required>
+                        </div>
+                        
+                        <hr>
+                        
+                        <h6 class="font-weight-bold">Change Password</h6>
+                        <div class="mb-3">
+                            <label for="current_password" class="form-label">Current Password</label>
+                            <input type="password" class="form-control" id="current_password" name="current_password">
+                            <small class="text-muted">Required only if changing password</small>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="new_password" class="form-label">New Password</label>
+                            <input type="password" class="form-control" id="new_password" name="new_password">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="confirm_password" class="form-label">Confirm Password</label>
+                            <input type="password" class="form-control" id="confirm_password" name="confirm_password">
+                        </div>
+                        
+                        <div class="text-right">
+                            <button type="submit" class="btn btn-primary">Save Changes</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-lg-4">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Account Information</h6>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <strong>Account Type:</strong>
+                        <span class="badge bg-{% if current_user.is_admin %}primary{% else %}secondary{% endif %}">
+                            {% if current_user.is_admin %}Administrator{% else %}User{% endif %}
+                        </span>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <strong>Last Login:</strong>
+                        <div>
+                        {% if current_user.last_login %}
+                            {% if current_user.last_login is string %}
+                                {{ current_user.last_login }}
+                            {% else %}
+                                {{ current_user.last_login.strftime('%Y-%m-%d %H:%M:%S') }}
+                            {% endif %}
+                        {% else %}
+                            Never
+                        {% endif %}
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <strong>Account Created:</strong>
+                        <div>
+                        {% if current_user.created_at %}
+                            {% if current_user.created_at is string %}
+                                {{ current_user.created_at }}
+                            {% else %}
+                                {{ current_user.created_at.strftime('%Y-%m-%d') }}
+                            {% endif %}
+                        {% else %}
+                            Unknown
+                        {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Notification Preferences -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Notification Preferences</h6>
+                </div>
+                <div class="card-body">
+                    <form method="post" action="{{ url_for('main.update_notification_preferences') }}">
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="email_notifications" name="email_notifications" 
+                                   {% if current_user.preferences and current_user.preferences.get('email_notifications', False) %}checked{% endif %}>
+                            <label class="form-check-label" for="email_notifications">
+                                Email Notifications
+                            </label>
+                        </div>
+                        
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="push_notifications" name="push_notifications"
+                                   {% if current_user.preferences and current_user.preferences.get('push_notifications', False) %}checked{% endif %}>
+                            <label class="form-check-label" for="push_notifications">
+                                Push Notifications
+                            </label>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-sm btn-primary">Save Preferences</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Password validation
+        const newPasswordInput = document.getElementById('new_password');
+        const confirmPasswordInput = document.getElementById('confirm_password');
+        const form = document.querySelector('form');
+        
+        form.addEventListener('submit', function(event) {
+            // Check if new password fields are filled
+            if (newPasswordInput.value || confirmPasswordInput.value) {
+                // Check if current password is provided
+                if (!document.getElementById('current_password').value) {
+                    event.preventDefault();
+                    alert('Please enter your current password to change your password.');
+                    return;
+                }
+                
+                // Check if passwords match
+                if (newPasswordInput.value !== confirmPasswordInput.value) {
+                    event.preventDefault();
+                    alert('New password and confirmation do not match.');
+                    return;
+                }
+            }
+        });
+    });
+</script>
+{% endblock %}
