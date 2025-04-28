@@ -347,7 +347,10 @@ def create_default_settings():
             'retention_days': 30,
             'storage_path': 'storage/recordings',
             'clip_length': 60,
-            'format': 'mp4'
+            'format': 'mp4',
+            'use_separate_db_storage': False,
+            'db_storage_path': '/var/lib/mongodb',
+            'db_storage_size': 20  # GB
         },
         'notifications': {
             'email_enabled': False,
@@ -403,6 +406,9 @@ def save_settings():
     from flask import request, flash
     import os
     import json
+    import logging
+    
+    logger = logging.getLogger(__name__)
     
     # Get form data
     settings = {
@@ -410,7 +416,8 @@ def save_settings():
             'retention_days': int(request.form.get('retention_days', 30)),
             'storage_path': request.form.get('storage_path', 'storage/recordings'),
             'clip_length': int(request.form.get('clip_length', 60)),
-            'format': request.form.get('format', 'mp4')
+            'format': request.form.get('format', 'mp4'),
+            'use_separate_db_storage': 'use_separate_db_storage' in request.form
         },
         'notifications': {
             'email_enabled': 'email_enabled' in request.form,
@@ -431,6 +438,31 @@ def save_settings():
             'image_retention_days': int(request.form.get('image_retention_days', 7))
         }
     }
+    
+    # Handle database storage settings
+    if settings['recording']['use_separate_db_storage']:
+        settings['recording']['db_storage_path'] = request.form.get('db_storage_path', '/var/lib/mongodb')
+        settings['recording']['db_storage_size'] = int(request.form.get('db_storage_size', 20))
+        
+        # Create directory if it doesn't exist
+        db_storage_path = settings['recording']['db_storage_path']
+        try:
+            if not os.path.exists(db_storage_path):
+                os.makedirs(db_storage_path, exist_ok=True)
+                logger.info(f"Created database storage directory: {db_storage_path}")
+                
+                # Try to set appropriate permissions
+                try:
+                    import subprocess
+                    subprocess.run(['chown', 'mongodb:mongodb', db_storage_path], check=False)
+                    subprocess.run(['chmod', '770', db_storage_path], check=False)
+                    logger.info(f"Set permissions on database storage directory: {db_storage_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to set permissions on database directory: {str(e)}")
+                    
+        except Exception as e:
+            flash(f'Warning: Could not create database storage directory: {str(e)}. MongoDB may not be able to use this location.', 'warning')
+            logger.error(f"Failed to create database storage directory: {str(e)}")
     
     # Only update password if provided
     if request.form.get('smtp_password'):
@@ -454,5 +486,152 @@ def save_settings():
     with open(os.path.join('config', 'settings.json'), 'w') as f:
         json.dump(settings, f, indent=4)
     
-    flash('Settings saved successfully', 'success')
+    # Check if we need to update MongoDB configuration
+    if settings['recording']['use_separate_db_storage']:
+        try:
+            # Create a helper script to update MongoDB configuration
+            create_mongodb_config_helper(settings['recording']['db_storage_path'])
+            flash('Settings saved successfully. To apply database storage changes, you will need to run the MongoDB configuration helper script as root.', 'info')
+        except Exception as e:
+            logger.error(f"Failed to create MongoDB configuration helper: {str(e)}")
+            flash(f'Settings saved successfully, but could not create MongoDB helper script: {str(e)}', 'warning')
+    else:
+        flash('Settings saved successfully', 'success')
+    
     return redirect(url_for('main.settings'))
+
+def create_mongodb_config_helper(db_path):
+    """Create a helper script to update MongoDB configuration"""
+    import os
+    
+    # Create a shell script to update MongoDB configuration
+    script_path = os.path.join('config', 'update_mongodb_storage.sh')
+    
+    with open(script_path, 'w') as f:
+        f.write(f"""#!/bin/bash
+# MongoDB storage path configuration helper
+# Created by Smart-NVR
+
+# Check if running as root
+if [ "$EUID" -ne 0 ]; then
+  echo "This script must be run as root."
+  exit 1
+fi
+
+# Create the MongoDB directory if it doesn't exist
+if [ ! -d "{db_path}" ]; then
+  echo "Creating MongoDB directory at {db_path}..."
+  mkdir -p "{db_path}"
+fi
+
+# Set the correct ownership and permissions
+echo "Setting permissions for {db_path}..."
+chown -R mongodb:mongodb "{db_path}"
+chmod -R 770 "{db_path}"
+
+# Update the MongoDB configuration
+CONFIG_FILE="/etc/mongodb.conf"
+if [ -f "$CONFIG_FILE" ]; then
+  echo "Backing up existing MongoDB configuration..."
+  cp "$CONFIG_FILE" "$CONFIG_FILE.backup"
+  
+  echo "Updating MongoDB configuration..."
+  if grep -q "^dbpath" "$CONFIG_FILE"; then
+    # Replace the existing dbpath
+    sed -i "s|^dbpath.*|dbpath={db_path}|g" "$CONFIG_FILE"
+  else
+    # Add the dbpath if it doesn't exist
+    echo "dbpath={db_path}" >> "$CONFIG_FILE"
+  fi
+  
+  echo "Restarting MongoDB service..."
+  systemctl restart mongodb
+  
+  echo "MongoDB configuration updated successfully."
+  echo "Data directory set to: {db_path}"
+else
+  echo "MongoDB configuration file not found at $CONFIG_FILE."
+  echo "You may need to manually update your MongoDB configuration."
+fi
+""")
+    
+    # Make the script executable
+    os.chmod(script_path, 0o755)
+    return script_path
+
+@main_bp.route('/database-storage-info')
+@login_required
+def database_storage_info():
+    """Display database storage information and configuration instructions"""
+    import os
+    import subprocess
+    from flask import flash
+    
+    settings = load_settings()
+    recording_settings = settings.get('recording', {})
+    
+    # Check if the MongoDB config helper script exists
+    config_script_path = os.path.join('config', 'update_mongodb_storage.sh')
+    script_exists = os.path.exists(config_script_path)
+    
+    # Get current MongoDB data path
+    mongo_data_path = "/var/lib/mongodb"  # Default path
+    try:
+        if os.path.exists("/etc/mongodb.conf"):
+            with open("/etc/mongodb.conf", "r") as f:
+                for line in f:
+                    if line.strip().startswith("dbpath="):
+                        mongo_data_path = line.strip().split("=", 1)[1]
+                        break
+    except Exception as e:
+        flash(f"Error reading MongoDB configuration: {str(e)}", "warning")
+    
+    # Check MongoDB storage usage
+    mongo_storage_size = "Unknown"
+    mongo_storage_used = "Unknown"
+    mongo_storage_available = "Unknown"
+    mongo_storage_percent = "Unknown"
+    
+    try:
+        if os.path.exists(mongo_data_path):
+            import shutil
+            usage = shutil.disk_usage(mongo_data_path)
+            
+            # Convert to human-readable format
+            def format_size(size_bytes):
+                for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+                    if size_bytes < 1024 or unit == 'TB':
+                        return f"{size_bytes:.2f} {unit}"
+                    size_bytes /= 1024
+            
+            mongo_storage_size = format_size(usage.total)
+            mongo_storage_used = format_size(usage.used)
+            mongo_storage_available = format_size(usage.free)
+            mongo_storage_percent = f"{(usage.used / usage.total * 100):.1f}%"
+    except Exception as e:
+        flash(f"Error checking MongoDB storage usage: {str(e)}", "warning")
+    
+    # Get MongoDB service status
+    mongo_status = "Unknown"
+    try:
+        result = subprocess.run(["systemctl", "is-active", "mongodb"], 
+                               capture_output=True, text=True, check=False)
+        mongo_status = result.stdout.strip()
+    except Exception:
+        pass
+    
+    # Render template with database storage information
+    return render_template(
+        'database_storage.html',
+        title='Database Storage Configuration',
+        script_exists=script_exists,
+        script_path=config_script_path,
+        mongo_data_path=mongo_data_path,
+        configured_path=recording_settings.get('db_storage_path', '/var/lib/mongodb'),
+        mongo_storage_size=mongo_storage_size,
+        mongo_storage_used=mongo_storage_used,
+        mongo_storage_available=mongo_storage_available, 
+        mongo_storage_percent=mongo_storage_percent,
+        mongo_status=mongo_status,
+        use_separate_storage=recording_settings.get('use_separate_db_storage', False)
+    )

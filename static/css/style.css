@@ -487,12 +487,15 @@ body {
     transition: all 0.3s ease;
     box-shadow: var(--shadow-sm);
     cursor: pointer;
-    background-image: linear-gradient(45deg, transparent 50%, var(--color-primary) 50%),
-                      linear-gradient(135deg, var(--color-primary) 50%, transparent 50%);
-    background-position: calc(100% - 20px) calc(1em + 2px),
-                         calc(100% - 15px) calc(1em + 2px);
-    background-size: 5px 5px,
-                     5px 5px;
+    background-image: 
+        linear-gradient(45deg, transparent 50%, var(--color-primary) 50%),
+        linear-gradient(135deg, var(--color-primary) 50%, transparent 50%);
+    background-position: 
+        calc(100% - 20px) calc(1em + 2px),
+        calc(100% - 15px) calc(1em + 2px);
+    background-size: 
+        5px 5px,
+        5px 5px;
 }
 
 .form-select:focus {

@@ -502,3 +502,67 @@ def delete_model(model_id):
         'success': True,
         'message': 'Model deleted successfully'
     })
+
+@admin_bp.route('/storage')
+@login_required
+@admin_required
+def storage_management():
+    """Storage and disk management page"""
+    import psutil
+    import os
+    import shutil
+    
+    # Define format_size function outside the loop for efficiency
+    def format_size(bytes_value):
+        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+            if bytes_value < 1024 or unit == 'TB':
+                return f"{bytes_value:.2f} {unit}"
+            bytes_value /= 1024
+        return f"{bytes_value:.2f} TB"  # Fallback for extremely large sizes
+    
+    # Get system storage info
+    storage_info = []
+    for partition in psutil.disk_partitions(all=False):
+        try:
+            if partition.fstype and os.access(partition.mountpoint, os.R_OK):
+                usage = shutil.disk_usage(partition.mountpoint)
+                
+                storage_info.append({
+                    'device': partition.device,
+                    'mountpoint': partition.mountpoint,
+                    'fstype': partition.fstype,
+                    'total': usage.total,
+                    'used': usage.used,
+                    'free': usage.free,
+                    'total_formatted': format_size(usage.total),
+                    'used_formatted': format_size(usage.used),
+                    'free_formatted': format_size(usage.free),
+                    'percent': usage.used * 100 / usage.total if usage.total > 0 else 0  # Prevent division by zero
+                })
+        except Exception as e:
+            print(f"Error getting storage info for {partition.mountpoint}: {str(e)}")
+    
+    # Get MongoDB storage location
+    mongodb_path = "/var/lib/mongodb"  # Default path
+    try:
+        if os.path.exists("/etc/mongodb.conf"):
+            with open("/etc/mongodb.conf", "r") as f:
+                config = f.read()
+                for line in config.split("\n"):
+                    if line.strip().startswith("dbPath:"):
+                        mongodb_path = line.split("dbPath:")[1].strip()
+                        break
+    except Exception as e:
+        print(f"Error getting MongoDB path: {str(e)}")
+    
+    # Get settings from database
+    from app.routes.main_routes import load_settings
+    settings = load_settings()
+    
+    return render_template(
+        'admin/storage_management.html', 
+        title='Storage Management',
+        storage_info=storage_info,
+        mongodb_path=mongodb_path,
+        settings=settings
+    )

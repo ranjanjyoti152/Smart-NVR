@@ -351,12 +351,41 @@ document.addEventListener('DOMContentLoaded', function() {
         recordingItems.innerHTML = '<li class="list-group-item text-center"><div class="spinner-border spinner-border-sm" role="status"></div> Loading...</li>';
         noRecordingsMessage.style.display = 'none';
         
+        // Clear any previous timeout
+        if (window.loadingTimeout) {
+            clearTimeout(window.loadingTimeout);
+        }
+        
+        // Set a timeout to prevent endless loading
+        window.loadingTimeout = setTimeout(() => {
+            console.error('Loading recordings timed out');
+            recordingItems.innerHTML = '<li class="list-group-item text-center">Loading timed out. <button class="btn btn-sm btn-primary ms-2" id="retry-loading">Retry</button></li>';
+            document.getElementById('retry-loading')?.addEventListener('click', loadRecordings);
+        }, 10000); // 10 second timeout
+        
         // Fetch recordings from API
         fetch(`/api/cameras/${currentCamera}/recordings?date=${currentDate}&events_only=${showDetectionsOnly.checked}&object_type=${objectFilter.value}`)
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
+                // Clear the timeout since we got a response
+                if (window.loadingTimeout) {
+                    clearTimeout(window.loadingTimeout);
+                }
+                
+                // Check if we received valid data
+                if (!data || !Array.isArray(data.recordings)) {
+                    throw new Error('Invalid response format');
+                }
+                
                 recordings = data.recordings;
-                detections = data.detections;
+                detections = data.detections || [];
+                
+                console.log(`Loaded ${recordings.length} recordings and ${detections.length} detections`);
                 
                 // Update recordings list
                 updateRecordingsList();
@@ -366,9 +395,21 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Update detections list
                 updateDetectionsList();
+                
+                // Auto-select first recording if available
+                if (recordings.length > 0 && !currentRecording) {
+                    selectRecording(recordings[0]);
+                }
             })
             .catch(error => {
+                // Clear the timeout since we got a response (even if it's an error)
+                if (window.loadingTimeout) {
+                    clearTimeout(window.loadingTimeout);
+                }
+                
                 console.error('Error loading recordings:', error);
+                recordingItems.innerHTML = `<li class="list-group-item text-center">Error: ${error.message} <button class="btn btn-sm btn-primary ms-2" id="retry-loading">Retry</button></li>`;
+                document.getElementById('retry-loading')?.addEventListener('click', loadRecordings);
                 resetUI();
             });
     }
@@ -512,6 +553,37 @@ document.addEventListener('DOMContentLoaded', function() {
             backwardPlaybackAnimationId = null;
         }
         
+        // Add loading indicator
+        const loadingIndicator = document.createElement('div');
+        loadingIndicator.id = 'video-loading-indicator';
+        loadingIndicator.className = 'position-absolute top-50 start-50 translate-middle text-center';
+        loadingIndicator.innerHTML = `
+            <div class="spinner-border text-light mb-2" role="status"></div>
+            <div class="text-light">Loading video...</div>
+        `;
+        videoContainer.appendChild(loadingIndicator);
+        
+        // Set a loading timeout
+        const videoLoadTimeout = setTimeout(() => {
+            const indicator = document.getElementById('video-loading-indicator');
+            if (indicator) {
+                indicator.remove();
+                
+                const timeoutError = document.createElement('div');
+                timeoutError.className = 'alert alert-warning mt-3';
+                timeoutError.innerHTML = `
+                    <strong>Loading timeout:</strong> The video is taking too long to load. 
+                    <button class="btn btn-sm btn-primary ms-2" id="retry-video">Retry</button>
+                    <a href="${videoUrl}" download class="btn btn-sm btn-secondary ms-2">Download</a>
+                `;
+                videoContainer.appendChild(timeoutError);
+                
+                document.getElementById('retry-video')?.addEventListener('click', () => {
+                    selectRecording(recording);
+                });
+            }
+        }, 15000); // 15 second timeout
+        
         // Set src directly instead of manipulating source elements
         videoPlayer.src = videoUrl;
         
@@ -522,29 +594,70 @@ document.addEventListener('DOMContentLoaded', function() {
         // Load video content explicitly
         videoPlayer.load();
         
+        // Successfully loaded handler
+        videoPlayer.onloadeddata = function() {
+            console.log("Video loaded successfully");
+            clearTimeout(videoLoadTimeout);
+            const indicator = document.getElementById('video-loading-indicator');
+            if (indicator) {
+                indicator.remove();
+            }
+        };
+        
         // Add detailed error handling for video loading
         videoPlayer.onerror = function() {
+            clearTimeout(videoLoadTimeout);
             console.error('Video loading error:', videoPlayer.error);
-            const errorCode = videoPlayer.error ? videoPlayer.error.code : 'unknown';
-            const errorMessage = document.createElement('div');
-            errorMessage.className = 'alert alert-danger mt-3';
-            errorMessage.innerHTML = `
-                <strong>Error:</strong> Unable to play this video (Error code: ${errorCode}). <br>
-                This could be due to unsupported video format or MIME type issues. <br>
-                <a href="${videoUrl}" download class="btn btn-sm btn-primary mt-2">
-                    <i class="fas fa-download"></i> Download Video
-                </a>
-            `;
-            videoContainer.appendChild(errorMessage);
             
-            // Add direct video link for testing
-            const directLinkMessage = document.createElement('div');
-            directLinkMessage.className = 'alert alert-info mt-2';
-            directLinkMessage.innerHTML = `
-                <strong>Troubleshooting:</strong> 
-                <a href="${videoUrl}" target="_blank">Open video directly</a> to check browser compatibility.
+            // Remove loading indicator
+            const indicator = document.getElementById('video-loading-indicator');
+            if (indicator) {
+                indicator.remove();
+            }
+            
+            const errorCode = videoPlayer.error ? videoPlayer.error.code : 'unknown';
+            let errorMessage = "Unknown error";
+            
+            // More detailed error message based on error code
+            switch(errorCode) {
+                case 1:
+                    errorMessage = "The video loading was aborted";
+                    break;
+                case 2:
+                    errorMessage = "Network error while loading video";
+                    break;
+                case 3:
+                    errorMessage = "Error decoding the video format";
+                    break;
+                case 4:
+                    errorMessage = "Video format not supported";
+                    break;
+            }
+            
+            const errorEl = document.createElement('div');
+            errorEl.className = 'alert alert-danger mt-3';
+            errorEl.innerHTML = `
+                <strong>Error:</strong> ${errorMessage} (Code: ${errorCode})<br>
+                The video might be corrupted or using an unsupported format.<br>
+                <div class="mt-2">
+                    <button class="btn btn-sm btn-primary me-2" id="retry-video">Retry</button>
+                    <a href="${videoUrl}" download class="btn btn-sm btn-secondary">Download Video</a>
+                </div>
             `;
-            videoContainer.appendChild(directLinkMessage);
+            videoContainer.appendChild(errorEl);
+            
+            document.getElementById('retry-video')?.addEventListener('click', () => {
+                selectRecording(recording);
+            });
+        };
+        
+        // Cancel loading if we're trying to play a different video
+        videoPlayer.onabort = function() {
+            clearTimeout(videoLoadTimeout);
+            const indicator = document.getElementById('video-loading-indicator');
+            if (indicator) {
+                indicator.remove();
+            }
         };
         
         if (isPlaying) {
@@ -552,8 +665,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.error('Error playing video:', err);
                 const playbackErrorMsg = document.createElement('div');
                 playbackErrorMsg.className = 'alert alert-warning mt-3';
-                playbackErrorMsg.innerHTML = `<strong>Playback Error:</strong> ${err.message}`;
+                playbackErrorMsg.innerHTML = `
+                    <strong>Playback Error:</strong> ${err.message}<br>
+                    <button class="btn btn-sm btn-primary mt-1" id="retry-playback">Retry</button>
+                `;
                 videoContainer.appendChild(playbackErrorMsg);
+                
+                document.getElementById('retry-playback')?.addEventListener('click', () => {
+                    videoPlayer.play().catch(e => console.error('Retry failed:', e));
+                });
             });
             
             if (playbackDirection === -1) {

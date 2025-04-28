@@ -2,10 +2,13 @@
 """
 Database initialization script for Smart-NVR using MongoDB
 This script creates the required collections and indexes in MongoDB
+It also supports configuring custom storage locations for MongoDB data
 """
 import os
 import sys
 import logging
+import subprocess
+import shutil
 from datetime import datetime
 from pymongo import MongoClient, ASCENDING, DESCENDING
 from werkzeug.security import generate_password_hash
@@ -23,6 +26,73 @@ def hash_password(password):
     """Generate password hash using Werkzeug's method"""
     return generate_password_hash(password)
 
+def configure_mongodb_storage(db_path=None):
+    """Configure MongoDB to use a specific storage path"""
+    if not db_path:
+        return True
+    
+    # Create directory if it doesn't exist
+    os.makedirs(db_path, exist_ok=True)
+    
+    try:
+        # Check if we need to change MongoDB configuration
+        mongodb_conf = "/etc/mongodb.conf"
+        if os.path.exists(mongodb_conf):
+            with open(mongodb_conf, 'r') as f:
+                config_content = f.read()
+            
+            # Check if dbPath is already set to our path
+            db_path_line = f"dbPath: {db_path}"
+            if db_path_line in config_content:
+                logger.info(f"MongoDB already configured to use {db_path}")
+                return True
+            
+            # Backup existing config
+            backup_file = f"{mongodb_conf}.bak"
+            shutil.copy2(mongodb_conf, backup_file)
+            logger.info(f"Backed up MongoDB config to {backup_file}")
+            
+            # Update config with new dbPath
+            new_config = []
+            db_path_set = False
+            
+            for line in config_content.splitlines():
+                if line.strip().startswith("dbPath:"):
+                    new_config.append(f"dbPath: {db_path}")
+                    db_path_set = True
+                else:
+                    new_config.append(line)
+            
+            if not db_path_set:
+                # Add dbPath if it wasn't in the config
+                new_config.append(f"dbPath: {db_path}")
+            
+            # Write updated config
+            with open(mongodb_conf, 'w') as f:
+                f.write("\n".join(new_config))
+            
+            logger.info(f"Updated MongoDB configuration to use {db_path}")
+            
+            # Restart MongoDB service
+            logger.info("Restarting MongoDB service...")
+            result = subprocess.run(["systemctl", "restart", "mongodb"], 
+                                    capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                logger.error(f"Failed to restart MongoDB: {result.stderr}")
+                return False
+            
+            logger.info("MongoDB service restarted successfully")
+            return True
+            
+        else:
+            logger.warning(f"MongoDB config file {mongodb_conf} not found. Manual configuration required.")
+            return False
+            
+    except Exception as e:
+        logger.error(f"Error configuring MongoDB storage: {e}")
+        return False
+
 def main():
     """Main function to initialize the MongoDB database"""
     # Load configuration
@@ -30,10 +100,26 @@ def main():
         from config import Config
         mongo_uri = Config.MONGO_URI
         mongo_dbname = Config.MONGO_DBNAME
+        # Get custom DB path if configured
+        db_storage_path = None
+        if hasattr(Config, 'DB_STORAGE_PATH') and Config.DB_STORAGE_PATH:
+            db_storage_path = Config.DB_STORAGE_PATH
     except ImportError:
         mongo_uri = "mongodb://localhost:27017/smart_nvr"
         mongo_dbname = "smart_nvr"
+        db_storage_path = None
         
+    # Check for command line argument for DB path
+    if len(sys.argv) > 1 and sys.argv[1].startswith('--db-path='):
+        db_storage_path = sys.argv[1].split('=')[1]
+        logger.info(f"Using command line specified DB path: {db_storage_path}")
+    
+    # Configure MongoDB storage if a custom path is specified
+    if db_storage_path:
+        logger.info(f"Configuring MongoDB to use storage path: {db_storage_path}")
+        if not configure_mongodb_storage(db_storage_path):
+            logger.warning("Failed to configure MongoDB storage. Continuing with default storage location.")
+    
     logger.info(f"Connecting to MongoDB at {mongo_uri}")
     
     try:
@@ -50,7 +136,7 @@ def main():
         
         collections_to_create = [
             'users', 'ai_models', 'cameras', 'recordings', 
-            'detections', 'regions_of_interest'
+            'detections', 'regions_of_interest', 'system_settings'
         ]
         
         for collection in collections_to_create:
@@ -97,6 +183,27 @@ def main():
         db.detections.create_index([("roi_id", ASCENDING)])
         db.detections.create_index([("timestamp", DESCENDING)])
         db.detections.create_index([("class_name", ASCENDING)])
+        
+        # System Settings collection for storing disk management settings
+        logger.info("Creating system_settings collection")
+        db.create_collection("system_settings")
+        
+        # Initialize system settings with disk management defaults
+        system_settings = {
+            "recording": {
+                "storage_path": "storage/recordings",
+                "retention_days": 30,
+                "clip_length": 60,
+                "format": "mp4",
+                "use_separate_db_storage": db_storage_path is not None,
+                "db_storage_path": db_storage_path or "/var/lib/mongodb",
+                "db_storage_size": 20,
+                "mount_options": "defaults,noatime",
+                "allow_formatting": False,
+                "auto_mount": True
+            }
+        }
+        db.system_settings.insert_one(system_settings)
         
         # Insert default admin user
         logger.info("Creating default admin user: admin/admin")

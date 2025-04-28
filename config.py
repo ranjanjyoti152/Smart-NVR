@@ -12,6 +12,9 @@ class Config:
     # Database settings (MongoDB)
     MONGO_URI = os.environ.get('MONGO_URI', 'mongodb://localhost:27017/smart_nvr')
     MONGO_DBNAME = 'smart_nvr'
+        
+    # Database storage location (for custom disk management)
+    DB_STORAGE_PATH = os.environ.get('DB_STORAGE_PATH', None)
     
     # File storage
     UPLOAD_FOLDER = os.path.join('storage', 'uploads')

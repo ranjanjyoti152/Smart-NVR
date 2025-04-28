@@ -100,22 +100,42 @@ def sync_recordings():
             for camera in cameras:
                 camera_id = str(camera.id)  # Ensure camera_id is a string for MongoDB
                 logger.info(f"Camera ID type: {type(camera_id)}, value: {camera_id}")
-                camera_dir = os.path.join(videos_base, str(camera_id))
                 
-                if not os.path.exists(camera_dir):
-                    logger.info(f"No recordings directory for camera {camera.name} (ID: {camera_id})")
-                    # Try alternative directory format - MongoDB ObjectIds are used as directory names now
+                # Try with ObjectId directory first (MongoDB style)
+                camera_dir = None
+                
+                # Check for the directory using ObjectId
+                try:
+                    # Try to match by ObjectId string format
                     alt_dirs = list(Path(videos_base).glob('*'))
                     for alt_dir in alt_dirs:
                         if alt_dir.is_dir():
-                            logger.info(f"Checking alternative directory: {alt_dir.name}")
+                            # Check if directory name is the camera_id or matches the ObjectId pattern
                             if str(alt_dir.name) == camera_id:
                                 camera_dir = str(alt_dir)
-                                logger.info(f"Found matching directory: {camera_dir}")
+                                logger.info(f"Found matching directory by ID: {camera_dir}")
                                 break
-                    
-                    if not os.path.exists(camera_dir):
-                        logger.info(f"No matching directory found for camera {camera.name} (ID: {camera_id})")
+                            
+                            # Try to look up camera by the directory name as an ObjectId
+                            try:
+                                # This handles the case where directory is ObjectId but camera.id is a string
+                                dir_obj_id = ObjectId(alt_dir.name)
+                                if str(dir_obj_id) == camera_id:
+                                    camera_dir = str(alt_dir)
+                                    logger.info(f"Found matching directory by ObjectId: {camera_dir}")
+                                    break
+                            except:
+                                pass
+                except Exception as e:
+                    logger.warning(f"Error checking ObjectId directories: {str(e)}")
+                
+                # Fall back to legacy format (numeric ID) if no match found
+                if not camera_dir:
+                    camera_dir = os.path.join(videos_base, str(camera_id))
+                    if os.path.exists(camera_dir):
+                        logger.info(f"Using legacy directory format: {camera_dir}")
+                    else:
+                        logger.warning(f"No recordings directory found for camera {camera.name} (ID: {camera_id})")
                         continue
                 
                 logger.info(f"Scanning recordings for camera {camera.name} (ID: {camera_id}) in directory: {camera_dir}")
