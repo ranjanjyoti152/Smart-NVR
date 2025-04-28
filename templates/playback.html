@@ -55,13 +55,19 @@
         <div class="col-md-9">
             <!-- Video Player -->
             <div class="video-container mb-3" id="video-container">
-                <video id="video-player" controls class="w-100" preload="auto" playsinline>
+                <video id="video-player" controls class="w-100" preload="metadata" playsinline>
                     Your browser doesn't support HTML5 video playback.
                 </video>
                 <div class="no-video-message text-center py-5" id="no-video-message">
                     <i class="fas fa-film fa-3x mb-3 text-muted"></i>
                     <h4>No Video Selected</h4>
                     <p class="text-muted">Select a camera and date to view recordings</p>
+                </div>
+                <div class="video-loading-overlay" id="video-loading-overlay" style="display: none; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 100;">
+                    <div class="text-center text-white">
+                        <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;" role="status"></div>
+                        <p class="mb-0">Loading video...</p>
+                    </div>
                 </div>
             </div>
             
@@ -492,6 +498,10 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
         
+        // Show loading overlay
+        const loadingOverlay = document.getElementById('video-loading-overlay');
+        loadingOverlay.style.display = 'flex';
+        
         // Show video player and hide message
         noVideoMessage.style.display = 'none';
         videoPlayer.style.display = 'block';
@@ -500,11 +510,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const existingErrors = videoContainer.querySelectorAll('.alert');
         existingErrors.forEach(err => err.remove());
         
-        // Set video sources with proper MIME types
-        const videoUrl = `/api/recordings/${recording.id}/video`;
-        
-        console.log("Loading video from:", videoUrl);
-        
         // Pause video and reset any active playback
         videoPlayer.pause();
         if (backwardPlaybackAnimationId) {
@@ -512,44 +517,78 @@ document.addEventListener('DOMContentLoaded', function() {
             backwardPlaybackAnimationId = null;
         }
         
-        // Set src directly instead of manipulating source elements
+        // Set video sources with proper MIME types
+        const videoUrl = `/api/recordings/${recording.id}/video?quality=medium`;
+        console.log("Loading video from:", videoUrl);
+        
+        // Use lower-quality video first for faster loading
         videoPlayer.src = videoUrl;
         
-        // Log video element's readiness
-        console.log("Video player ready state:", videoPlayer.readyState);
-        console.log("Video player network state:", videoPlayer.networkState);
+        // Handle video loading events
+        videoPlayer.onloadstart = function() {
+            console.log("Video loading started");
+        };
+        
+        videoPlayer.oncanplay = function() {
+            console.log("Video is ready to play");
+            loadingOverlay.style.display = 'none';
+        };
+        
+        videoPlayer.onloadedmetadata = function() {
+            console.log("Video metadata loaded");
+        };
+        
+        videoPlayer.ontimeupdate = function() {
+            // Once we get the first timeupdate event, we know playback has started
+            // Hide loading overlay if still visible
+            loadingOverlay.style.display = 'none';
+            
+            // Only need to handle this once
+            videoPlayer.ontimeupdate = updatePlayhead;
+        };
+        
+        // Add query param to try different format if needed
+        videoPlayer.onerror = function() {
+            console.error('Video loading error:', videoPlayer.error);
+            const errorCode = videoPlayer.error ? videoPlayer.error.code : 'unknown';
+            
+            // Try loading the video with a web-compatible format
+            const webCompatibleUrl = `/api/recordings/${recording.id}/video?convert=true&quality=medium`;
+            console.log("Trying web-compatible format:", webCompatibleUrl);
+            videoPlayer.src = webCompatibleUrl;
+            videoPlayer.load();
+            
+            // If this also fails, show proper error
+            videoPlayer.onerror = function() {
+                loadingOverlay.style.display = 'none';
+                console.error('Video loading error (second attempt):', videoPlayer.error);
+                const errorMessage = document.createElement('div');
+                errorMessage.className = 'alert alert-danger mt-3';
+                errorMessage.innerHTML = `
+                    <strong>Error:</strong> Unable to play this video (Error code: ${errorCode}). <br>
+                    This could be due to unsupported video format or MIME type issues. <br>
+                    <a href="/api/recordings/${recording.id}/download" download class="btn btn-sm btn-primary mt-2">
+                        <i class="fas fa-download"></i> Download Video
+                    </a>
+                `;
+                videoContainer.appendChild(errorMessage);
+            };
+        };
+        
+        // Timeout to hide the loading overlay if it takes too long
+        setTimeout(() => {
+            if (loadingOverlay.style.display === 'flex') {
+                loadingOverlay.style.display = 'none';
+            }
+        }, 15000); // 15 second timeout
         
         // Load video content explicitly
         videoPlayer.load();
         
-        // Add detailed error handling for video loading
-        videoPlayer.onerror = function() {
-            console.error('Video loading error:', videoPlayer.error);
-            const errorCode = videoPlayer.error ? videoPlayer.error.code : 'unknown';
-            const errorMessage = document.createElement('div');
-            errorMessage.className = 'alert alert-danger mt-3';
-            errorMessage.innerHTML = `
-                <strong>Error:</strong> Unable to play this video (Error code: ${errorCode}). <br>
-                This could be due to unsupported video format or MIME type issues. <br>
-                <a href="${videoUrl}" download class="btn btn-sm btn-primary mt-2">
-                    <i class="fas fa-download"></i> Download Video
-                </a>
-            `;
-            videoContainer.appendChild(errorMessage);
-            
-            // Add direct video link for testing
-            const directLinkMessage = document.createElement('div');
-            directLinkMessage.className = 'alert alert-info mt-2';
-            directLinkMessage.innerHTML = `
-                <strong>Troubleshooting:</strong> 
-                <a href="${videoUrl}" target="_blank">Open video directly</a> to check browser compatibility.
-            `;
-            videoContainer.appendChild(directLinkMessage);
-        };
-        
         if (isPlaying) {
             videoPlayer.play().catch(err => {
                 console.error('Error playing video:', err);
+                loadingOverlay.style.display = 'none';
                 const playbackErrorMsg = document.createElement('div');
                 playbackErrorMsg.className = 'alert alert-warning mt-3';
                 playbackErrorMsg.innerHTML = `<strong>Playback Error:</strong> ${err.message}`;

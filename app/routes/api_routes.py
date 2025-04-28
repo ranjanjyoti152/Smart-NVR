@@ -714,96 +714,224 @@ def get_recording(recording_id):
 @api_bp.route('/recordings/<recording_id>/video')
 @login_required
 def get_recording_video(recording_id):
-    """Stream recording video with transcoding support if needed"""
+    """Stream recording video with optimized performance"""
     import logging
     import os
-    import subprocess
-    import tempfile
     import re
-    from flask import Response, abort, request, send_file
+    import tempfile
+    import subprocess
+    from flask import send_file, abort, request, jsonify, Response, current_app
+    from werkzeug.http import parse_range_header
 
     logger = logging.getLogger(__name__)
     
-    recording = Recording.get_by_id(recording_id)
-    if not recording:
-        return jsonify({
-            'success': False,
-            'message': 'Recording not found'
-        }), 404
+    # Cache recent recording lookups (store up to 20 recent recordings)
+    if not hasattr(get_recording_video, 'cache'):
+        get_recording_video.cache = {}
     
-    if not os.path.exists(recording.file_path):
-        logger.error(f"Recording file not found: {recording.file_path}")
+    # Check if recording is in cache
+    if recording_id in get_recording_video.cache:
+        file_path = get_recording_video.cache[recording_id]
+        if os.path.exists(file_path):
+            logger.info(f"Using cached file path: {file_path}")
+        else:
+            # Remove stale cache entry
+            logger.warning(f"Cached file path no longer exists: {file_path}")
+            del get_recording_video.cache[recording_id]
+            file_path = None
+    else:
+        file_path = None
+    
+    # If not in cache, look up the recording
+    if file_path is None:
+        recording = Recording.get_by_id(recording_id)
+        if not recording:
+            return jsonify({
+                'success': False,
+                'message': 'Recording not found'
+            }), 404
+        
+        # Check if file exists at the recorded path
+        file_path = recording.file_path
+        
+        # Fix relative paths if needed
+        if not file_path.startswith('/'):
+            # If path is relative, make it relative to the project root
+            file_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), file_path)
+        
+        # Remove any duplicate 'app/' in path
+        if '/app/storage/' in file_path:
+            file_path = file_path.replace('/app/storage/', '/storage/')
+        
+        if not os.path.exists(file_path):
+            logger.warning(f"Recording file not found at path: {file_path}")
+            
+            # Try to reconstruct path based on camera_id directory structure
+            from app.routes.main_routes import get_recording_settings
+            try:
+                recording_settings = get_recording_settings()
+                storage_base = recording_settings.get('storage_path', 'storage/recordings')
+            except Exception:
+                storage_base = 'storage/recordings'
+            
+            # Make sure storage_base is an absolute path
+            if not storage_base.startswith('/'):
+                storage_base = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), storage_base)
+            
+            videos_base = os.path.join(storage_base, 'videos')
+            
+            # Try with ObjectId as directory (since we know this is how the files are organized)
+            if hasattr(recording, '_id') and recording._id:
+                obj_id_dir = os.path.join(videos_base, str(recording._id))
+                
+                # Try all mp4 files in the ObjectId directory - faster check
+                if os.path.isdir(obj_id_dir):
+                    mp4_files = [f for f in os.listdir(obj_id_dir) if f.endswith('.mp4')]
+                    if mp4_files:
+                        # Just take the first one or optionally sort by timestamp
+                        file_path = os.path.join(obj_id_dir, mp4_files[0])
+                        logger.info(f"Found recording at path: {file_path}")
+                        
+                        # Update the file path in the database for future requests
+                        recording.file_path = file_path
+                        recording.save()
+        
+        # Add to cache if found
+        if os.path.exists(file_path):
+            # Limit cache size to 20 entries (LRU-like behavior)
+            if len(get_recording_video.cache) >= 20:
+                # Remove oldest entry
+                oldest_key = next(iter(get_recording_video.cache))
+                del get_recording_video.cache[oldest_key]
+                
+            get_recording_video.cache[recording_id] = file_path
+    
+    if not os.path.exists(file_path):
+        logger.error(f"Recording file not found: {file_path}")
         abort(404, description="Recording file not found")
     
-    logger.info(f"Serving video file: {recording.file_path}")
+    # Check if conversion is requested
+    convert_requested = request.args.get('convert', '').lower() in ('true', '1', 'yes')
     
-    # Check if the browser supports direct playback (mobile browsers often have better codec support)
-    user_agent = request.headers.get('User-Agent', '').lower()
-    mobile = 'mobile' in user_agent or 'android' in user_agent or 'iphone' in user_agent or 'ipad'
+    # Also check for a lower bitrate version
+    quality = request.args.get('quality', 'high').lower()
     
-    # Check video format - if it's MPEG-4 and not mobile, we'll transcode
-    need_transcode = False
-    try:
-        # Use ffprobe to check video codec
-        ffprobe_cmd = [
-            'ffprobe', '-v', 'error', '-select_streams', 'v:0', 
-            '-show_entries', 'stream=codec_name', '-of', 'default=noprint_wrappers=1:nokey=1',
-            recording.file_path
-        ]
-        codec = subprocess.check_output(ffprobe_cmd, stderr=subprocess.STDOUT).decode('utf-8').strip()
-        logger.info(f"Video codec: {codec}")
+    # Create a cache key for converted videos
+    cache_key = f"{file_path}_{quality}"
+    if convert_requested:
+        cache_key += "_converted"
         
-        # Need to transcode if it's mpeg4 (not h264)
-        need_transcode = codec == 'mpeg4' and not mobile
-    except Exception as e:
-        logger.error(f"Error checking video codec: {str(e)}")
-        # If we can't check, assume no need to transcode
-        need_transcode = False
+    # Check if we already have a converted version in the temp cache
+    temp_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'storage', 'temp')
+    if not os.path.exists(temp_dir):
+        os.makedirs(temp_dir, exist_ok=True)
     
-    if need_transcode:
-        logger.info(f"Transcoding video to H.264 for browser compatibility")
+    # Create a reliable hash of the cache key
+    import hashlib
+    cache_hash = hashlib.md5(cache_key.encode()).hexdigest()
+    
+    # Cache file for converted videos
+    if convert_requested:
+        cache_file = os.path.join(temp_dir, f"{cache_hash}.webm")
+        cache_mime = 'video/webm'
+    else:
+        cache_file = os.path.join(temp_dir, f"{cache_hash}.mp4")
+        cache_mime = 'video/mp4'
+    
+    # If we have a cached version and it's not too old, use that
+    use_cache = False
+    if os.path.exists(cache_file):
+        # Check if cache is recent (less than 1 day old)
+        cache_mtime = os.path.getmtime(cache_file)
+        original_mtime = os.path.getmtime(file_path)
         
-        # Check for range requests
-        range_header = request.headers.get('Range', None)
+        # If cache is newer than original file, use it
+        if cache_mtime > original_mtime:
+            use_cache = True
+            logger.info(f"Using cached converted file: {cache_file}")
+            return send_file(
+                cache_file,
+                mimetype=cache_mime,
+                conditional=True,
+                etag=True
+            )
+    
+    # Check if we have ffmpeg for conversion (only if needed)
+    have_ffmpeg = False
+    if convert_requested and not use_cache:
+        try:
+            subprocess.check_output(["which", "ffmpeg"], stderr=subprocess.STDOUT)
+            have_ffmpeg = True
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            have_ffmpeg = False
+    
+    # Convert the video if requested, ffmpeg is available, and no usable cache exists
+    if convert_requested and have_ffmpeg and not use_cache:
+        logger.info(f"Converting video to web-compatible format with quality: {quality}")
         
-        def generate_h264():
-            """Stream H.264 transcoded video"""
+        # Get video bitrate based on quality
+        if quality == 'low':
+            video_bitrate = '500k'
+            scale = 'scale=640:-2'  # Scale to 640px width
+        elif quality == 'medium':
+            video_bitrate = '1000k'
+            scale = 'scale=960:-2'  # Scale to 960px width
+        else:  # high or default
+            video_bitrate = '2000k'
+            scale = 'scale=1280:-2'  # Scale to 1280px width
+        
+        # Convert to webm in the background and save to cache for future use
+        try:
+            # Create a command to convert the video and save it to the cache
             ffmpeg_cmd = [
-                'ffmpeg', '-i', recording.file_path,
-                '-c:v', 'libx264', '-preset', 'ultrafast',
-                '-movflags', 'frag_keyframe+empty_moov+faststart',
-                '-f', 'mp4', '-'
+                'ffmpeg',
+                '-y',  # Overwrite output files without asking
+                '-i', file_path,
+                '-c:v', 'libvpx-vp9',  # Use VP9 codec
+                '-b:v', video_bitrate,  # Video bitrate
+                '-vf', scale,           # Video scaling filter
+                '-deadline', 'realtime',  # Faster encoding at expense of quality
+                '-cpu-used', '8',       # Maximum speed
+                '-row-mt', '1',         # Multi-threading for rows
+                '-tile-columns', '2',   # Use tile columns for parallelism
+                '-threads', '4',        # Use 4 threads
+                '-an',                  # Remove audio
+                cache_file
             ]
             
-            process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=10**8)
+            # Run the conversion in the background
+            process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             
+            # Wait for the conversion to complete with a timeout
             try:
-                while True:
-                    chunk = process.stdout.read(1024*1024)  # 1MB chunks
-                    if not chunk:
-                        break
-                    yield chunk
-            finally:
+                stdout, stderr = process.communicate(timeout=10)
+                if process.returncode != 0:
+                    logger.error(f"Error converting video: {stderr.decode()}")
+                else:
+                    logger.info(f"Conversion successful, cached at {cache_file}")
+                    return send_file(
+                        cache_file,
+                        mimetype='video/webm',
+                        conditional=True,
+                        etag=True
+                    )
+            except subprocess.TimeoutExpired:
+                # If the process is taking too long, kill it and proceed with direct streaming
                 process.kill()
-        
-        return Response(
-            generate_h264(),
-            mimetype='video/mp4',
-            headers={
-                'Accept-Ranges': 'bytes',
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                'X-Content-Type-Options': 'nosniff',
-                'Content-Disposition': f'inline; filename="{os.path.basename(recording.file_path)}"'
-            }
-        )
-    else:
-        # No transcoding needed, send file directly
-        return send_file(
-            recording.file_path,
-            mimetype='video/mp4',
-            conditional=True,
-            etag=True,
-        )
+                process.communicate()
+                logger.warning("Conversion taking too long, proceeding with direct streaming")
+                
+        except Exception as e:
+            logger.error(f"Error during conversion: {str(e)}")
+    
+    # Standard direct file serving for normal requests
+    logger.info(f"Serving unmodified video file: {file_path}")
+    return send_file(
+        file_path,
+        mimetype='video/mp4',
+        conditional=True,  # Enable support for range requests
+        etag=True          # Enable ETag for caching
+    )
 
 @api_bp.route('/recordings/<recording_id>/thumbnail')
 @login_required
@@ -826,6 +954,9 @@ def get_recording_thumbnail(recording_id):
 @login_required
 def download_recording(recording_id):
     """Download recording file"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     recording = Recording.get_by_id(recording_id)
     if not recording:
         return jsonify({
@@ -833,7 +964,53 @@ def download_recording(recording_id):
             'message': 'Recording not found'
         }), 404
     
-    if not os.path.exists(recording.file_path):
+    # Check if file exists at the recorded path
+    file_path = recording.file_path
+    
+    # Fix relative paths if needed
+    if not file_path.startswith('/'):
+        # If path is relative, make it relative to the project root
+        file_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), file_path)
+    
+    # Remove any duplicate 'app/' in path
+    if '/app/storage/' in file_path:
+        file_path = file_path.replace('/app/storage/', '/storage/')
+    
+    if not os.path.exists(file_path):
+        logger.warning(f"Recording file not found at path: {file_path}")
+        
+        # Try to reconstruct path based on camera_id directory structure
+        from app.routes.main_routes import get_recording_settings
+        try:
+            recording_settings = get_recording_settings()
+            storage_base = recording_settings.get('storage_path', 'storage/recordings')
+        except Exception:
+            storage_base = 'storage/recordings'
+        
+        # Make sure storage_base is an absolute path
+        if not storage_base.startswith('/'):
+            storage_base = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), storage_base)
+        
+        videos_base = os.path.join(storage_base, 'videos')
+        
+        # Try with ObjectId as directory (since we know this is how the files are organized)
+        if hasattr(recording, '_id') and recording._id:
+            obj_id_dir = os.path.join(videos_base, str(recording._id))
+            
+            # Try all mp4 files in the ObjectId directory
+            if os.path.isdir(obj_id_dir):
+                for file in os.listdir(obj_id_dir):
+                    if file.endswith('.mp4'):
+                        file_path = os.path.join(obj_id_dir, file)
+                        logger.info(f"Found recording at path: {file_path}")
+                        
+                        # Update the file path in the database for future requests
+                        recording.file_path = file_path
+                        recording.save()
+                        break
+    
+    if not os.path.exists(file_path):
+        logger.error(f"Recording file not found: {file_path}")
         abort(404, description="Recording file not found")
     
     # Generate a download filename based on camera name and timestamp
@@ -843,7 +1020,7 @@ def download_recording(recording_id):
     filename = f"{camera_name}-{timestamp}.mp4"
     
     return send_file(
-        recording.file_path,
+        file_path,
         as_attachment=True,
         download_name=filename,
         mimetype='video/mp4'
