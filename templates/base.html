@@ -14,6 +14,14 @@
     <!-- Custom CSS for macOS-inspired design -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     
+    <!-- Initialize dark mode before rendering page -->
+    <script>
+        // Set dark mode on page load before any content renders to prevent flash
+        if (localStorage.getItem('darkMode') === 'true') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+        }
+    </script>
+    
     <!-- Additional CSS specific to pages -->
     {% block styles %}{% endblock %}
 </head>
@@ -130,8 +138,8 @@
     </main>
     
     <!-- Dark mode toggle button -->
-    <button class="dark-mode-toggle" onclick="toggleDarkMode()">
-        <i class="fas fa-moon"></i>
+    <button class="dark-mode-toggle" onclick="toggleDarkMode()" id="dark-mode-toggle">
+        <i class="fas" id="dark-mode-icon"></i>
     </button>
     
     <!-- JavaScript Libraries -->
@@ -141,6 +149,23 @@
     
     <!-- Custom JavaScript -->
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    
+    {% if config.DEBUG %}
+    <!-- Dark Mode Testing Script (only loaded in debug/development mode) -->
+    <script src="{{ url_for('static', filename='js/dark-mode-test.js') }}"></script>
+    {% endif %}
+    
+    <script>
+        // Initialize the dark mode toggle button icon after page load
+        document.addEventListener('DOMContentLoaded', function() {
+            const darkModeIcon = document.getElementById('dark-mode-icon');
+            if (localStorage.getItem('darkMode') === 'true') {
+                darkModeIcon.className = 'fas fa-sun';
+            } else {
+                darkModeIcon.className = 'fas fa-moon';
+            }
+        });
+    </script>
     
     <!-- Additional JavaScript specific to pages -->
     {% block scripts %}{% endblock %}

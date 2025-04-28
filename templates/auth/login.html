@@ -4,25 +4,25 @@
 {% block content %}
 <div class="auth-container">
     <div class="auth-logo">
-        <i class="fas fa-video fa-3x text-primary"></i>
-        <h2 class="mt-3">SmartNVR</h2>
+        <i class="fas fa-video fa-3x" style="background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;"></i>
+        <h2 class="mt-3" style="color: var(--mac-text);">SmartNVR</h2>
         <p class="text-muted">Intelligent surveillance system</p>
     </div>
     
-    <h3 class="text-center mb-4">Login</h3>
+    <h3 class="text-center mb-4" style="color: var(--mac-text);">Login</h3>
     
     <form method="POST" action="{{ url_for('auth.login') }}">
         <div class="mb-3">
-            <label for="username" class="form-label">Username</label>
+            <label for="username" class="form-label" style="color: var(--mac-text);">Username</label>
             <input type="text" class="form-control" id="username" name="username" required autofocus>
         </div>
         <div class="mb-3">
-            <label for="password" class="form-label">Password</label>
+            <label for="password" class="form-label" style="color: var(--mac-text);">Password</label>
             <input type="password" class="form-control" id="password" name="password" required>
         </div>
         <div class="mb-3 form-check">
             <input type="checkbox" class="form-check-input" id="remember" name="remember">
-            <label class="form-check-label" for="remember">Remember me</label>
+            <label class="form-check-label" for="remember" style="color: var(--mac-text);">Remember me</label>
         </div>
         <div class="d-grid gap-2">
             <button type="submit" class="btn btn-primary mac-btn-primary">Login</button>
@@ -30,7 +30,7 @@
     </form>
     
     <div class="text-center mt-3">
-        <p>Don't have an account? <a href="{{ url_for('auth.register') }}">Register</a></p>
+        <p style="color: var(--mac-text);">Don't have an account? <a href="{{ url_for('auth.register') }}" style="color: var(--color-primary);">Register</a></p>
     </div>
 </div>
 {% endblock %}

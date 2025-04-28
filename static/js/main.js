@@ -212,12 +212,38 @@ function toggleDarkMode() {
         // Add transition for smooth color changes
         root.style.transition = 'all 0.5s ease';
         root.setAttribute('data-theme', 'dark');
+        
+        // Change dark mode button icon
+        const darkModeToggle = document.querySelector('.dark-mode-toggle i');
+        if (darkModeToggle) {
+            darkModeToggle.className = 'fas fa-sun';
+        }
+        
         showToast('Dark mode activated ✨', 'info', 2000);
     } else {
         root.style.transition = 'all 0.5s ease';
         root.removeAttribute('data-theme');
+        
+        // Change dark mode button icon back to moon
+        const darkModeToggle = document.querySelector('.dark-mode-toggle i');
+        if (darkModeToggle) {
+            darkModeToggle.className = 'fas fa-moon';
+        }
+        
         showToast('Light mode activated ☀️', 'info', 2000);
     }
+    
+    // Fix for form controls in dark mode
+    const formControls = document.querySelectorAll('.form-control, .form-select');
+    formControls.forEach(control => {
+        control.style.transition = 'all 0.5s ease';
+        // Force input elements to respect theme changes
+        if (!currentMode) {
+            control.classList.add('dark-mode-input');
+        } else {
+            control.classList.remove('dark-mode-input');
+        }
+    });
     
     // Add animation to all cards during mode change
     const cards = document.querySelectorAll('.mac-card');
@@ -235,8 +261,19 @@ function checkDarkMode() {
     // Check localStorage preference
     if (localStorage.getItem('darkMode') === 'true') {
         document.documentElement.setAttribute('data-theme', 'dark');
+        
+        // Set the correct icon for the dark mode toggle button
+        const darkModeToggle = document.querySelector('.dark-mode-toggle i');
+        if (darkModeToggle) {
+            darkModeToggle.className = 'fas fa-sun';
+        }
+        
+        // Apply dark mode to form elements
+        const formControls = document.querySelectorAll('.form-control, .form-select');
+        formControls.forEach(control => {
+            control.classList.add('dark-mode-input');
+        });
     }
-    // Respect system preference by default
 }
 
 // Run dark mode check on page load

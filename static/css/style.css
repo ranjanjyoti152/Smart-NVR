@@ -13,11 +13,17 @@
     
     /* Extended color palette */
     --color-primary: #4b6dde;
+    --color-primary-rgb: 75, 109, 222; /* Added RGB values */
     --color-secondary: #8d52e6;
+    --color-secondary-rgb: 141, 82, 230; /* Added RGB values */
     --color-success: #3ad6ab;
+    --color-success-rgb: 58, 214, 171; /* Added RGB values */
     --color-danger: #ff6b6b;
+    --color-danger-rgb: 255, 107, 107; /* Added RGB values */
     --color-warning: #ffae35;
+    --color-warning-rgb: 255, 174, 53; /* Added RGB values */
     --color-info: #3abfe0;
+    --color-info-rgb: 58, 191, 224; /* Added RGB values */
     
     /* Gradients */
     --gradient-primary: linear-gradient(135deg, #4b6dde 0%, #6d8ef7 100%);
@@ -43,11 +49,17 @@
         
         /* Extended dark mode color palette */
         --color-primary: #5d80f8;
+        --color-primary-rgb: 93, 128, 248;
         --color-secondary: #9d63fa;
+        --color-secondary-rgb: 157, 99, 250;
         --color-success: #42e6b8;
+        --color-success-rgb: 66, 230, 184;
         --color-danger: #ff7b7b;
+        --color-danger-rgb: 255, 123, 123;
         --color-warning: #ffbe45;
+        --color-warning-rgb: 255, 190, 69;
         --color-info: #45c8f0;
+        --color-info-rgb: 69, 200, 240;
     }
 }
 
@@ -62,11 +74,17 @@
     
     /* Extended dark mode color palette */
     --color-primary: #5d80f8;
+    --color-primary-rgb: 93, 128, 248;
     --color-secondary: #9d63fa;
+    --color-secondary-rgb: 157, 99, 250;
     --color-success: #42e6b8;
+    --color-success-rgb: 66, 230, 184;
     --color-danger: #ff7b7b;
+    --color-danger-rgb: 255, 123, 123;
     --color-warning: #ffbe45;
+    --color-warning-rgb: 255, 190, 69;
     --color-info: #45c8f0;
+    --color-info-rgb: 69, 200, 240;
 }
 
 body {
@@ -1128,4 +1146,44 @@ body {
     .mac-title {
         font-size: 1.2rem;
     }
+}
+
+/* Dark mode specific styles for auth container */
+[data-theme="dark"] .auth-container {
+    background-color: #2d2d2d;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .text-muted {
+    color: rgba(255, 255, 255, 0.6) !important;
+}
+
+/* Fix for dark mode tables and cards in all templates */
+[data-theme="dark"] .stat-card {
+    background-color: #2d2d2d;
+    color: var(--mac-text);
+}
+
+[data-theme="dark"] .mac-toast {
+    background-color: #2d2d2d;
+}
+
+/* Improve dark mode timeline visibility */
+[data-theme="dark"] .timeline-container {
+    background-color: #1e222a;
+}
+
+[data-theme="dark"] .timeline-event {
+    background-color: rgba(var(--color-primary-rgb), 0.4);
+    border-left: 2px solid var(--mac-accent);
+}
+
+/* Improve Contrast for Tables */
+[data-theme="dark"] .table thead th {
+    border-bottom-color: var(--mac-border);
+    color: var(--mac-accent);
+}
+
+[data-theme="dark"] .table td {
+    border-top-color: var(--mac-border);
 }
