@@ -14,6 +14,201 @@
         display: none;
     }
     
+    /* Dashboard widgets styles */
+    .dashboard-widgets {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+    
+    .widget {
+        background: var(--mac-bg);
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+        transition: all 0.3s ease;
+    }
+    
+    .widget-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 15px;
+        background: var(--mac-accent);
+        color: white;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    
+    .widget-header i {
+        transition: transform 0.3s;
+    }
+    
+    .widget-header.collapsed i.fa-chevron-down {
+        transform: rotate(-90deg);
+    }
+    
+    .widget-body {
+        padding: 15px;
+        max-height: 300px;
+        overflow-y: auto;
+        transition: max-height 0.3s ease;
+    }
+    
+    .widget-body.collapsed {
+        max-height: 0;
+        padding: 0 15px;
+        overflow: hidden;
+    }
+    
+    /* Draggable widget styles */
+    .widget.dragging {
+        opacity: 0.7;
+        transform: scale(0.95);
+        z-index: 100;
+    }
+    
+    .widget-drop-area {
+        border: 2px dashed rgba(0, 123, 255, 0.5);
+        background: rgba(0, 123, 255, 0.1);
+    }
+    
+    /* Camera health widget */
+    .camera-status-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    
+    .camera-status-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    }
+    
+    .camera-status-item:last-child {
+        border-bottom: none;
+    }
+    
+    .status-indicator {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 8px;
+    }
+    
+    .status-indicator.online {
+        background-color: #28a745;
+    }
+    
+    .status-indicator.offline {
+        background-color: #dc3545;
+    }
+    
+    .status-indicator.warning {
+        background-color: #ffc107;
+    }
+    
+    /* Detection summary widget */
+    .detection-chart-container {
+        height: 150px;
+        margin-bottom: 10px;
+    }
+    
+    .detection-item {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 5px;
+        font-size: 13px;
+    }
+    
+    .detection-count {
+        font-weight: bold;
+        background: rgba(0, 0, 0, 0.1);
+        border-radius: 12px;
+        padding: 1px 8px;
+    }
+    
+    /* System resources widget */
+    .resource-item {
+        margin-bottom: 10px;
+    }
+    
+    .resource-label {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 5px;
+    }
+    
+    .resource-progress {
+        height: 8px;
+        border-radius: 4px;
+        overflow: hidden;
+        background: rgba(0, 0, 0, 0.1);
+    }
+    
+    .resource-bar {
+        height: 100%;
+        transition: width 0.5s ease;
+    }
+    
+    .resource-bar.cpu {
+        background: linear-gradient(to right, #4facfe, #00f2fe);
+    }
+    
+    .resource-bar.memory {
+        background: linear-gradient(to right, #f093fb, #f5576c);
+    }
+    
+    .resource-bar.disk {
+        background: linear-gradient(to right, #43e97b, #38f9d7);
+    }
+    
+    .resource-bar.gpu {
+        background: linear-gradient(to right, #fa709a, #fee140);
+    }
+    
+    /* AI model status widget */
+    .model-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    }
+    
+    .model-item:last-child {
+        border-bottom: none;
+    }
+    
+    .model-info {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .model-name {
+        font-weight: 600;
+        font-size: 14px;
+    }
+    
+    .model-details {
+        font-size: 12px;
+        color: var(--mac-text-secondary);
+    }
+    
+    .model-badge {
+        font-size: 11px;
+        padding: 3px 8px;
+        border-radius: 12px;
+        background: rgba(0, 123, 255, 0.1);
+        color: var(--mac-accent);
+    }
+    
+    /* Camera grid styles (existing) */
     .camera-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
@@ -209,6 +404,111 @@
                     <option value="medium" selected>Medium</option>
                     <option value="low">Low</option>
                 </select>
+            </div>
+        </div>
+        <div class="col-auto ms-auto">
+            <button id="toggle-widgets" class="btn btn-outline-secondary btn-sm">
+                <i class="fas fa-tachometer-alt me-1"></i> Toggle Widgets
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Dashboard Widgets -->
+<div id="dashboard-widgets" class="dashboard-widgets mb-4">
+    <!-- Camera Health Monitor Widget -->
+    <div class="widget" data-widget-id="camera-health" draggable="true">
+        <div class="widget-header">
+            <span><i class="fas fa-video me-2"></i> Camera Health</span>
+            <i class="fas fa-chevron-down"></i>
+        </div>
+        <div class="widget-body">
+            <ul id="camera-health-list" class="camera-status-list">
+                <li class="camera-status-item">
+                    <div><span class="status-indicator online"></span> Loading camera status...</div>
+                    <span></span>
+                </li>
+            </ul>
+        </div>
+    </div>
+    
+    <!-- Detection Summary Widget -->
+    <div class="widget" data-widget-id="detection-summary" draggable="true">
+        <div class="widget-header">
+            <span><i class="fas fa-object-group me-2"></i> Detection Summary</span>
+            <i class="fas fa-chevron-down"></i>
+        </div>
+        <div class="widget-body">
+            <div class="detection-chart-container">
+                <canvas id="detection-chart"></canvas>
+            </div>
+            <div id="detection-list">
+                <div class="detection-item">
+                    <span>Loading detection data...</span>
+                    <span class="detection-count">-</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- System Resource Widget -->
+    <div class="widget" data-widget-id="system-resources" draggable="true">
+        <div class="widget-header">
+            <span><i class="fas fa-microchip me-2"></i> System Resources</span>
+            <i class="fas fa-chevron-down"></i>
+        </div>
+        <div class="widget-body">
+            <div class="resource-item">
+                <div class="resource-label">
+                    <span>CPU</span>
+                    <span id="cpu-usage">0%</span>
+                </div>
+                <div class="resource-progress">
+                    <div id="cpu-bar" class="resource-bar cpu" style="width: 0%"></div>
+                </div>
+            </div>
+            
+            <div class="resource-item">
+                <div class="resource-label">
+                    <span>Memory</span>
+                    <span id="memory-usage">0%</span>
+                </div>
+                <div class="resource-progress">
+                    <div id="memory-bar" class="resource-bar memory" style="width: 0%"></div>
+                </div>
+            </div>
+            
+            <div class="resource-item">
+                <div class="resource-label">
+                    <span>Disk</span>
+                    <span id="disk-usage">0%</span>
+                </div>
+                <div class="resource-progress">
+                    <div id="disk-bar" class="resource-bar disk" style="width: 0%"></div>
+                </div>
+            </div>
+            
+            <div id="gpu-resources">
+                <!-- GPU resources will be dynamically added here if available -->
+            </div>
+        </div>
+    </div>
+    
+    <!-- AI Model Status Widget -->
+    <div class="widget" data-widget-id="ai-models" draggable="true">
+        <div class="widget-header">
+            <span><i class="fas fa-brain me-2"></i> AI Model Status</span>
+            <i class="fas fa-chevron-down"></i>
+        </div>
+        <div class="widget-body">
+            <div id="model-list">
+                <div class="model-item">
+                    <div class="model-info">
+                        <span class="model-name">Loading models...</span>
+                        <span class="model-details"></span>
+                    </div>
+                    <span class="model-badge"></span>
+                </div>
             </div>
         </div>
     </div>

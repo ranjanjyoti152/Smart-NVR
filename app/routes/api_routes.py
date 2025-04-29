@@ -1163,12 +1163,74 @@ def get_detections():
         }
     })
 
+@api_bp.route('/cameras/<camera_id>/status')
+@login_required
+def get_camera_status(camera_id):
+    """Get current camera status"""
+    from app.utils.camera_processor import CameraManager
+    
+    camera = Camera.get_by_id(camera_id)
+    if not camera:
+        return jsonify({
+            'success': False,
+            'message': 'Camera not found'
+        }), 404
+    
+    # Get camera processor to check if it's running
+    manager = CameraManager.get_instance()
+    processor = manager.get_camera_processor(camera_id)
+    
+    # Get frame loss and other metrics if available
+    frame_loss = 0
+    latency = 0
+    warn = False
+    warn_reason = None
+    
+    if processor:
+        online = processor.is_running()
+        
+        # Calculate frame loss if metrics are available
+        if hasattr(processor, 'metrics'):
+            if 'frame_loss' in processor.metrics:
+                frame_loss = processor.metrics['frame_loss'] 
+                
+                # Warn if frame loss is high
+                if frame_loss > 0.15:  # 15% frame loss
+                    warn = True
+                    warn_reason = f"High frame loss ({frame_loss:.1%})"
+                    
+            if 'latency' in processor.metrics:
+                latency = processor.metrics['latency']
+                
+                # Warn if latency is high
+                if latency > 1000:  # 1 second
+                    warn = True
+                    warn_reason = f"High latency ({latency}ms)"
+    else:
+        online = False
+    
+    # Get recent errors
+    recent_errors = []
+    if hasattr(camera, 'error_log') and isinstance(camera.error_log, list):
+        recent_errors = camera.error_log[-5:] if camera.error_log else []
+    
+    return jsonify({
+        'camera_id': camera_id,
+        'name': camera.name,
+        'online': online,
+        'frame_loss': frame_loss,
+        'latency': latency,
+        'warn': warn,
+        'warn_reason': warn_reason,
+        'recent_errors': recent_errors
+    })
+
 @api_bp.route('/detections/summary')
 @login_required
 def get_detection_summary():
     """Get summary of detections"""
     # Get time range parameters
-    days = request.args.get('days', 7, type=int)
+    days = request.args.get('days', 1, type=int)
     start_date = datetime.now() - timedelta(days=days)
     
     # Get detection counts by class using MongoDB aggregation
@@ -1187,8 +1249,35 @@ def get_detection_summary():
     
     camera_counts = list(db.detections.aggregate(camera_pipeline))
     
+    # Get detection counts by hour for the chart
+    hour_pipeline = [
+        {'$match': {'timestamp': {'$gte': start_date}}},
+        {
+            '$project': {
+                'hour': {'$hour': '$timestamp'},
+                'day': {'$dateToString': {'format': '%Y-%m-%d', 'date': '$timestamp'}}
+            }
+        },
+        {'$group': {'_id': {'hour': '$hour', 'day': '$day'}, 'count': {'$sum': 1}}},
+        {'$sort': {'_id.day': 1, '_id.hour': 1}}
+    ]
+    
+    hour_counts = list(db.detections.aggregate(hour_pipeline))
+    
+    # Format hour counts for chart
+    hourly_data = {}
+    for item in hour_counts:
+        day = item['_id']['day']
+        hour = item['_id']['hour']
+        count = item['count']
+        
+        if day not in hourly_data:
+            hourly_data[day] = [0] * 24
+        
+        hourly_data[day][hour] = count
+    
     # Format results
-    class_summary = {item['_id']: item['count'] for item in class_counts if item['_id']}
+    classes = {item['_id']: item['count'] for item in class_counts if item['_id']}
     
     # Get camera names for the summary
     camera_summary = {}
@@ -1200,49 +1289,15 @@ def get_detection_summary():
     
     return jsonify({
         'success': True,
-        'class_summary': class_summary,
-        'camera_summary': camera_summary,
+        'classes': classes,
+        'cameras': camera_summary,
+        'hourly': hourly_data,
         'total': sum(item['count'] for item in class_counts),
         'time_range': {
             'days': days,
             'start_date': start_date.strftime('%Y-%m-%d')
         }
     })
-
-@api_bp.route('/detections/<detection_id>')
-@login_required
-def get_detection(detection_id):
-    """Get detection details"""
-    detection = Detection.get_by_id(detection_id)
-    if not detection:
-        return jsonify({
-            'success': False,
-            'message': 'Detection not found'
-        }), 404
-    
-    return jsonify({
-        'success': True,
-        'detection': detection.to_dict()
-    })
-
-@api_bp.route('/detections/<detection_id>/image')
-@login_required
-def get_detection_image(detection_id):
-    """Get detection image"""
-    detection = Detection.get_by_id(detection_id)
-    if not detection:
-        return jsonify({
-            'success': False,
-            'message': 'Detection not found'
-        }), 404
-    
-    if detection.image_path and os.path.exists(detection.image_path):
-        return send_file(detection.image_path, mimetype='image/jpeg')
-    
-    # Return default image if none exists
-    return send_file('static/img/no-detection.png', mimetype='image/jpeg')
-
-# --- System API Endpoints ---
 
 @api_bp.route('/system/stats')
 @login_required
@@ -1379,14 +1434,107 @@ def get_system_info():
 @login_required
 def get_system_resources():
     """Get system resource usage"""
-    from app.utils.system_monitor import get_system_resources
+    import psutil
+    import os
+    import time
     
-    resources = get_system_resources()
+    resources = {}
     
-    return jsonify({
-        'success': True,
-        'resources': resources
-    })
+    # CPU usage
+    try:
+        cpu_percent = psutil.cpu_percent(interval=0.5)
+        resources['cpu'] = {
+            'usage_percent': cpu_percent,
+            'cores_physical': psutil.cpu_count(logical=False),
+            'cores_logical': psutil.cpu_count(logical=True)
+        }
+    except Exception as e:
+        resources['cpu'] = {'error': str(e)}
+    
+    # Memory usage
+    try:
+        memory = psutil.virtual_memory()
+        resources['memory'] = {
+            'total': memory.total,
+            'available': memory.available,
+            'used': memory.used,
+            'used_percent': memory.percent
+        }
+    except Exception as e:
+        resources['memory'] = {'error': str(e)}
+    
+    # Disk usage (of main partition)
+    try:
+        disk = psutil.disk_usage('/')
+        resources['disk'] = {
+            'total': disk.total,
+            'used': disk.used,
+            'free': disk.free,
+            'used_percent': disk.percent
+        }
+    except Exception as e:
+        resources['disk'] = {'error': str(e)}
+    
+    # GPU usage if available (try both nvidia-smi through subprocess and GPUtil)
+    resources['gpu'] = []
+    
+    try:
+        import GPUtil
+        gpus = GPUtil.getGPUs()
+        for gpu in gpus:
+            resources['gpu'].append({
+                'name': gpu.name,
+                'utilization': gpu.load * 100,  # Convert to percentage
+                'memory': {
+                    'total': gpu.memoryTotal * 1024 * 1024,  # Convert to bytes
+                    'used': gpu.memoryUsed * 1024 * 1024,    # Convert to bytes
+                    'free': (gpu.memoryTotal - gpu.memoryUsed) * 1024 * 1024
+                },
+                'temperature': gpu.temperature
+            })
+    except ImportError:
+        # Try nvidia-smi if GPUtil is not available
+        try:
+            import subprocess
+            result = subprocess.run([
+                'nvidia-smi',
+                '--query-gpu=name,utilization.gpu,memory.total,memory.used,memory.free,temperature.gpu',
+                '--format=csv,noheader,nounits'
+            ], stdout=subprocess.PIPE, text=True)
+            
+            if result.returncode == 0:
+                for line in result.stdout.strip().split('\n'):
+                    parts = line.split(', ')
+                    if len(parts) >= 6:
+                        name, util, mem_total, mem_used, mem_free, temp = parts[:6]
+                        resources['gpu'].append({
+                            'name': name,
+                            'utilization': float(util),
+                            'memory': {
+                                'total': int(mem_total) * 1024 * 1024,  # Convert MiB to bytes
+                                'used': int(mem_used) * 1024 * 1024,
+                                'free': int(mem_free) * 1024 * 1024
+                            },
+                            'temperature': float(temp)
+                        })
+        except (ImportError, FileNotFoundError, subprocess.SubprocessError) as e:
+            # No GPU or no way to query it
+            pass
+    
+    # Process-specific stats for the NVR
+    try:
+        process = psutil.Process(os.getpid())
+        resources['process'] = {
+            'cpu_percent': process.cpu_percent(interval=0.1),
+            'memory_percent': process.memory_percent(),
+            'memory_used': process.memory_info().rss,
+            'threads': process.num_threads(),
+            'uptime': time.time() - process.create_time()
+        }
+    except Exception as e:
+        resources['process'] = {'error': str(e)}
+    
+    return jsonify(resources)
 
 @api_bp.route('/test_email', methods=['POST'])
 @login_required
@@ -1612,3 +1760,49 @@ def get_model_classes():
         import traceback
         logger.error(traceback.format_exc())
         return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
+
+@api_bp.route('/ai/models')
+@login_required
+def get_ai_models():
+    """Get AI models status"""
+    from app.models.ai_model import AIModel
+    import os
+    
+    models = AIModel.get_all()
+    models_list = []
+    
+    for model in models:
+        # Get model status based on whether the file exists
+        is_loaded = os.path.exists(model.file_path)
+        status = "Loaded" if is_loaded else "Available" 
+        if not os.path.exists(model.file_path):
+            status = "Missing"
+        is_active = model.is_default
+        
+        # Extract version from filename or set as N/A
+        filename = os.path.basename(model.file_path)
+        version = "N/A"
+        # Try to extract version info from filename (like yolov8s, yolov5m, etc)
+        if "yolo" in filename.lower():
+            import re
+            version_match = re.search(r'yolov(\d+\w*)', filename.lower())
+            if version_match:
+                version = f"YOLOv{version_match.group(1)}"
+        
+        # Get model info
+        models_list.append({
+            "id": model.id,
+            "name": model.name,
+            "framework": "YOLO",  # Default framework
+            "version": version,
+            "file_path": model.file_path,
+            "is_active": is_active,
+            "is_loaded": is_loaded,
+            "status": status,
+            "description": model.description or "",
+            "classes": [],  # We don't store classes in the model object yet
+            "created": model.created_at.isoformat() if hasattr(model, 'created_at') and model.created_at else None,
+            "last_used": None  # We don't track last_used yet
+        })
+    
+    return jsonify(models_list)

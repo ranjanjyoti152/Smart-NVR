@@ -202,14 +202,43 @@
             <div class="card-body">
                 <p>These settings define system-wide defaults and behavior. Each camera can override specific settings on a per-camera basis.</p>
                 
-                <h6 class="mt-3">Email Notifications</h6>
-                <p>Configure email alert settings for object detection events. For Gmail, you may need to use an App Password.</p>
-                
-                <h6 class="mt-3">Storage Settings</h6>
-                <p>Control how long recordings are kept and maximum disk usage. When the threshold is reached, oldest recordings are deleted first.</p>
+                <h6 class="mt-3">General Settings</h6>
+                <p>
+                    <strong>Recording Retention:</strong> Set how many days to keep video recordings before automatic deletion. Higher values require more storage space.<br>
+                    <strong>Clip Length:</strong> Duration in seconds for each video clip file. Shorter clips are easier to navigate but create more files.<br>
+                    <strong>Storage Path:</strong> Directory where recordings are stored. Ensure this location has sufficient disk space.<br>
+                    <strong>Recording Format:</strong> Video container format for recordings. MP4 is widely compatible, MKV supports more features, AVI is better for some legacy systems.
+                </p>
                 
                 <h6 class="mt-3">AI Detection Settings</h6>
-                <p>Set default AI model and confidence threshold for new cameras. Higher confidence means fewer false positives but may miss some objects.</p>
+                <p>
+                    <strong>Default Confidence:</strong> The threshold (0.1-0.9) that determines how certain the AI must be to report a detection. Higher values (e.g., 0.7) reduce false positives but might miss some objects. Lower values (e.g., 0.3) catch more objects but may include false detections.<br>
+                    <strong>Default AI Model:</strong> The AI model used for object detection. Smaller models run faster but with less accuracy; larger models are more accurate but require more processing power.<br>
+                    <strong>Save Detection Images:</strong> When enabled, saves a snapshot image for each detection event for review later.<br>
+                    <strong>Image Retention:</strong> Number of days to keep detection images before automatic deletion.
+                </p>
+                
+                <h6 class="mt-3">Email Notifications</h6>
+                <p>
+                    <strong>SMTP Settings:</strong> Your email server details for sending notifications. For Gmail, use smtp.gmail.com:587 and create an App Password if you have 2FA enabled.<br>
+                    <strong>From/To Addresses:</strong> The sender address should match your SMTP username in most cases. Recipients can be multiple addresses separated by commas.<br>
+                    <strong>Testing:</strong> Always use the "Test Email" button to verify your configuration before saving.
+                </p>
+                
+                <h6 class="mt-3">System Settings</h6>
+                <p>
+                    <strong>Log Level:</strong> Controls the verbosity of system logs:
+                    <ul>
+                        <li><strong>Debug:</strong> Maximum detail, useful for troubleshooting but generates large logs</li>
+                        <li><strong>Info:</strong> Recommended for normal operation</li>
+                        <li><strong>Warning:</strong> Only logs potential issues</li>
+                        <li><strong>Error:</strong> Only logs critical errors</li>
+                    </ul>
+                </p>
+                
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i> For best performance, ensure your server has sufficient CPU, RAM, and GPU resources for the selected AI models, especially when running multiple cameras simultaneously.
+                </div>
             </div>
         </div>
     </div>

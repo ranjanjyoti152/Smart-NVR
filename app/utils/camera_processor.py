@@ -13,6 +13,11 @@ import uuid
 from shapely.geometry import Point, Polygon
 import requests
 import random # Import random for generating colors
+
+# Explicitly import torchvision and its transforms to resolve circular import
+import torchvision
+import torchvision.transforms as transforms
+
 from ultralytics import YOLO # Import YOLO from ultralytics
 import re  # Import re for regex pattern matching
 from bson.objectid import ObjectId  # Add missing import for MongoDB ObjectId
@@ -64,6 +69,28 @@ class CameraProcessor:
         self.detection_regions = self._load_detection_regions()
         self.current_detections = []  # Store latest detections for API access (might differ slightly from last_processed_detections)
         self.detection_lock = threading.Lock()
+        # Initialize metrics for performance monitoring
+        self.metrics = {
+            'frame_loss': 0.0,
+            'latency': 0.0,
+            'frames_processed': 0,
+            'frames_dropped': 0,
+            'last_update': time.time()
+        }
+        
+    def is_running(self):
+        """Check if the camera processor is running"""
+        # Check if the thread is alive and if we've processed frames recently
+        thread_alive = self.thread is not None and self.thread.is_alive()
+        
+        # If thread isn't alive, processor isn't running
+        if not thread_alive:
+            return False
+            
+        # Check if we have a valid frame
+        has_frame = self.last_frame is not None
+        
+        return thread_alive and has_frame and self.running
 
     def _get_model_path(self):
         """Get path to AI model file from camera config or use default"""

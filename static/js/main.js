@@ -174,6 +174,528 @@ function enhanceMenuItems() {
     });
 }
 
+// Dashboard Widget Functionality
+// ----------------------------
+
+// Initialize the dashboard widgets with collapsible and drag-drop functionality
+function initDashboardWidgets() {
+    const widgets = document.querySelectorAll('.widget');
+    const dashboardWidgets = document.getElementById('dashboard-widgets');
+    const toggleWidgetsBtn = document.getElementById('toggle-widgets');
+    
+    if (!widgets.length || !dashboardWidgets) return;
+    
+    // Load widget states from localStorage
+    loadWidgetStates();
+    
+    // Widget toggle functionality
+    if (toggleWidgetsBtn) {
+        toggleWidgetsBtn.addEventListener('click', function() {
+            const isHidden = dashboardWidgets.classList.contains('d-none');
+            
+            if (isHidden) {
+                dashboardWidgets.classList.remove('d-none');
+                localStorage.setItem('widgets-visible', 'true');
+            } else {
+                dashboardWidgets.classList.add('d-none');
+                localStorage.setItem('widgets-visible', 'false');
+            }
+        });
+        
+        // Check saved preference on page load
+        if (localStorage.getItem('widgets-visible') === 'false') {
+            dashboardWidgets.classList.add('d-none');
+        }
+    }
+    
+    // Set up collapsible functionality for each widget
+    widgets.forEach(widget => {
+        const header = widget.querySelector('.widget-header');
+        const body = widget.querySelector('.widget-body');
+        const widgetId = widget.dataset.widgetId;
+        
+        if (header && body) {
+            // Add click event to header for collapsing
+            header.addEventListener('click', function() {
+                header.classList.toggle('collapsed');
+                body.classList.toggle('collapsed');
+                
+                // Save state to localStorage
+                const isCollapsed = body.classList.contains('collapsed');
+                localStorage.setItem(`widget-${widgetId}-collapsed`, isCollapsed);
+            });
+        }
+        
+        // Set up drag-and-drop functionality for rearranging widgets
+        if (widget.getAttribute('draggable') === 'true') {
+            widget.addEventListener('dragstart', handleDragStart);
+            widget.addEventListener('dragend', handleDragEnd);
+            widget.addEventListener('dragover', handleDragOver);
+            widget.addEventListener('dragenter', handleDragEnter);
+            widget.addEventListener('dragleave', handleDragLeave);
+            widget.addEventListener('drop', handleDrop);
+        }
+    });
+    
+    // Initialize widgets with data
+    initCameraHealthWidget();
+    initDetectionSummaryWidget();
+    initSystemResourcesWidget();
+    initAIModelsWidget();
+}
+
+// Load saved widget states (collapsed/expanded) from localStorage
+function loadWidgetStates() {
+    const widgets = document.querySelectorAll('.widget');
+    
+    widgets.forEach(widget => {
+        const header = widget.querySelector('.widget-header');
+        const body = widget.querySelector('.widget-body');
+        const widgetId = widget.dataset.widgetId;
+        
+        if (header && body && widgetId) {
+            const isCollapsed = localStorage.getItem(`widget-${widgetId}-collapsed`) === 'true';
+            
+            if (isCollapsed) {
+                header.classList.add('collapsed');
+                body.classList.add('collapsed');
+            }
+        }
+    });
+    
+    // Also check for saved positions
+    const savedLayout = localStorage.getItem('widget-layout');
+    if (savedLayout) {
+        try {
+            const layoutOrder = JSON.parse(savedLayout);
+            const dashboardWidgets = document.getElementById('dashboard-widgets');
+            
+            if (dashboardWidgets && Array.isArray(layoutOrder)) {
+                // Rearrange widgets based on saved order
+                layoutOrder.forEach(id => {
+                    const widget = document.querySelector(`.widget[data-widget-id="${id}"]`);
+                    if (widget) {
+                        dashboardWidgets.appendChild(widget);
+                    }
+                });
+            }
+        } catch (e) {
+            console.error('Error restoring widget layout:', e);
+        }
+    }
+}
+
+// Drag and drop functionality for widgets
+let draggedWidget = null;
+
+function handleDragStart(e) {
+    draggedWidget = this;
+    this.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', this.dataset.widgetId);
+}
+
+function handleDragEnd(e) {
+    this.classList.remove('dragging');
+    document.querySelectorAll('.widget').forEach(widget => {
+        widget.classList.remove('widget-drop-area');
+    });
+    draggedWidget = null;
+    
+    // Save the new widget order
+    saveWidgetOrder();
+}
+
+function handleDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+}
+
+function handleDragEnter(e) {
+    e.preventDefault();
+    if (this !== draggedWidget) {
+        this.classList.add('widget-drop-area');
+    }
+}
+
+function handleDragLeave(e) {
+    this.classList.remove('widget-drop-area');
+}
+
+function handleDrop(e) {
+    e.preventDefault();
+    if (this !== draggedWidget) {
+        const dashboardWidgets = document.getElementById('dashboard-widgets');
+        const draggingIndex = Array.from(dashboardWidgets.children).indexOf(draggedWidget);
+        const targetIndex = Array.from(dashboardWidgets.children).indexOf(this);
+        
+        if (draggingIndex > targetIndex) {
+            dashboardWidgets.insertBefore(draggedWidget, this);
+        } else {
+            dashboardWidgets.insertBefore(draggedWidget, this.nextSibling);
+        }
+        
+        this.classList.remove('widget-drop-area');
+        saveWidgetOrder();
+    }
+}
+
+function saveWidgetOrder() {
+    const dashboardWidgets = document.getElementById('dashboard-widgets');
+    if (!dashboardWidgets) return;
+    
+    // Get the current order of widget IDs
+    const widgetOrder = Array.from(dashboardWidgets.querySelectorAll('.widget')).map(widget => widget.dataset.widgetId);
+    
+    // Save to localStorage
+    localStorage.setItem('widget-layout', JSON.stringify(widgetOrder));
+}
+
+// Initialize Camera Health Widget
+function initCameraHealthWidget() {
+    const cameraHealthList = document.getElementById('camera-health-list');
+    if (!cameraHealthList) return;
+    
+    // Clear loading placeholder
+    cameraHealthList.innerHTML = '';
+    
+    // Get camera data
+    fetch('/api/cameras')
+        .then(response => response.json())
+        .then(data => {
+            // Check if the data has a 'cameras' property (API returns {success: true, cameras: [...]} format)
+            const cameras = data.cameras || data;
+            
+            if (!cameras || cameras.length === 0) {
+                cameraHealthList.innerHTML = '<li class="camera-status-item"><div>No cameras configured</div></li>';
+                return;
+            }
+            
+            // Add each camera to the health monitor
+            cameras.forEach(camera => {
+                const li = document.createElement('li');
+                li.className = 'camera-status-item';
+                li.dataset.cameraId = camera.id;
+                
+                const statusDiv = document.createElement('div');
+                const statusIndicator = document.createElement('span');
+                statusIndicator.className = 'status-indicator';
+                statusDiv.appendChild(statusIndicator);
+                statusDiv.appendChild(document.createTextNode(` ${camera.name}`));
+                
+                const statusText = document.createElement('span');
+                statusText.className = 'camera-health-status';
+                statusText.textContent = 'Checking...';
+                
+                li.appendChild(statusDiv);
+                li.appendChild(statusText);
+                cameraHealthList.appendChild(li);
+                
+                // Check camera status
+                checkCameraStatus(camera.id);
+            });
+            
+            // Set up periodic status updates
+            setInterval(updateAllCameraStatuses, 30000); // Update every 30 seconds
+        })
+        .catch(error => {
+            console.error('Error fetching cameras:', error);
+            cameraHealthList.innerHTML = '<li class="camera-status-item"><div>Error loading camera data</div></li>';
+        });
+}
+
+// Check individual camera status
+function checkCameraStatus(cameraId) {
+    const statusItem = document.querySelector(`.camera-status-item[data-camera-id="${cameraId}"]`);
+    if (!statusItem) return;
+    
+    const statusIndicator = statusItem.querySelector('.status-indicator');
+    const statusText = statusItem.querySelector('.camera-health-status');
+    
+    fetch(`/api/cameras/${cameraId}/status`)
+        .then(response => response.json())
+        .then(status => {
+            if (status.online) {
+                statusIndicator.className = 'status-indicator online';
+                statusText.textContent = 'Online';
+            } else {
+                statusIndicator.className = 'status-indicator offline';
+                statusText.textContent = 'Offline';
+            }
+            
+            if (status.warn) {
+                statusIndicator.className = 'status-indicator warning';
+                statusText.textContent = status.warn_reason || 'Warning';
+            }
+        })
+        .catch(error => {
+            console.error(`Error checking camera ${cameraId} status:`, error);
+            statusIndicator.className = 'status-indicator offline';
+            statusText.textContent = 'Error';
+        });
+}
+
+// Update all camera statuses
+function updateAllCameraStatuses() {
+    const cameraItems = document.querySelectorAll('.camera-status-item[data-camera-id]');
+    cameraItems.forEach(item => {
+        const cameraId = item.dataset.cameraId;
+        checkCameraStatus(cameraId);
+    });
+}
+
+// Initialize Detection Summary Widget
+function initDetectionSummaryWidget() {
+    const detectionList = document.getElementById('detection-list');
+    const chartContainer = document.getElementById('detection-chart');
+    
+    if (!detectionList || !chartContainer) return;
+    
+    // Clear loading placeholder
+    detectionList.innerHTML = '';
+    
+    // Fetch detection summary
+    fetch('/api/detections/summary')
+        .then(response => response.json())
+        .then(data => {
+            if (!data || !data.classes || Object.keys(data.classes).length === 0) {
+                detectionList.innerHTML = '<div class="detection-item"><span>No detections in the last 24 hours</span></div>';
+                return;
+            }
+            
+            // Sort classes by count (descending)
+            const sortedClasses = Object.entries(data.classes)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10); // Top 10 classes
+            
+            // Set up chart data
+            const chartLabels = sortedClasses.map(item => item[0]);
+            const chartValues = sortedClasses.map(item => item[1]);
+            
+            // Create chart using Chart.js (if available)
+            if (window.Chart) {
+                new Chart(chartContainer, {
+                    type: 'bar',
+                    data: {
+                        labels: chartLabels,
+                        datasets: [{
+                            label: 'Detections',
+                            data: chartValues,
+                            backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                            borderColor: 'rgba(75, 192, 192, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                precision: 0
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        }
+                    }
+                });
+            }
+            
+            // Add detection counts to list
+            sortedClasses.forEach(([className, count]) => {
+                const item = document.createElement('div');
+                item.className = 'detection-item';
+                
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = className;
+                
+                const countSpan = document.createElement('span');
+                countSpan.className = 'detection-count';
+                countSpan.textContent = count;
+                
+                item.appendChild(nameSpan);
+                item.appendChild(countSpan);
+                detectionList.appendChild(item);
+            });
+        })
+        .catch(error => {
+            console.error('Error fetching detection summary:', error);
+            detectionList.innerHTML = '<div class="detection-item"><span>Error loading detection data</span></div>';
+        });
+}
+
+// Initialize System Resources Widget
+function initSystemResourcesWidget() {
+    // Get references to resource progress bars
+    const cpuBar = document.getElementById('cpu-bar');
+    const cpuUsage = document.getElementById('cpu-usage');
+    const memoryBar = document.getElementById('memory-bar');
+    const memoryUsage = document.getElementById('memory-usage');
+    const diskBar = document.getElementById('disk-bar');
+    const diskUsage = document.getElementById('disk-usage');
+    const gpuResources = document.getElementById('gpu-resources');
+    
+    if (!cpuBar || !memoryBar || !diskBar || !gpuResources) return;
+    
+    // Function to update system resources
+    function updateSystemResources() {
+        fetch('/api/system/resources')
+            .then(response => response.json())
+            .then(data => {
+                // Update CPU
+                if (data.cpu) {
+                    const cpuPercent = Math.round(data.cpu.usage_percent);
+                    cpuBar.style.width = `${cpuPercent}%`;
+                    cpuUsage.textContent = `${cpuPercent}%`;
+                }
+                
+                // Update Memory
+                if (data.memory) {
+                    const memPercent = Math.round(data.memory.used_percent);
+                    memoryBar.style.width = `${memPercent}%`;
+                    memoryUsage.textContent = `${memPercent}% (${formatMemorySize(data.memory.used)} / ${formatMemorySize(data.memory.total)})`;
+                }
+                
+                // Update Disk
+                if (data.disk) {
+                    const diskPercent = Math.round(data.disk.used_percent);
+                    diskBar.style.width = `${diskPercent}%`;
+                    diskUsage.textContent = `${diskPercent}% (${formatMemorySize(data.disk.used)} / ${formatMemorySize(data.disk.total)})`;
+                }
+                
+                // Update GPU(s) if available
+                if (data.gpu && data.gpu.length > 0) {
+                    gpuResources.innerHTML = ''; // Clear existing GPU items
+                    
+                    data.gpu.forEach((gpu, index) => {
+                        const gpuItem = document.createElement('div');
+                        gpuItem.className = 'resource-item';
+                        
+                        const gpuLabel = document.createElement('div');
+                        gpuLabel.className = 'resource-label';
+                        gpuLabel.innerHTML = `<span>GPU ${index + 1} - ${gpu.name || 'Unknown'}</span><span id="gpu-${index}-usage">${gpu.utilization || 0}%</span>`;
+                        
+                        const gpuProgress = document.createElement('div');
+                        gpuProgress.className = 'resource-progress';
+                        
+                        const gpuBar = document.createElement('div');
+                        gpuBar.className = 'resource-bar gpu';
+                        gpuBar.style.width = `${gpu.utilization || 0}%`;
+                        
+                        gpuProgress.appendChild(gpuBar);
+                        gpuItem.appendChild(gpuLabel);
+                        gpuItem.appendChild(gpuProgress);
+                        gpuResources.appendChild(gpuItem);
+                        
+                        // Add memory info if available
+                        if (gpu.memory) {
+                            const memPercent = Math.round((gpu.memory.used / gpu.memory.total) * 100);
+                            
+                            const memItem = document.createElement('div');
+                            memItem.className = 'resource-item gpu-memory-item';
+                            
+                            const memLabel = document.createElement('div');
+                            memLabel.className = 'resource-label';
+                            memLabel.innerHTML = `<span>GPU ${index + 1} Memory</span><span>${memPercent}% (${formatMemorySize(gpu.memory.used)} / ${formatMemorySize(gpu.memory.total)})</span>`;
+                            
+                            const memProgress = document.createElement('div');
+                            memProgress.className = 'resource-progress';
+                            
+                            const memBar = document.createElement('div');
+                            memBar.className = 'resource-bar gpu';
+                            memBar.style.width = `${memPercent}%`;
+                            
+                            memProgress.appendChild(memBar);
+                            memItem.appendChild(memLabel);
+                            memItem.appendChild(memProgress);
+                            gpuResources.appendChild(memItem);
+                        }
+                    });
+                } else {
+                    gpuResources.innerHTML = '<div class="text-muted small">No GPU detected</div>';
+                }
+            })
+            .catch(error => {
+                console.error('Error updating system resources:', error);
+                // Don't update UI on error to preserve last known values
+            });
+    }
+    
+    // Helper function to format memory size
+    function formatMemorySize(bytes) {
+        if (!bytes) return '0 B';
+        
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(1024));
+        return `${(bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0)} ${sizes[i]}`;
+    }
+    
+    // Initial update
+    updateSystemResources();
+    
+    // Update resources every 5 seconds
+    setInterval(updateSystemResources, 5000);
+}
+
+// Initialize AI Model Status Widget
+function initAIModelsWidget() {
+    const modelList = document.getElementById('model-list');
+    if (!modelList) return;
+    
+    // Clear loading placeholder
+    modelList.innerHTML = '';
+    
+    // Fetch AI models
+    fetch('/api/ai/models')
+        .then(response => response.json())
+        .then(models => {
+            if (!models || models.length === 0) {
+                modelList.innerHTML = '<div class="model-item"><div class="model-info"><span class="model-name">No AI models configured</span></div></div>';
+                return;
+            }
+            
+            // Add each model to the list
+            models.forEach(model => {
+                const item = document.createElement('div');
+                item.className = 'model-item';
+                
+                const info = document.createElement('div');
+                info.className = 'model-info';
+                
+                const name = document.createElement('span');
+                name.className = 'model-name';
+                name.textContent = model.name || 'Unknown Model';
+                
+                const details = document.createElement('span');
+                details.className = 'model-details';
+                details.textContent = `${model.framework || 'Unknown'} | ${model.version || 'Unknown Version'}`;
+                
+                const badge = document.createElement('span');
+                badge.className = 'model-badge';
+                badge.textContent = model.status || 'Unknown';
+                
+                // Apply special class for active model
+                if (model.is_active) {
+                    badge.classList.add('active-model');
+                    badge.textContent = 'Active';
+                }
+                
+                info.appendChild(name);
+                info.appendChild(details);
+                item.appendChild(info);
+                item.appendChild(badge);
+                modelList.appendChild(item);
+            });
+        })
+        .catch(error => {
+            console.error('Error fetching AI models:', error);
+            modelList.innerHTML = '<div class="model-item"><div class="model-info"><span class="model-name">Error loading models</span></div></div>';
+        });
+}
+
 // Initialize page
 document.addEventListener('DOMContentLoaded', function() {
     // Animation for cards
@@ -199,6 +721,11 @@ document.addEventListener('DOMContentLoaded', function() {
             this.classList.remove('pulse-animation');
         });
     });
+    
+    // Initialize dashboard widgets if on dashboard page
+    if (document.getElementById('dashboard-widgets')) {
+        initDashboardWidgets();
+    }
 });
 
 // Dark mode toggle with enhanced animation
