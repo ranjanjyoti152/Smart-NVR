@@ -7,6 +7,5 @@ from .ai_model import AIModel
 from .recording import Recording
 from .detection import Detection
 from .roi import ROI
-from .face import Face
 
-__all__ = ['User', 'Camera', 'AIModel', 'Recording', 'Detection', 'ROI', 'Face']
+__all__ = ['User', 'Camera', 'AIModel', 'Recording', 'Detection', 'ROI']
