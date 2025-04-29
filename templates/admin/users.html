@@ -1,67 +1,69 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="row mb-3">
-    <div class="col">
+<div class="mac-content-header">
+    <div>
+        <h2>User Management</h2>
+        <p class="text-muted">Manage user accounts and permissions</p>
+    </div>
+    <div>
         <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addUserModal">
             <i class="fas fa-plus"></i> Add User
         </button>
     </div>
 </div>
 
-<div class="card">
-    <div class="card-body">
-        <div class="table-responsive">
-            <table class="table table-striped table-hover">
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>Username</th>
-                        <th>Email</th>
-                        <th>Role</th>
-                        <th>Last Login</th>
-                        <th>Created</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for user in users %}
-                    <tr>
-                        <td>{{ user.id }}</td>
-                        <td>{{ user.username }}</td>
-                        <td>{{ user.email }}</td>
-                        <td>
-                            <span class="badge bg-{% if user.is_admin %}primary{% else %}secondary{% endif %}">
-                                {% if user.is_admin %}Admin{% else %}User{% endif %}
-                            </span>
-                        </td>
-                        <td>{{ user.last_login.strftime('%Y-%m-%d %H:%M') if user.last_login else 'Never' }}</td>
-                        <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
-                        <td>
-                            <div class="btn-group btn-group-sm" role="group">
-                                <button type="button" class="btn btn-outline-primary edit-user" 
-                                        data-bs-toggle="modal" data-bs-target="#editUserModal"
-                                        data-user-id="{{ user.id }}" 
-                                        data-username="{{ user.username }}"
-                                        data-email="{{ user.email }}"
-                                        data-is-admin="{{ user.is_admin|int }}">
-                                    <i class="fas fa-edit"></i>
-                                </button>
-                                {% if user.id != current_user.id %}
-                                <button type="button" class="btn btn-outline-danger delete-user" 
-                                        data-bs-toggle="modal" data-bs-target="#deleteUserModal"
-                                        data-user-id="{{ user.id }}" 
-                                        data-username="{{ user.username }}">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                                {% endif %}
-                            </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+<div class="mac-card">
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Username</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Last Login</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td>{{ user.id }}</td>
+                    <td>{{ user.username }}</td>
+                    <td>{{ user.email }}</td>
+                    <td>
+                        <span class="badge {% if user.is_admin %}badge-admin{% else %}badge-user{% endif %}">
+                            {% if user.is_admin %}Admin{% else %}User{% endif %}
+                        </span>
+                    </td>
+                    <td>{{ user.last_login.strftime('%Y-%m-%d %H:%M') if user.last_login else 'Never' }}</td>
+                    <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
+                    <td>
+                        <div class="btn-group btn-group-sm" role="group">
+                            <button type="button" class="btn btn-outline-primary edit-user" 
+                                    data-bs-toggle="modal" data-bs-target="#editUserModal"
+                                    data-user-id="{{ user.id }}" 
+                                    data-username="{{ user.username }}"
+                                    data-email="{{ user.email }}"
+                                    data-is-admin="{{ user.is_admin|int }}">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            {% if user.id != current_user.id %}
+                            <button type="button" class="btn btn-outline-danger delete-user" 
+                                    data-bs-toggle="modal" data-bs-target="#deleteUserModal"
+                                    data-user-id="{{ user.id }}" 
+                                    data-username="{{ user.username }}">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
 </div>
 
@@ -69,7 +71,7 @@
 <div class="modal fade" id="addUserModal" tabindex="-1" aria-labelledby="addUserModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header">
+            <div class="modal-header" style="background: var(--mac-sidebar-bg);">
                 <h5 class="modal-title" id="addUserModalLabel">Add New User</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
@@ -87,7 +89,7 @@
                         <label for="password" class="form-label">Password</label>
                         <input type="password" class="form-control" id="password" name="password" required>
                     </div>
-                    <div class="form-check">
+                    <div class="form-check form-switch">
                         <input class="form-check-input" type="checkbox" id="is_admin" name="is_admin">
                         <label class="form-check-label" for="is_admin">
                             Administrator
@@ -107,7 +109,7 @@
 <div class="modal fade" id="editUserModal" tabindex="-1" aria-labelledby="editUserModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header">
+            <div class="modal-header" style="background: var(--mac-sidebar-bg);">
                 <h5 class="modal-title" id="editUserModalLabel">Edit User</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
@@ -121,7 +123,7 @@
                         <label for="edit_password" class="form-label">New Password (leave empty to keep current)</label>
                         <input type="password" class="form-control" id="edit_password" name="password">
                     </div>
-                    <div class="form-check">
+                    <div class="form-check form-switch">
                         <input class="form-check-input" type="checkbox" id="edit_is_admin" name="is_admin">
                         <label class="form-check-label" for="edit_is_admin">
                             Administrator
@@ -141,13 +143,16 @@
 <div class="modal fade" id="deleteUserModal" tabindex="-1" aria-labelledby="deleteUserModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <div class="modal-header">
+            <div class="modal-header" style="background: var(--mac-sidebar-bg);">
                 <h5 class="modal-title" id="deleteUserModalLabel">Confirm Delete</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <p>Are you sure you want to delete the user <strong id="delete_username"></strong>?</p>
-                <p class="text-danger">This action cannot be undone.</p>
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <p>Are you sure you want to delete the user <strong id="delete_username"></strong>?</p>
+                    <p class="mb-0">This action cannot be undone.</p>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>

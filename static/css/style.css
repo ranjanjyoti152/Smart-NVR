@@ -1187,3 +1187,51 @@ body {
 [data-theme="dark"] .table td {
     border-top-color: var(--mac-border);
 }
+
+/* Badge Styles */
+.badge {
+    padding: 0.4em 0.7em;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border-radius: 10px;
+    color: white;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
+}
+
+.badge-admin {
+    background: var(--gradient-primary);
+}
+
+.badge-user {
+    background: var(--mac-border);
+    color: var(--mac-text);
+    opacity: 0.8;
+}
+
+.badge-status-online {
+    background: var(--gradient-success);
+}
+
+.badge-status-offline {
+    background: var(--gradient-danger);
+}
+
+.badge-recording-enabled {
+    background: var(--gradient-primary);
+}
+
+.badge-recording-disabled {
+    background: var(--mac-border);
+    color: var(--mac-text);
+    opacity: 0.8;
+}
+
+.badge-detection-enabled {
+    background: var(--gradient-secondary);
+}
+
+.badge-detection-disabled {
+    background: var(--mac-border);
+    color: var(--mac-text);
+    opacity: 0.8;
+}

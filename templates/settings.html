@@ -1,244 +1,266 @@
 {% extends "base.html" %}
 
 {% block content %}
+<div class="mac-content-header">
+    <div>
+        <h2>Application Settings</h2>
+        <p class="text-muted">Configure system-wide defaults and behavior</p>
+    </div>
+</div>
+
 <div class="row">
     <div class="col-md-8">
-        <div class="card">
-            <div class="card-header">
-                <h5>Application Settings</h5>
-            </div>
-            <div class="card-body">
-                <form action="{{ url_for('main.save_settings') }}" method="post">
-                    <div class="mb-3">
-                        <h6>General Settings</h6>
-                        <hr>
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="retention_days" class="form-label">Recording Retention (days)</label>
-                                <input type="number" class="form-control" id="retention_days" name="retention_days" 
-                                    value="{{ settings.recording.retention_days|default(30) }}" min="1" max="365">
-                                <div class="form-text">Number of days to keep recordings before automatic deletion</div>
-                            </div>
-                            <div class="col-md-6">
-                                <label for="clip_length" class="form-label">Default Clip Length (seconds)</label>
-                                <input type="number" class="form-control" id="clip_length" name="clip_length" 
-                                    value="{{ settings.recording.clip_length|default(60) }}" min="10" max="600">
-                                <div class="form-text">Default length for recorded clips</div>
-                            </div>
+        <div class="mac-card">
+            <form action="{{ url_for('main.save_settings') }}" method="post">
+                <!-- General Settings -->
+                <div class="mb-4">
+                    <div class="d-flex align-items-center mb-3">
+                        <i class="fas fa-cog me-2" style="color: var(--color-primary);"></i>
+                        <h5 class="mb-0">General Settings</h5>
+                    </div>
+                    <hr>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="retention_days" class="form-label">Recording Retention (days)</label>
+                            <input type="number" class="form-control" id="retention_days" name="retention_days" 
+                                value="{{ settings.recording.retention_days|default(30) }}" min="1" max="365">
+                            <div class="form-text">Number of days to keep recordings before automatic deletion</div>
                         </div>
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="storage_path" class="form-label">Storage Path</label>
-                                <input type="text" class="form-control" id="storage_path" name="storage_path" 
-                                    value="{{ settings.recording.storage_path|default('storage/recordings') }}">
-                                <div class="form-text">Path where recordings are stored</div>
-                            </div>
-                            <div class="col-md-6">
-                                <label for="format" class="form-label">Recording Format</label>
-                                <select class="form-select" id="format" name="format">
-                                    <option value="mp4" {% if settings.recording.format == 'mp4' %}selected{% endif %}>MP4</option>
-                                    <option value="avi" {% if settings.recording.format == 'avi' %}selected{% endif %}>AVI</option>
-                                    <option value="mkv" {% if settings.recording.format == 'mkv' %}selected{% endif %}>MKV</option>
-                                </select>
-                            </div>
+                        <div class="col-md-6">
+                            <label for="clip_length" class="form-label">Default Clip Length (seconds)</label>
+                            <input type="number" class="form-control" id="clip_length" name="clip_length" 
+                                value="{{ settings.recording.clip_length|default(60) }}" min="10" max="600">
+                            <div class="form-text">Default length for recorded clips</div>
                         </div>
                     </div>
-                    
-                    <div class="mb-3">
-                        <h6>AI Detection Settings</h6>
-                        <hr>
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="default_confidence" class="form-label">Default Detection Confidence</label>
-                                <input type="number" class="form-control" id="default_confidence" name="default_confidence" 
-                                    value="{{ settings.detection.default_confidence|default(0.45) }}" min="0.1" max="0.9" step="0.05">
-                                <div class="form-text">Default confidence threshold for object detection (0.1-0.9)</div>
-                            </div>
-                            <div class="col-md-6">
-                                <label for="default_model" class="form-label">Default AI Model</label>
-                                <select class="form-select" id="default_model" name="default_model">
-                                    <!-- Custom trained models -->
-                                    {% if ai_models|selectattr("is_custom")|list %}
-                                        <optgroup label="Custom Trained Models">
-                                        {% for model in ai_models|selectattr("is_custom")|list %}
-                                            <option value="{{ model.name }}" {% if settings.detection.default_model == model.name %}selected{% endif %}>
-                                                {{ model.name }}{% if model.description %} - {{ model.description }}{% endif %}
-                                            </option>
-                                        {% endfor %}
-                                        </optgroup>
-                                    {% endif %}
-                                    
-                                    <!-- Pre-trained models -->
-                                    <optgroup label="Pre-trained Models">
-                                    {% for model in ai_models|rejectattr("is_custom")|list %}
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="storage_path" class="form-label">Storage Path</label>
+                            <input type="text" class="form-control" id="storage_path" name="storage_path" 
+                                value="{{ settings.recording.storage_path|default('storage/recordings') }}">
+                            <div class="form-text">Path where recordings are stored</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="format" class="form-label">Recording Format</label>
+                            <select class="form-select" id="format" name="format">
+                                <option value="mp4" {% if settings.recording.format == 'mp4' %}selected{% endif %}>MP4</option>
+                                <option value="avi" {% if settings.recording.format == 'avi' %}selected{% endif %}>AVI</option>
+                                <option value="mkv" {% if settings.recording.format == 'mkv' %}selected{% endif %}>MKV</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- AI Detection Settings -->
+                <div class="mb-4">
+                    <div class="d-flex align-items-center mb-3">
+                        <i class="fas fa-brain me-2" style="color: var(--color-secondary);"></i>
+                        <h5 class="mb-0">AI Detection Settings</h5>
+                    </div>
+                    <hr>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="default_confidence" class="form-label">Default Detection Confidence</label>
+                            <input type="number" class="form-control" id="default_confidence" name="default_confidence" 
+                                value="{{ settings.detection.default_confidence|default(0.45) }}" min="0.1" max="0.9" step="0.05">
+                            <div class="form-text">Default confidence threshold for object detection (0.1-0.9)</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="default_model" class="form-label">Default AI Model</label>
+                            <select class="form-select" id="default_model" name="default_model">
+                                <!-- Custom trained models -->
+                                {% if ai_models|selectattr("is_custom")|list %}
+                                    <optgroup label="Custom Trained Models">
+                                    {% for model in ai_models|selectattr("is_custom")|list %}
                                         <option value="{{ model.name }}" {% if settings.detection.default_model == model.name %}selected{% endif %}>
                                             {{ model.name }}{% if model.description %} - {{ model.description }}{% endif %}
                                         </option>
                                     {% endfor %}
-                                    
-                                    <!-- Fallback options if no models are in database -->
-                                    {% if not ai_models %}
-                                        <option value="yolov5s" {% if settings.detection.default_model == 'yolov5s' %}selected{% endif %}>YOLOv5s (Small)</option>
-                                        <option value="yolov5m" {% if settings.detection.default_model == 'yolov5m' %}selected{% endif %}>YOLOv5m (Medium)</option>
-                                        <option value="yolov5l" {% if settings.detection.default_model == 'yolov5l' %}selected{% endif %}>YOLOv5l (Large)</option>
-                                    {% endif %}
                                     </optgroup>
-                                </select>
-                                <div class="form-text">Default AI model for object detection</div>
-                                <a href="{{ url_for('admin.manage_models') }}" class="btn btn-sm btn-outline-secondary mt-2">
-                                    <i class="fas fa-cog"></i> Manage Models
-                                </a>
-                            </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <div class="form-check form-switch mb-3">
-                                    <input class="form-check-input" type="checkbox" id="save_detection_images" name="save_detection_images" 
-                                        {% if settings.detection.save_images %}checked{% endif %}>
-                                    <label class="form-check-label" for="save_detection_images">Save Detection Images</label>
-                                    <div class="form-text">When enabled, saves an image for each detection event</div>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <label for="image_retention_days" class="form-label">Image Retention (days)</label>
-                                <input type="number" class="form-control" id="image_retention_days" name="image_retention_days" 
-                                    value="{{ settings.detection.image_retention_days|default(7) }}" min="1" max="90">
-                                <div class="form-text">Number of days to keep detection images before deletion</div>
-                            </div>
+                                {% endif %}
+                                
+                                <!-- Pre-trained models -->
+                                <optgroup label="Pre-trained Models">
+                                {% for model in ai_models|rejectattr("is_custom")|list %}
+                                    <option value="{{ model.name }}" {% if settings.detection.default_model == model.name %}selected{% endif %}>
+                                        {{ model.name }}{% if model.description %} - {{ model.description }}{% endif %}
+                                    </option>
+                                {% endfor %}
+                                
+                                <!-- Fallback options if no models are in database -->
+                                {% if not ai_models %}
+                                    <option value="yolov5s" {% if settings.detection.default_model == 'yolov5s' %}selected{% endif %}>YOLOv5s (Small)</option>
+                                    <option value="yolov5m" {% if settings.detection.default_model == 'yolov5m' %}selected{% endif %}>YOLOv5m (Medium)</option>
+                                    <option value="yolov5l" {% if settings.detection.default_model == 'yolov5l' %}selected{% endif %}>YOLOv5l (Large)</option>
+                                {% endif %}
+                                </optgroup>
+                            </select>
+                            <div class="form-text">Default AI model for object detection</div>
+                            <a href="{{ url_for('admin.manage_models') }}" class="btn btn-sm btn-outline-secondary mt-2">
+                                <i class="fas fa-cog"></i> Manage Models
+                            </a>
                         </div>
                     </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" id="save_detection_images" name="save_detection_images" 
+                                    {% if settings.detection.save_images %}checked{% endif %}>
+                                <label class="form-check-label" for="save_detection_images">Save Detection Images</label>
+                                <div class="form-text">When enabled, saves an image for each detection event</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="image_retention_days" class="form-label">Image Retention (days)</label>
+                            <input type="number" class="form-control" id="image_retention_days" name="image_retention_days" 
+                                value="{{ settings.detection.image_retention_days|default(7) }}" min="1" max="90">
+                            <div class="form-text">Number of days to keep detection images before deletion</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Notification Settings -->
+                <div class="mb-4">
+                    <div class="d-flex align-items-center mb-3">
+                        <i class="fas fa-bell me-2" style="color: var(--color-warning);"></i>
+                        <h5 class="mb-0">Notification Settings</h5>
+                    </div>
+                    <hr>
+                    <div class="form-check form-switch mb-3">
+                        <input class="form-check-input" type="checkbox" id="email_enabled" name="email_enabled" 
+                            {% if settings.notifications.email_enabled %}checked{% endif %}>
+                        <label class="form-check-label" for="email_enabled">Enable Email Notifications</label>
+                    </div>
                     
-                    <div class="mb-3">
-                        <h6>Notification Settings</h6>
-                        <hr>
-                        <div class="form-check form-switch mb-3">
-                            <input class="form-check-input" type="checkbox" id="email_enabled" name="email_enabled" 
-                                {% if settings.notifications.email_enabled %}checked{% endif %}>
-                            <label class="form-check-label" for="email_enabled">Enable Email Notifications</label>
+                    <div id="emailSettings" {% if not settings.notifications.email_enabled %}style="display: none;"{% endif %}>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="smtp_server" class="form-label">SMTP Server</label>
+                                <input type="text" class="form-control" id="smtp_server" name="smtp_server" 
+                                    value="{{ settings.notifications.smtp_server|default('smtp.gmail.com') }}">
+                                <div class="form-text">For Gmail use: smtp.gmail.com</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="smtp_port" class="form-label">SMTP Port</label>
+                                <input type="number" class="form-control" id="smtp_port" name="smtp_port" 
+                                    value="{{ settings.notifications.smtp_port|default(587) }}">
+                                <div class="form-text">For Gmail use: 587</div>
+                            </div>
                         </div>
                         
-                        <div id="emailSettings" {% if not settings.notifications.email_enabled %}style="display: none;"{% endif %}>
-                            <div class="row mb-3">
-                                <div class="col-md-6">
-                                    <label for="smtp_server" class="form-label">SMTP Server</label>
-                                    <input type="text" class="form-control" id="smtp_server" name="smtp_server" 
-                                        value="{{ settings.notifications.smtp_server|default('smtp.gmail.com') }}">
-                                    <div class="form-text">For Gmail use: smtp.gmail.com</div>
-                                </div>
-                                <div class="col-md-6">
-                                    <label for="smtp_port" class="form-label">SMTP Port</label>
-                                    <input type="number" class="form-control" id="smtp_port" name="smtp_port" 
-                                        value="{{ settings.notifications.smtp_port|default(587) }}">
-                                    <div class="form-text">For Gmail use: 587</div>
-                                </div>
-                            </div>
-                            
-                            <div class="row mb-3">
-                                <div class="col-md-6">
-                                    <label for="smtp_username" class="form-label">SMTP Username</label>
-                                    <input type="text" class="form-control" id="smtp_username" name="smtp_username" 
-                                        value="{{ settings.notifications.smtp_username|default('') }}">
-                                    <div class="form-text">For Gmail use your full email address</div>
-                                </div>
-                                <div class="col-md-6">
-                                    <label for="smtp_password" class="form-label">SMTP Password</label>
-                                    <input type="password" class="form-control" id="smtp_password" name="smtp_password" 
-                                        placeholder="Leave blank to keep current">
-                                    <div class="form-text">For Gmail use an <a href="https://myaccount.google.com/apppasswords" target="_blank">App Password</a></div>
-                                </div>
-                            </div>
-                            
-                            <div class="row mb-3">
-                                <div class="col-md-12">
-                                    <label for="from_email" class="form-label">From Email Address</label>
-                                    <input type="email" class="form-control" id="from_email" name="from_email" 
-                                        value="{{ settings.notifications.from_email|default('') }}">
-                                    <div class="form-text">Email address that notifications will be sent from</div>
-                                </div>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="email_to" class="form-label">Email Recipients</label>
-                                <input type="text" class="form-control" id="email_to" name="email_to" 
-                                    value="{{ settings.notifications.email_to|default('') }}">
-                                <div class="form-text">Comma-separated list of email addresses to receive notifications</div>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <button type="button" id="testEmailBtn" class="btn btn-outline-secondary">Test Email</button>
-                                <div id="emailTestResult" class="mt-3"></div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <h6>System Settings</h6>
-                        <hr>
                         <div class="row mb-3">
                             <div class="col-md-6">
-                                <label for="log_level" class="form-label">Log Level</label>
-                                <select class="form-select" id="log_level" name="log_level">
-                                    <option value="debug" {% if settings.system.log_level == 'debug' %}selected{% endif %}>Debug</option>
-                                    <option value="info" {% if settings.system.log_level == 'info' %}selected{% endif %}>Info</option>
-                                    <option value="warning" {% if settings.system.log_level == 'warning' %}selected{% endif %}>Warning</option>
-                                    <option value="error" {% if settings.system.log_level == 'error' %}selected{% endif %}>Error</option>
-                                </select>
-                                <div class="form-text">Controls the detail level of system logs</div>
+                                <label for="smtp_username" class="form-label">SMTP Username</label>
+                                <input type="text" class="form-control" id="smtp_username" name="smtp_username" 
+                                    value="{{ settings.notifications.smtp_username|default('') }}">
+                                <div class="form-text">For Gmail use your full email address</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="smtp_password" class="form-label">SMTP Password</label>
+                                <input type="password" class="form-control" id="smtp_password" name="smtp_password" 
+                                    placeholder="Leave blank to keep current">
+                                <div class="form-text">For Gmail use an <a href="https://myaccount.google.com/apppasswords" target="_blank">App Password</a></div>
                             </div>
                         </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <label for="from_email" class="form-label">From Email Address</label>
+                                <input type="email" class="form-control" id="from_email" name="from_email" 
+                                    value="{{ settings.notifications.from_email|default('') }}">
+                                <div class="form-text">Email address that notifications will be sent from</div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="email_to" class="form-label">Email Recipients</label>
+                            <input type="text" class="form-control" id="email_to" name="email_to" 
+                                value="{{ settings.notifications.email_to|default('') }}">
+                            <div class="form-text">Comma-separated list of email addresses to receive notifications</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <button type="button" id="testEmailBtn" class="btn btn-outline-primary">
+                                <i class="fas fa-paper-plane me-1"></i> Test Email
+                            </button>
+                            <div id="emailTestResult" class="mt-3"></div>
+                        </div>
                     </div>
-                    
-                    <button type="submit" class="btn btn-primary">Save Settings</button>
-                </form>
-            </div>
+                </div>
+                
+                <!-- System Settings -->
+                <div class="mb-4">
+                    <div class="d-flex align-items-center mb-3">
+                        <i class="fas fa-server me-2" style="color: var(--color-info);"></i>
+                        <h5 class="mb-0">System Settings</h5>
+                    </div>
+                    <hr>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="log_level" class="form-label">Log Level</label>
+                            <select class="form-select" id="log_level" name="log_level">
+                                <option value="debug" {% if settings.system.log_level == 'debug' %}selected{% endif %}>Debug</option>
+                                <option value="info" {% if settings.system.log_level == 'info' %}selected{% endif %}>Info</option>
+                                <option value="warning" {% if settings.system.log_level == 'warning' %}selected{% endif %}>Warning</option>
+                                <option value="error" {% if settings.system.log_level == 'error' %}selected{% endif %}>Error</option>
+                            </select>
+                            <div class="form-text">Controls the detail level of system logs</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save me-1"></i> Save Settings
+                </button>
+            </form>
         </div>
     </div>
     
     <div class="col-md-4">
-        <div class="card mb-4">
-            <div class="card-header">
-                <h5>Configuration Info</h5>
+        <div class="mac-card mb-4">
+            <div class="d-flex align-items-center mb-3">
+                <i class="fas fa-info-circle me-2" style="color: var(--color-info);"></i>
+                <h5 class="mb-0">Configuration Info</h5>
             </div>
-            <div class="card-body">
-                <p>These settings define system-wide defaults and behavior. Each camera can override specific settings on a per-camera basis.</p>
-                
-                <h6 class="mt-3">General Settings</h6>
-                <p>
-                    <strong>Recording Retention:</strong> Set how many days to keep video recordings before automatic deletion. Higher values require more storage space.<br>
-                    <strong>Clip Length:</strong> Duration in seconds for each video clip file. Shorter clips are easier to navigate but create more files.<br>
-                    <strong>Storage Path:</strong> Directory where recordings are stored. Ensure this location has sufficient disk space.<br>
-                    <strong>Recording Format:</strong> Video container format for recordings. MP4 is widely compatible, MKV supports more features, AVI is better for some legacy systems.
-                </p>
-                
-                <h6 class="mt-3">AI Detection Settings</h6>
-                <p>
-                    <strong>Default Confidence:</strong> The threshold (0.1-0.9) that determines how certain the AI must be to report a detection. Higher values (e.g., 0.7) reduce false positives but might miss some objects. Lower values (e.g., 0.3) catch more objects but may include false detections.<br>
-                    <strong>Default AI Model:</strong> The AI model used for object detection. Smaller models run faster but with less accuracy; larger models are more accurate but require more processing power.<br>
-                    <strong>Save Detection Images:</strong> When enabled, saves a snapshot image for each detection event for review later.<br>
-                    <strong>Image Retention:</strong> Number of days to keep detection images before automatic deletion.
-                </p>
-                
-                <h6 class="mt-3">Email Notifications</h6>
-                <p>
-                    <strong>SMTP Settings:</strong> Your email server details for sending notifications. For Gmail, use smtp.gmail.com:587 and create an App Password if you have 2FA enabled.<br>
-                    <strong>From/To Addresses:</strong> The sender address should match your SMTP username in most cases. Recipients can be multiple addresses separated by commas.<br>
-                    <strong>Testing:</strong> Always use the "Test Email" button to verify your configuration before saving.
-                </p>
-                
-                <h6 class="mt-3">System Settings</h6>
-                <p>
-                    <strong>Log Level:</strong> Controls the verbosity of system logs:
-                    <ul>
-                        <li><strong>Debug:</strong> Maximum detail, useful for troubleshooting but generates large logs</li>
-                        <li><strong>Info:</strong> Recommended for normal operation</li>
-                        <li><strong>Warning:</strong> Only logs potential issues</li>
-                        <li><strong>Error:</strong> Only logs critical errors</li>
-                    </ul>
-                </p>
-                
-                <div class="alert alert-info">
-                    <i class="fas fa-info-circle"></i> For best performance, ensure your server has sufficient CPU, RAM, and GPU resources for the selected AI models, especially when running multiple cameras simultaneously.
-                </div>
+            <p>These settings define system-wide defaults and behavior. Each camera can override specific settings on a per-camera basis.</p>
+            
+            <h6 class="mt-4 mb-2 fw-bold" style="color: var(--color-primary);">General Settings</h6>
+            <p>
+                <strong>Recording Retention:</strong> Set how many days to keep video recordings before automatic deletion. Higher values require more storage space.<br>
+                <strong>Clip Length:</strong> Duration in seconds for each video clip file. Shorter clips are easier to navigate but create more files.<br>
+                <strong>Storage Path:</strong> Directory where recordings are stored. Ensure this location has sufficient disk space.<br>
+                <strong>Recording Format:</strong> Video container format for recordings. MP4 is widely compatible, MKV supports more features, AVI is better for some legacy systems.
+            </p>
+            
+            <h6 class="mt-4 mb-2 fw-bold" style="color: var(--color-secondary);">AI Detection Settings</h6>
+            <p>
+                <strong>Default Confidence:</strong> The threshold (0.1-0.9) that determines how certain the AI must be to report a detection. Higher values (e.g., 0.7) reduce false positives but might miss some objects. Lower values (e.g., 0.3) catch more objects but may include false detections.<br>
+                <strong>Default AI Model:</strong> The AI model used for object detection. Smaller models run faster but with less accuracy; larger models are more accurate but require more processing power.<br>
+                <strong>Save Detection Images:</strong> When enabled, saves a snapshot image for each detection event for review later.<br>
+                <strong>Image Retention:</strong> Number of days to keep detection images before automatic deletion.
+            </p>
+            
+            <h6 class="mt-4 mb-2 fw-bold" style="color: var(--color-warning);">Email Notifications</h6>
+            <p>
+                <strong>SMTP Settings:</strong> Your email server details for sending notifications. For Gmail, use smtp.gmail.com:587 and create an App Password if you have 2FA enabled.<br>
+                <strong>From/To Addresses:</strong> The sender address should match your SMTP username in most cases. Recipients can be multiple addresses separated by commas.<br>
+                <strong>Testing:</strong> Always use the "Test Email" button to verify your configuration before saving.
+            </p>
+            
+            <h6 class="mt-4 mb-2 fw-bold" style="color: var(--color-info);">System Settings</h6>
+            <p>
+                <strong>Log Level:</strong> Controls the verbosity of system logs:
+                <ul class="mt-2">
+                    <li><strong>Debug:</strong> Maximum detail, useful for troubleshooting but generates large logs</li>
+                    <li><strong>Info:</strong> Recommended for normal operation</li>
+                    <li><strong>Warning:</strong> Only logs potential issues</li>
+                    <li><strong>Error:</strong> Only logs critical errors</li>
+                </ul>
+            </p>
+            
+            <div class="alert alert-info mt-4">
+                <i class="fas fa-info-circle me-2"></i> 
+                <span>For best performance, ensure your server has sufficient CPU, RAM, and GPU resources for the selected AI models, especially when running multiple cameras simultaneously.</span>
             </div>
         </div>
     </div>
@@ -299,7 +321,7 @@
         .finally(() => {
             // Restore button state
             btn.disabled = false;
-            btn.innerHTML = 'Test Email';
+            btn.innerHTML = '<i class="fas fa-paper-plane me-1"></i> Test Email';
         });
     });
 </script>
