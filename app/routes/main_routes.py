@@ -1,10 +1,14 @@
 """
 Main routes for SmartNVR application
 """
-from flask import Blueprint, render_template, redirect, url_for
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
 from flask_login import login_required, current_user
+import os
+import json
+from datetime import datetime
 from app.models.camera import Camera
 from app.models.ai_model import AIModel
+from app.models.face import Face
 
 # Create blueprint
 main_bp = Blueprint('main', __name__)
@@ -51,6 +55,24 @@ def camera_management():
     cameras = Camera.get_all()
     models = AIModel.get_all()
     return render_template('camera_management.html', title='Camera Management', cameras=cameras, models=models)
+
+@main_bp.route('/faces')
+@login_required
+def faces():
+    """Face detection and recognition route"""
+    cameras = Camera.get_active_cameras()
+    # Get summary stats
+    unknown_count = Face.count({'name': 'Unknown'})
+    known_count = Face.count({'name': {'$ne': 'Unknown'}})
+    total_faces = unknown_count + known_count
+    
+    return render_template('faces.html', title='Face Recognition', 
+                          cameras=cameras, 
+                          stats={
+                              'total': total_faces,
+                              'known': known_count,
+                              'unknown': unknown_count
+                          })
 
 @main_bp.route('/add-camera', methods=['POST'])
 @login_required

@@ -15,6 +15,7 @@ from app.models.camera import Camera
 from app.models.recording import Recording
 from app.models.detection import Detection
 from app.models.roi import ROI
+from app.models.face import Face  # Import the Face model
 from app.utils.decorators import admin_required, api_key_required
 from app.utils.system_monitor import get_system_stats
 
@@ -1241,6 +1242,255 @@ def get_detection_image(detection_id):
     
     # Return default image if none exists
     return send_file('static/img/no-detection.png', mimetype='image/jpeg')
+
+# --- Face Detection API Endpoints ---
+
+@api_bp.route('/faces')
+@login_required
+def get_faces():
+    """Get faces with filters"""
+    # Get query parameters
+    camera_id = request.args.get('camera_id')
+    name = request.args.get('name')
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
+    recognized_only = request.args.get('recognized_only', '').lower() in ('true', '1', 'yes')
+    
+    # Build MongoDB query
+    query = {}
+    
+    if camera_id:
+        query['camera_id'] = str(camera_id)
+    
+    if name:
+        query['name'] = {'$regex': name, '$options': 'i'}  # Case-insensitive search
+    
+    if recognized_only:
+        query['name'] = {'$ne': 'Unknown'}
+    
+    # Date range filtering
+    date_filter = {}
+    if date_from:
+        try:
+            date_from_obj = datetime.strptime(date_from, '%Y-%m-%d')
+            date_filter['$gte'] = date_from_obj
+        except ValueError:
+            return jsonify({
+                'success': False,
+                'message': 'Invalid date_from format. Use YYYY-MM-DD'
+            }), 400
+    
+    if date_to:
+        try:
+            date_to_obj = datetime.strptime(date_to, '%Y-%m-%d') + timedelta(days=1)
+            date_filter['$lt'] = date_to_obj
+        except ValueError:
+            return jsonify({
+                'success': False,
+                'message': 'Invalid date_to format. Use YYYY-MM-DD'
+            }), 400
+    
+    if date_filter:
+        query['detected_at'] = date_filter
+    
+    # Paginate results
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    
+    # Calculate skip and limit for pagination
+    skip = (page - 1) * per_page
+    
+    # Query MongoDB with pagination
+    total = db.faces.count_documents(query)
+    faces_cursor = db.faces.find(query).sort('detected_at', -1).skip(skip).limit(per_page)
+    faces = [Face(face) for face in faces_cursor]
+    
+    # Calculate pagination info
+    total_pages = (total + per_page - 1) // per_page  # ceiling division
+    
+    return jsonify({
+        'success': True,
+        'faces': [face.to_dict() for face in faces],
+        'pagination': {
+            'total': total,
+            'pages': total_pages,
+            'page': page,
+            'per_page': per_page
+        }
+    })
+
+@api_bp.route('/faces/<face_id>')
+@login_required
+def get_face(face_id):
+    """Get face details"""
+    face = Face.get_by_id(face_id)
+    if not face:
+        return jsonify({
+            'success': False,
+            'message': 'Face not found'
+        }), 404
+    
+    return jsonify({
+        'success': True,
+        'face': face.to_dict()
+    })
+
+@api_bp.route('/faces/<face_id>/image')
+@login_required
+def get_face_image(face_id):
+    """Get face image"""
+    face = Face.get_by_id(face_id)
+    if not face:
+        return jsonify({
+            'success': False,
+            'message': 'Face not found'
+        }), 404
+    
+    if face.image_path and os.path.exists(face.image_path):
+        return send_file(face.image_path, mimetype='image/jpeg')
+    
+    # Return default image if none exists
+    return send_file('static/img/no-face.png', mimetype='image/jpeg')
+
+@api_bp.route('/faces/<face_id>/name', methods=['PUT'])
+@login_required
+def update_face_name(face_id):
+    """Update face name (label the person)"""
+    face = Face.get_by_id(face_id)
+    if not face:
+        return jsonify({
+            'success': False,
+            'message': 'Face not found'
+        }), 404
+    
+    data = request.json
+    if not data or 'name' not in data:
+        return jsonify({
+            'success': False,
+            'message': 'Name parameter is required'
+        }), 400
+    
+    # Update the name
+    face.update_name(data['name'])
+    
+    return jsonify({
+        'success': True,
+        'message': f'Face name updated to {data["name"]}',
+        'face': face.to_dict()
+    })
+
+@api_bp.route('/faces/<face_id>', methods=['DELETE'])
+@login_required
+def delete_face(face_id):
+    """Delete face record and image"""
+    face = Face.get_by_id(face_id)
+    if not face:
+        return jsonify({
+            'success': False,
+            'message': 'Face not found'
+        }), 404
+    
+    # Delete face record and image
+    face.delete()
+    
+    return jsonify({
+        'success': True,
+        'message': 'Face deleted successfully'
+    })
+
+@api_bp.route('/cameras/<camera_id>/faces/latest')
+@login_required
+def get_latest_camera_faces(camera_id):
+    """Get latest faces detected by a camera"""
+    # Verify camera exists
+    camera = Camera.get_by_id(camera_id)
+    if not camera:
+        return jsonify({
+            'success': False,
+            'message': 'Camera not found'
+        }), 404
+    
+    try:
+        # Get real-time faces directly from camera processor
+        from app.utils.camera_processor import CameraManager
+        manager = CameraManager.get_instance()
+        processor = manager.get_camera_processor(camera_id)
+        
+        if processor and hasattr(processor, 'get_latest_face_detections'):
+            # If processor has real-time face detections, use those
+            faces = processor.get_latest_face_detections()
+            if faces:
+                return jsonify(faces)
+    except Exception as e:
+        print(f"Error getting real-time face detections: {str(e)}")
+    
+    # Fall back to database faces if no real-time faces available
+    try:
+        # Get latest faces from database
+        faces = Face.get_by_camera(camera_id)[:20]  # Limit to 20 most recent
+        
+        results = []
+        for face in faces:
+            results.append({
+                'id': face.id,
+                'name': face.name,
+                'image_path': face.image_path,
+                'detected_at': face.detected_at.isoformat() if isinstance(face.detected_at, datetime) else face.detected_at,
+                'last_seen_at': face.last_seen_at.isoformat() if isinstance(face.last_seen_at, datetime) else face.last_seen_at
+            })
+        
+        return jsonify(results)
+    except Exception as e:
+        print(f"Error getting faces from database: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        return jsonify([])
+
+@api_bp.route('/faces/summary')
+@login_required
+def get_face_summary():
+    """Get summary of face detections"""
+    # Get time range parameters
+    days = request.args.get('days', 7, type=int)
+    start_date = datetime.now() - timedelta(days=days)
+    
+    # Get face counts by name using MongoDB aggregation
+    name_pipeline = [
+        {'$match': {'detected_at': {'$gte': start_date}}},
+        {'$group': {'_id': '$name', 'count': {'$sum': 1}}}
+    ]
+    
+    name_counts = list(db.faces.aggregate(name_pipeline))
+    
+    # Get face counts by camera
+    camera_pipeline = [
+        {'$match': {'detected_at': {'$gte': start_date}}},
+        {'$group': {'_id': '$camera_id', 'count': {'$sum': 1}}}
+    ]
+    
+    camera_counts = list(db.faces.aggregate(camera_pipeline))
+    
+    # Format results
+    name_summary = {item['_id']: item['count'] for item in name_counts if item['_id']}
+    
+    # Get camera names for the summary
+    camera_summary = {}
+    for item in camera_counts:
+        if item['_id']:
+            camera = Camera.get_by_id(item['_id'])
+            camera_name = camera.name if camera else f"camera-{item['_id']}"
+            camera_summary[camera_name] = item['count']
+    
+    return jsonify({
+        'success': True,
+        'name_summary': name_summary,
+        'camera_summary': camera_summary,
+        'total': sum(item['count'] for item in name_counts),
+        'time_range': {
+            'days': days,
+            'start_date': start_date.strftime('%Y-%m-%d')
+        }
+    })
 
 # --- System API Endpoints ---
 

@@ -51,7 +51,9 @@ class CameraProcessor:
         self.thread = None
         self.recording_thread = None
         self.detection_thread = None
-        self.frame_queue = queue.Queue(maxsize=5)  # Reduced queue size for lower latency
+        self.face_detection_thread = None  # New thread for face detection
+        self.frame_queue = queue.Queue(maxsize=10)  # Increased queue size for better performance
+        self.face_frame_queue = queue.Queue(maxsize=10)  # Queue for face detection frames
         self.recording_queue = queue.Queue(maxsize=30)
         self.last_frame = None # Stores the latest raw frame from camera
         self.last_processed_frame = None # Stores the latest frame processed by detection
@@ -64,6 +66,17 @@ class CameraProcessor:
         self.detection_regions = self._load_detection_regions()
         self.current_detections = []  # Store latest detections for API access (might differ slightly from last_processed_detections)
         self.detection_lock = threading.Lock()
+        
+        # Face detection attributes
+        self.face_detector = None  # Will be initialized in start()
+        self.face_detection_enabled = True  # Can be configured via camera settings later
+        self.current_face_detections = []  # Store latest face detections
+        self.face_detection_lock = threading.Lock()
+        self.face_recognition_enabled = False  # Whether to perform face recognition (after detection)
+        self.face_recognition_data = []  # List of known faces for recognition
+        self.face_detection_interval = 5  # Only process every Nth frame for face detection
+        self.frame_counter = 0  # Counter for implementing detection intervals
+        self.resize_factor = 0.5  # Resize factor for face detection (improves performance)
 
     def _get_model_path(self):
         """Get path to AI model file from camera config or use default"""
@@ -220,6 +233,14 @@ class CameraProcessor:
 
         logger.info(f"Successfully opened camera stream: {rtsp_url}")
 
+        # Initialize face detector
+        self.face_detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+        if self.face_detector.empty():
+            logger.warning(f"Failed to load face detection classifier. Face detection will be disabled.")
+            self.face_detection_enabled = False
+        else:
+            logger.info(f"Face detector initialized successfully")
+
         # Initialize AI model (YOLOv5, v8, v9, v10)
         try:
             import torch  # Make sure torch is imported here before using it
@@ -361,6 +382,13 @@ class CameraProcessor:
             self.detection_thread.daemon = True
             self.detection_thread.start()
 
+        # Start face detection thread if enabled
+        if self.face_detection_enabled:
+            self.face_detection_thread = threading.Thread(target=self._detect_faces)
+            self.face_detection_thread.daemon = True
+            self.face_detection_thread.start()
+            logger.info(f"Started face detection thread for camera {self.camera.name}")
+
         logger.info(f"Started processing camera: {self.camera.name}")
         return True
 
@@ -377,6 +405,9 @@ class CameraProcessor:
 
         if self.detection_thread and self.detection_thread.is_alive():
             self.detection_thread.join(timeout=1.0)
+            
+        if self.face_detection_thread and self.face_detection_thread.is_alive():
+            self.face_detection_thread.join(timeout=1.0)
 
         if self.video_writer:
             self.video_writer.release()
@@ -497,7 +528,6 @@ class CameraProcessor:
                          time.sleep(5) # Wait longer before next attempt
                     continue
 
-
                 # --- Add overlays BEFORE putting frame in detection queue ---
                 # Add timestamp overlay
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -513,11 +543,10 @@ class CameraProcessor:
                 with self.detection_lock:
                     self.last_frame = frame.copy()
 
-                # Add frame to queues for processing and recording
-                # Use frame.copy() if putting the same object into multiple queues
-                # or if modification happens downstream before consumption.
-                # Here, detection thread will use its own copy later.
-                frame_copy_for_queues = frame.copy()
+                # Increment the frame counter for face detection
+                self.frame_counter += 1
+                
+                # Queue for object detection - Always process this
                 try:
                     if self.camera.detection_enabled:
                          # Drop oldest frame if queue is full to prioritize newer frames
@@ -526,11 +555,26 @@ class CameraProcessor:
                                 self.frame_queue.get_nowait() # Discard oldest
                             except queue.Empty:
                                 pass # Should not happen if full, but handle anyway
-                        self.frame_queue.put(frame_copy_for_queues, block=False)
+                        self.frame_queue.put(frame.copy(), block=False)
                 except queue.Full:
                      logger.warning(f"Detection frame queue full for camera {self.camera.name}. Check detection performance.")
                      pass # Should be handled by the check above, but keep for safety
 
+                # Queue for face detection - Only process every Nth frame to reduce load
+                try:
+                    if self.face_detection_enabled and self.frame_counter >= self.face_detection_interval:
+                        self.frame_counter = 0  # Reset counter
+                        if self.face_frame_queue.full():
+                            try:
+                                self.face_frame_queue.get_nowait() # Discard oldest
+                            except queue.Empty:
+                                pass
+                        self.face_frame_queue.put(frame.copy(), block=False)
+                except queue.Full:
+                    logger.warning(f"Face detection frame queue full for camera {self.camera.name}.")
+                    pass
+                
+                # Recording queue
                 try:
                     if self.recording:
                         # Recording queue can block or drop if needed, depending on requirements
@@ -540,7 +584,7 @@ class CameraProcessor:
                                  self.recording_queue.get_nowait() # Discard oldest recording frame
                              except queue.Empty:
                                  pass
-                        self.recording_queue.put(frame_copy_for_queues, block=False)
+                        self.recording_queue.put(frame.copy(), block=False)
                 except queue.Full:
                     logger.warning(f"Recording queue full for camera {self.camera.name}.")
                     pass
@@ -555,12 +599,158 @@ class CameraProcessor:
                     frame_count = 0
                     start_time = time.time()
 
-
             except Exception as e:
                 logger.error(f"Error processing frame: {str(e)}")
                 import traceback
                 logger.error(f"Traceback: {traceback.format_exc()}")
                 time.sleep(1)
+
+    def _detect_faces(self):
+        """Process frames for face detection using OpenCV cascade classifier"""
+        while self.running and self.face_detection_enabled:
+            try:
+                # Get frame from queue
+                frame = self.face_frame_queue.get(timeout=1.0)
+
+                # Resize frame for faster face detection
+                frame_height, frame_width = frame.shape[:2]
+                small_frame = cv2.resize(frame, (0, 0), fx=self.resize_factor, fy=self.resize_factor)
+                
+                # Convert to grayscale for face detection
+                gray = cv2.cvtColor(small_frame, cv2.COLOR_BGR2GRAY)
+
+                # Perform face detection on smaller frame for better performance
+                faces = self.face_detector.detectMultiScale(
+                    gray, 
+                    scaleFactor=1.1,
+                    minNeighbors=5,
+                    minSize=(30, 30),
+                    flags=cv2.CASCADE_SCALE_IMAGE
+                )
+
+                # Current timestamp for all detections
+                current_time = datetime.now()
+                
+                # List to hold all detected face info
+                detected_faces = []
+                
+                # Process detected faces - limit to max 5 faces per frame to reduce load
+                max_faces = min(5, len(faces))
+                for i in range(max_faces):
+                    (x, y, w, h) = faces[i]
+                    
+                    # Scale coordinates back to original frame size
+                    x = int(x / self.resize_factor)
+                    y = int(y / self.resize_factor)
+                    w = int(w / self.resize_factor)
+                    h = int(h / self.resize_factor)
+                    
+                    # Center of the face for ROI checking
+                    center_x = x + w/2
+                    center_y = y + h/2
+                    pixel_center = Point(center_x, center_y)
+                    norm_center = Point(center_x / frame_width, center_y / frame_height)
+                    
+                    # Check if face is in any defined ROI
+                    matched_roi_id = self._check_roi_match(pixel_center, norm_center)
+                    
+                    # Save the face image
+                    try:
+                        # Create face detection directory if it doesn't exist
+                        base_face_dir = os.path.join('storage', 'faces')
+                        os.makedirs(base_face_dir, exist_ok=True)
+                        # Create camera-specific directory
+                        face_dir = os.path.join(base_face_dir, str(self.camera.id))
+                        os.makedirs(face_dir, exist_ok=True)
+                        
+                        # Generate unique filename for the face image
+                        timestamp_str = current_time.strftime("%Y%m%d_%H%M%S")
+                        face_filename = f"face_{timestamp_str}_{uuid.uuid4().hex[:8]}.jpg"
+                        face_path = os.path.join(face_dir, face_filename)
+                        
+                        # Extract face region with some margin
+                        # Add 20% padding around the face when cropping
+                        padding_x = int(w * 0.2)
+                        padding_y = int(h * 0.2)
+                        
+                        # Calculate padded coordinates ensuring they're within image bounds
+                        x1 = max(0, x - padding_x)
+                        y1 = max(0, y - padding_y)
+                        x2 = min(frame_width, x + w + padding_x)
+                        y2 = min(frame_height, y + h + padding_y)
+                        
+                        # Extract and save the face image from the original frame
+                        face_img = frame[y1:y2, x1:x2]
+                        cv2.imwrite(face_path, face_img)
+                        
+                        # Store detection details
+                        face_data = {
+                            'camera_id': self.camera.id,
+                            'face_id': str(uuid.uuid4()),  # Generate unique ID for face
+                            'bbox_x': x, 'bbox_y': y,
+                            'bbox_width': w, 'bbox_height': h,
+                            'confidence': 1.0,  # Cascade classifier doesn't provide confidence scores
+                            'image_path': face_path,
+                            'roi_id': matched_roi_id,
+                            'timestamp': current_time,
+                            'name': 'Unknown'  # Default name, to be updated later if recognized
+                        }
+                        detected_faces.append(face_data)
+                        
+                    except Exception as e:
+                        logger.error(f"Error saving face image: {str(e)}")
+                        continue
+                
+                # Update current face detections for API access
+                with self.face_detection_lock:
+                    self.current_face_detections = detected_faces
+                
+                # Report face detections if any were found - only report every few detections to reduce DB load
+                if detected_faces:
+                    self._report_face_detection(detected_faces)
+                
+                # Mark the task as done
+                self.face_frame_queue.task_done()
+                
+            except queue.Empty:
+                # Queue is empty, wait a bit
+                time.sleep(0.01)
+            except Exception as e:
+                logger.error(f"Error in face detection: {str(e)}")
+                traceback.print_exc()
+                # Ensure task_done is called if a frame was retrieved
+                if 'frame' in locals():
+                    try:
+                        self.face_frame_queue.task_done()
+                    except ValueError:
+                        pass  # Can happen if task_done called multiple times
+                time.sleep(1)  # Longer sleep on error
+
+    def _report_face_detection(self, face_detections):
+        """Report face detection for database storage and recognition"""
+        try:
+            from app import app
+            from app.models.face import Face
+            
+            for face in face_detections:
+                # Create new Face record in the database
+                Face.create(
+                    camera_id=self.camera.id,
+                    image_path=face['image_path'],
+                    face_encoding=None,  # We're not computing encodings yet
+                    name="Unknown"  # Default name for newly detected faces
+                )
+            
+            logger.info(f"Saved {len(face_detections)} face detections for camera {self.camera.id}")
+            
+        except Exception as e:
+            logger.error(f"Error reporting face detection: {str(e)}")
+            traceback.print_exc()
+
+    def get_latest_face_detections(self):
+        """Get the latest face detections"""
+        with self.face_detection_lock:
+            return self.current_face_detections.copy()
 
     def _detect_objects(self):
         """Process frames for object detection using the loaded model"""

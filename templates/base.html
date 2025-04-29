@@ -70,6 +70,11 @@
                     </a>
                 </li>
                 <li>
+                    <a href="{{ url_for('main.faces') }}" class="{% if request.endpoint == 'main.faces' %}active{% endif %}">
+                        <i class="fas fa-user-tag"></i> Face Recognition
+                    </a>
+                </li>
+                <li>
                     <a href="{{ url_for('main.camera_management') }}" class="{% if request.endpoint == 'main.camera_management' %}active{% endif %}">
                         <i class="fas fa-camera"></i> Cameras
                     </a>
