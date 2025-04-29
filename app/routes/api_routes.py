@@ -1438,103 +1438,22 @@ def get_system_resources():
     import os
     import time
     
-    resources = {}
-    
-    # CPU usage
     try:
-        cpu_percent = psutil.cpu_percent(interval=0.5)
-        resources['cpu'] = {
-            'usage_percent': cpu_percent,
-            'cores_physical': psutil.cpu_count(logical=False),
-            'cores_logical': psutil.cpu_count(logical=True)
-        }
+        from app.utils.system_monitor import get_system_resources as get_resources
+        resources = get_resources()
+        
+        return jsonify({
+            'success': True,
+            'resources': resources
+        })
     except Exception as e:
-        resources['cpu'] = {'error': str(e)}
-    
-    # Memory usage
-    try:
-        memory = psutil.virtual_memory()
-        resources['memory'] = {
-            'total': memory.total,
-            'available': memory.available,
-            'used': memory.used,
-            'used_percent': memory.percent
-        }
-    except Exception as e:
-        resources['memory'] = {'error': str(e)}
-    
-    # Disk usage (of main partition)
-    try:
-        disk = psutil.disk_usage('/')
-        resources['disk'] = {
-            'total': disk.total,
-            'used': disk.used,
-            'free': disk.free,
-            'used_percent': disk.percent
-        }
-    except Exception as e:
-        resources['disk'] = {'error': str(e)}
-    
-    # GPU usage if available (try both nvidia-smi through subprocess and GPUtil)
-    resources['gpu'] = []
-    
-    try:
-        import GPUtil
-        gpus = GPUtil.getGPUs()
-        for gpu in gpus:
-            resources['gpu'].append({
-                'name': gpu.name,
-                'utilization': gpu.load * 100,  # Convert to percentage
-                'memory': {
-                    'total': gpu.memoryTotal * 1024 * 1024,  # Convert to bytes
-                    'used': gpu.memoryUsed * 1024 * 1024,    # Convert to bytes
-                    'free': (gpu.memoryTotal - gpu.memoryUsed) * 1024 * 1024
-                },
-                'temperature': gpu.temperature
-            })
-    except ImportError:
-        # Try nvidia-smi if GPUtil is not available
-        try:
-            import subprocess
-            result = subprocess.run([
-                'nvidia-smi',
-                '--query-gpu=name,utilization.gpu,memory.total,memory.used,memory.free,temperature.gpu',
-                '--format=csv,noheader,nounits'
-            ], stdout=subprocess.PIPE, text=True)
-            
-            if result.returncode == 0:
-                for line in result.stdout.strip().split('\n'):
-                    parts = line.split(', ')
-                    if len(parts) >= 6:
-                        name, util, mem_total, mem_used, mem_free, temp = parts[:6]
-                        resources['gpu'].append({
-                            'name': name,
-                            'utilization': float(util),
-                            'memory': {
-                                'total': int(mem_total) * 1024 * 1024,  # Convert MiB to bytes
-                                'used': int(mem_used) * 1024 * 1024,
-                                'free': int(mem_free) * 1024 * 1024
-                            },
-                            'temperature': float(temp)
-                        })
-        except (ImportError, FileNotFoundError, subprocess.SubprocessError) as e:
-            # No GPU or no way to query it
-            pass
-    
-    # Process-specific stats for the NVR
-    try:
-        process = psutil.Process(os.getpid())
-        resources['process'] = {
-            'cpu_percent': process.cpu_percent(interval=0.1),
-            'memory_percent': process.memory_percent(),
-            'memory_used': process.memory_info().rss,
-            'threads': process.num_threads(),
-            'uptime': time.time() - process.create_time()
-        }
-    except Exception as e:
-        resources['process'] = {'error': str(e)}
-    
-    return jsonify(resources)
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error fetching system resources: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': f"Error fetching system resources: {str(e)}"
+        }), 500
 
 @api_bp.route('/test_email', methods=['POST'])
 @login_required

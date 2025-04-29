@@ -545,45 +545,49 @@ function initSystemResourcesWidget() {
         fetch('/api/system/resources')
             .then(response => response.json())
             .then(data => {
+                // Extract resources from response
+                const resources = data.resources || data;
+                
                 // Update CPU
-                if (data.cpu) {
-                    const cpuPercent = Math.round(data.cpu.usage_percent);
+                if (resources.cpu) {
+                    const cpuPercent = Math.round(resources.cpu.percent || resources.cpu.usage_percent || 0);
                     cpuBar.style.width = `${cpuPercent}%`;
                     cpuUsage.textContent = `${cpuPercent}%`;
                 }
                 
                 // Update Memory
-                if (data.memory) {
-                    const memPercent = Math.round(data.memory.used_percent);
+                if (resources.memory) {
+                    const memPercent = Math.round(resources.memory.percent || resources.memory.used_percent || 0);
                     memoryBar.style.width = `${memPercent}%`;
-                    memoryUsage.textContent = `${memPercent}% (${formatMemorySize(data.memory.used)} / ${formatMemorySize(data.memory.total)})`;
+                    memoryUsage.textContent = `${memPercent}% (${formatMemorySize(resources.memory.used)} / ${formatMemorySize(resources.memory.total)})`;
                 }
                 
                 // Update Disk
-                if (data.disk) {
-                    const diskPercent = Math.round(data.disk.used_percent);
+                if (resources.disk) {
+                    const diskPercent = Math.round(resources.disk.percent || resources.disk.used_percent || 0);
                     diskBar.style.width = `${diskPercent}%`;
-                    diskUsage.textContent = `${diskPercent}% (${formatMemorySize(data.disk.used)} / ${formatMemorySize(data.disk.total)})`;
+                    diskUsage.textContent = `${diskPercent}% (${formatMemorySize(resources.disk.used)} / ${formatMemorySize(resources.disk.total)})`;
                 }
                 
                 // Update GPU(s) if available
-                if (data.gpu && data.gpu.length > 0) {
+                if (resources.gpu && resources.gpu.length > 0) {
                     gpuResources.innerHTML = ''; // Clear existing GPU items
                     
-                    data.gpu.forEach((gpu, index) => {
+                    resources.gpu.forEach((gpu, index) => {
                         const gpuItem = document.createElement('div');
                         gpuItem.className = 'resource-item';
                         
                         const gpuLabel = document.createElement('div');
                         gpuLabel.className = 'resource-label';
-                        gpuLabel.innerHTML = `<span>GPU ${index + 1} - ${gpu.name || 'Unknown'}</span><span id="gpu-${index}-usage">${gpu.utilization || 0}%</span>`;
+                        const gpuUtilization = gpu.utilization || gpu.load || 0;
+                        gpuLabel.innerHTML = `<span>GPU ${index + 1} - ${gpu.name || 'Unknown'}</span><span id="gpu-${index}-usage">${gpuUtilization}%</span>`;
                         
                         const gpuProgress = document.createElement('div');
                         gpuProgress.className = 'resource-progress';
                         
                         const gpuBar = document.createElement('div');
                         gpuBar.className = 'resource-bar gpu';
-                        gpuBar.style.width = `${gpu.utilization || 0}%`;
+                        gpuBar.style.width = `${gpuUtilization}%`;
                         
                         gpuProgress.appendChild(gpuBar);
                         gpuItem.appendChild(gpuLabel);
@@ -592,7 +596,7 @@ function initSystemResourcesWidget() {
                         
                         // Add memory info if available
                         if (gpu.memory) {
-                            const memPercent = Math.round((gpu.memory.used / gpu.memory.total) * 100);
+                            const memPercent = gpu.memory_percent || Math.round((gpu.memory.used / gpu.memory.total) * 100) || 0;
                             
                             const memItem = document.createElement('div');
                             memItem.className = 'resource-item gpu-memory-item';
