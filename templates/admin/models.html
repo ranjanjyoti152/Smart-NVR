@@ -226,5 +226,190 @@
 {% endblock %}
 
 {% block scripts %}
-// ...existing code...
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Handle the download pretrained model buttons
+    document.querySelectorAll('.download-pretrained-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const modelKey = this.getAttribute('data-model');
+            const originalText = this.innerHTML;
+            
+            // Disable button and show loading state
+            this.disabled = true;
+            this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Downloading...';
+            
+            // Make API request to download the model
+            fetch('/models/download-pretrained', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ model: modelKey })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Show success message and refresh the page
+                    const alertElement = document.createElement('div');
+                    alertElement.className = 'alert alert-success mt-3';
+                    alertElement.innerHTML = `<i class="fas fa-check-circle me-2"></i> ${data.message}`;
+                    this.parentNode.appendChild(alertElement);
+                    
+                    // Auto-refresh after a short delay
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 2000);
+                } else {
+                    // Show error message
+                    const alertElement = document.createElement('div');
+                    alertElement.className = 'alert alert-danger mt-3';
+                    alertElement.innerHTML = `<i class="fas fa-exclamation-circle me-2"></i> ${data.message || 'Download failed'}`;
+                    this.parentNode.appendChild(alertElement);
+                    
+                    // Reset button
+                    this.disabled = false;
+                    this.innerHTML = originalText;
+                }
+            })
+            .catch(error => {
+                console.error('Error downloading model:', error);
+                
+                // Show error message
+                const alertElement = document.createElement('div');
+                alertElement.className = 'alert alert-danger mt-3';
+                alertElement.innerHTML = '<i class="fas fa-exclamation-circle me-2"></i> Network error, please try again';
+                this.parentNode.appendChild(alertElement);
+                
+                // Reset button
+                this.disabled = false;
+                this.innerHTML = originalText;
+            });
+        });
+    });
+    
+    // Handle set default model buttons
+    document.querySelectorAll('.set-default-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const modelId = this.getAttribute('data-model-id');
+            
+            if (confirm('Set this model as the default for all new cameras?')) {
+                fetch(`/models/${modelId}/set-default`, {
+                    method: 'POST'
+                })
+                .then(response => {
+                    if (response.ok) {
+                        window.location.reload();
+                    } else {
+                        alert('Failed to set default model. Please try again.');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error setting default model:', error);
+                    alert('An error occurred. Please try again.');
+                });
+            }
+        });
+    });
+    
+    // Handle delete model buttons
+    document.querySelectorAll('.delete-model-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const modelId = this.getAttribute('data-model-id');
+            
+            if (confirm('Are you sure you want to delete this model? This cannot be undone.')) {
+                fetch(`/models/${modelId}/delete`, {
+                    method: 'DELETE'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        window.location.reload();
+                    } else {
+                        alert(data.message || 'Failed to delete model. Please try again.');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error deleting model:', error);
+                    alert('An error occurred. Please try again.');
+                });
+            }
+        });
+    });
+    
+    // Handle edit model buttons
+    document.querySelectorAll('.edit-model-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            const modelId = this.getAttribute('data-model-id');
+            const modelName = this.getAttribute('data-model-name');
+            const modelDescription = this.getAttribute('data-model-description') || '';
+            
+            document.getElementById('editModelId').value = modelId;
+            document.getElementById('editModelName').value = modelName;
+            document.getElementById('editModelDescription').value = modelDescription;
+            document.getElementById('editModelForm').action = `/models/${modelId}/update`;
+        });
+    });
+    
+    // Handle model upload form
+    document.getElementById('uploadModelForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        const progressBar = document.getElementById('uploadProgress');
+        const progressBarInner = progressBar.querySelector('.progress-bar');
+        const statusDiv = document.getElementById('uploadStatus');
+        
+        // Show progress bar
+        progressBar.style.display = 'block';
+        progressBarInner.style.width = '0%';
+        statusDiv.innerHTML = '<div class="text-muted">Uploading model...</div>';
+        
+        // Disable submit button
+        const submitBtn = this.querySelector('button[type="submit"]');
+        const originalBtnText = submitBtn.innerHTML;
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Uploading...';
+        
+        fetch(this.action, {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Show success message
+                progressBarInner.style.width = '100%';
+                statusDiv.innerHTML = `<div class="alert alert-success"><i class="fas fa-check-circle me-2"></i>${data.message}</div>`;
+                
+                // Reset form
+                this.reset();
+                
+                // Reload page after a brief delay
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000);
+            } else {
+                // Show error message
+                progressBarInner.classList.add('bg-danger');
+                statusDiv.innerHTML = `<div class="alert alert-danger"><i class="fas fa-exclamation-circle me-2"></i>${data.message}</div>`;
+                
+                // Re-enable submit button
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalBtnText;
+            }
+        })
+        .catch(error => {
+            console.error('Error uploading model:', error);
+            
+            // Show error message
+            progressBarInner.classList.add('bg-danger');
+            statusDiv.innerHTML = '<div class="alert alert-danger"><i class="fas fa-exclamation-circle me-2"></i>Network error occurred. Please try again.</div>';
+            
+            // Re-enable submit button
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalBtnText;
+        });
+    });
+});
+</script>
 {% endblock %}
