@@ -72,23 +72,37 @@
                 </div>
                 <div class="card-body">
                     <div class="mb-2">
-                        <strong>System Version:</strong> Smart-NVR v1.0.0
+                        <strong>System Version:</strong> Smart-NVR v1.0.0 <!-- TODO: Make dynamic? -->
                     </div>
                     <div class="mb-2">
-                        <strong>Database Status:</strong> Connected
+                        <strong>Database Status:</strong> <span id="db-status">Checking...</span>
                     </div>
                     <div class="mb-2">
-                        <strong>Storage Usage:</strong> 
+                        <strong>Storage Usage (<span id="storage-path">/</span>):</strong> <span id="storage-usage-text">N/A</span>
                         <div class="progress mb-4">
-                            <div class="progress-bar" role="progressbar" style="width: 25%"
-                                aria-valuenow="25" aria-valuemin="0" aria-valuemax="100"></div>
+                            <div id="storage-progress-bar" class="progress-bar" role="progressbar" style="width: 0%"
+                                aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
                         </div>
                     </div>
                     <div class="mb-2">
-                        <strong>Memory Usage:</strong>
+                        <strong>Recordings Usage (<span id="recordings-path">storage/recordings</span>):</strong> <span id="recordings-usage-text">N/A</span>
                         <div class="progress mb-4">
-                            <div class="progress-bar bg-info" role="progressbar" style="width: 40%"
-                                aria-valuenow="40" aria-valuemin="0" aria-valuemax="100"></div>
+                            <div id="recordings-progress-bar" class="progress-bar bg-warning" role="progressbar" style="width: 0%"
+                                aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <strong>Memory Usage:</strong> <span id="memory-usage-text">N/A</span>
+                        <div class="progress mb-4">
+                            <div id="memory-progress-bar" class="progress-bar bg-info" role="progressbar" style="width: 0%"
+                                aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                    </div>
+                     <div class="mb-2">
+                        <strong>CPU Usage:</strong> <span id="cpu-usage-text">N/A</span>
+                        <div class="progress mb-4">
+                            <div id="cpu-progress-bar" class="progress-bar bg-danger" role="progressbar" style="width: 0%"
+                                aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
                         </div>
                     </div>
                 </div>
@@ -101,15 +115,90 @@
                     <h6 class="m-0 font-weight-bold text-primary">Recent Activity</h6>
                 </div>
                 <div class="card-body">
-                    <ul class="list-group list-group-flush">
-                        <li class="list-group-item">System started (Server Time)</li>
-                        <li class="list-group-item">Default AI model loaded</li>
-                        <li class="list-group-item">Camera connections established</li>
-                        <li class="list-group-item">Admin login (Current Session)</li>
+                    <ul class="list-group list-group-flush" id="recent-activity-list">
+                        <!-- Activity will be loaded here -->
+                        <li class="list-group-item">Loading activity...</li>
                     </ul>
                 </div>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    function formatBytes(bytes, decimals = 2) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const dm = decimals < 0 ? 0 : decimals;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+
+    function updateSystemStats() {
+        fetch('/api/system/stats')
+            .then(response => response.json())
+            .then(data => {
+                // Update DB Status (Assuming API provides this, otherwise remove or handle differently)
+                // For now, let's assume it's always connected if the API responds
+                document.getElementById('db-status').textContent = 'Connected'; 
+
+                // Storage Usage
+                const storagePercent = data.disk.percent.toFixed(1);
+                const storageUsed = formatBytes(data.disk.used);
+                const storageTotal = formatBytes(data.disk.total);
+                document.getElementById('storage-progress-bar').style.width = `${storagePercent}%`;
+                document.getElementById('storage-progress-bar').setAttribute('aria-valuenow', storagePercent);
+                document.getElementById('storage-usage-text').textContent = `${storagePercent}% (${storageUsed} / ${storageTotal})`;
+                // Assuming root path for now, could be fetched from config if needed
+                // document.getElementById('storage-path').textContent = data.disk.path || '/'; 
+
+                // Recordings Usage
+                const recordingsPercent = data.recordings.percent.toFixed(1);
+                const recordingsUsed = formatBytes(data.recordings.used);
+                const recordingsTotal = formatBytes(data.recordings.total);
+                document.getElementById('recordings-progress-bar').style.width = `${recordingsPercent}%`;
+                document.getElementById('recordings-progress-bar').setAttribute('aria-valuenow', recordingsPercent);
+                document.getElementById('recordings-usage-text').textContent = `${recordingsPercent}% (${recordingsUsed} / ${recordingsTotal})`;
+                 // Assuming default path, could be fetched from config if needed
+                // document.getElementById('recordings-path').textContent = data.recordings.path || 'storage/recordings';
+
+                // Memory Usage
+                const memoryPercent = data.memory.percent.toFixed(1);
+                const memoryUsed = formatBytes(data.memory.used);
+                const memoryTotal = formatBytes(data.memory.total);
+                document.getElementById('memory-progress-bar').style.width = `${memoryPercent}%`;
+                document.getElementById('memory-progress-bar').setAttribute('aria-valuenow', memoryPercent);
+                document.getElementById('memory-usage-text').textContent = `${memoryPercent}% (${memoryUsed} / ${memoryTotal})`;
+
+                // CPU Usage
+                const cpuPercent = data.cpu.percent.toFixed(1);
+                document.getElementById('cpu-progress-bar').style.width = `${cpuPercent}%`;
+                document.getElementById('cpu-progress-bar').setAttribute('aria-valuenow', cpuPercent);
+                document.getElementById('cpu-usage-text').textContent = `${cpuPercent}%`;
+
+                // TODO: Update Recent Activity (requires a separate API endpoint)
+                // For now, clear the loading message if it exists
+                const activityList = document.getElementById('recent-activity-list');
+                if (activityList.children.length === 1 && activityList.children[0].textContent === 'Loading activity...') {
+                     activityList.innerHTML = '<li class="list-group-item">Activity log endpoint not implemented yet.</li>';
+                }
+
+            })
+            .catch(error => {
+                console.error('Error fetching system stats:', error);
+                document.getElementById('db-status').textContent = 'Error';
+                // Optionally update other fields to show error state
+            });
+    }
+
+    // Update stats immediately on load and then every 5 seconds
+    document.addEventListener('DOMContentLoaded', () => {
+        updateSystemStats();
+        setInterval(updateSystemStats, 5000); // Update every 5 seconds
+    });
+</script>
 {% endblock %}
