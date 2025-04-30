@@ -239,7 +239,7 @@ document.addEventListener('DOMContentLoaded', function() {
             this.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Downloading...';
             
             // Make API request to download the model
-            fetch('/models/download-pretrained', {
+            fetch('/admin/models/download-pretrained', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -293,7 +293,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const modelId = this.getAttribute('data-model-id');
             
             if (confirm('Set this model as the default for all new cameras?')) {
-                fetch(`/models/${modelId}/set-default`, {
+                fetch(`/admin/models/${modelId}/set-default`, {
                     method: 'POST'
                 })
                 .then(response => {
@@ -317,7 +317,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const modelId = this.getAttribute('data-model-id');
             
             if (confirm('Are you sure you want to delete this model? This cannot be undone.')) {
-                fetch(`/models/${modelId}/delete`, {
+                fetch(`/admin/models/${modelId}/delete`, {
                     method: 'DELETE'
                 })
                 .then(response => response.json())
@@ -346,7 +346,7 @@ document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('editModelId').value = modelId;
             document.getElementById('editModelName').value = modelName;
             document.getElementById('editModelDescription').value = modelDescription;
-            document.getElementById('editModelForm').action = `/models/${modelId}/update`;
+            document.getElementById('editModelForm').action = `/admin/models/${modelId}/update`;
         });
     });
     
