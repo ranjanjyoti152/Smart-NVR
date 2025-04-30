@@ -437,6 +437,115 @@ document.querySelectorAll('.edit-camera').forEach(button => {
         const form = document.getElementById('editCameraForm');
         form.action = `/edit-camera/${cameraId}`;
         
+        // Fetch camera details to populate the form
+        fetch(`/api/cameras/${cameraId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.camera) {
+                    const camera = data.camera;
+                    
+                    // Populate the form fields with camera data
+                    const modalBody = form.querySelector('.modal-body');
+                    modalBody.innerHTML = `
+                        <div class="mb-3">
+                            <label for="edit-name" class="form-label">Camera Name</label>
+                            <input type="text" class="form-control" id="edit-name" name="name" value="${camera.name || ''}" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit-rtsp_url" class="form-label">RTSP URL</label>
+                            <input type="text" class="form-control" id="edit-rtsp_url" name="rtsp_url" 
+                                value="${camera.rtsp_url || ''}" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit-location" class="form-label">Location</label>
+                            <input type="text" class="form-control" id="edit-location" name="location" value="${camera.location || ''}">
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit-username" class="form-label">Username (if required)</label>
+                            <input type="text" class="form-control" id="edit-username" name="username" value="${camera.username || ''}">
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit-password" class="form-label">Password (if required)</label>
+                            <input type="password" class="form-control" id="edit-password" name="password" placeholder="Leave empty to keep current password">
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" id="edit-enabled" name="enabled" ${camera.is_active ? 'checked' : ''}>
+                                    <label class="form-check-label" for="edit-enabled">
+                                        Enable Camera
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" id="edit-recording_enabled" name="recording_enabled" ${camera.recording_enabled ? 'checked' : ''}>
+                                    <label class="form-check-label" for="edit-recording_enabled">
+                                        Enable Recording
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="edit-detection_enabled" name="detection_enabled" ${camera.detection_enabled ? 'checked' : ''}>
+                            <label class="form-check-label" for="edit-detection_enabled">
+                                Enable AI Detection
+                            </label>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit-confidence" class="form-label">Detection Confidence Threshold</label>
+                            <input type="range" class="form-range" min="0.1" max="0.9" step="0.05" id="edit-confidence" name="confidence" value="${camera.confidence_threshold || 0.5}">
+                            <div class="d-flex justify-content-between">
+                                <small>Lower (More Detections)</small>
+                                <small id="edit-confidence-value">${camera.confidence_threshold || 0.5}</small>
+                                <small>Higher (Fewer False Positives)</small>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit-model_id" class="form-label">AI Model</label>
+                            <select class="form-select" id="edit-model_id" name="model_id">
+                                <option value="">Default Model</option>
+                                <!-- Model options will be loaded here -->
+                            </select>
+                        </div>
+                    `;
+                    
+                    // Add event listener for confidence slider
+                    const confidenceSlider = document.getElementById('edit-confidence');
+                    const confidenceValue = document.getElementById('edit-confidence-value');
+                    confidenceSlider.addEventListener('input', function() {
+                        confidenceValue.textContent = this.value;
+                    });
+                    
+                    // Load AI models
+                    fetch('/api/models')
+                        .then(response => response.json())
+                        .then(modelData => {
+                            if (modelData.success && modelData.models) {
+                                const modelSelect = document.getElementById('edit-model_id');
+                                
+                                modelData.models.forEach(model => {
+                                    const option = document.createElement('option');
+                                    option.value = model.id;
+                                    option.textContent = model.name;
+                                    option.selected = model.id === camera.model_id;
+                                    modelSelect.appendChild(option);
+                                });
+                            }
+                        })
+                        .catch(error => console.error('Error loading AI models:', error));
+                    
+                    console.log(`Loaded camera details for ID: ${cameraId}`);
+                } else {
+                    console.error('Error loading camera details:', data);
+                    alert('Could not load camera details. Please try again.');
+                }
+            })
+            .catch(error => {
+                console.error(`Error fetching camera ${cameraId} details:`, error);
+                alert('Could not load camera details. Please try again.');
+            });
+        
         // Log for debugging
         console.log(`Set edit form action to: ${form.action} for camera ID: ${cameraId}`);
     });
