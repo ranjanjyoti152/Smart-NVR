@@ -325,8 +325,21 @@ def settings():
             if 'detection' not in settings:
                 settings['detection'] = {
                     'default_confidence': 0.45,
-                    'default_model': 'yolov5s'
+                    'default_model': 'yolov5s',
+                    'save_images': True,
+                    'image_retention_days': 1,
+                    'enable_gemini_ai': False,
+                    'gemini_api_key': '',
+                    'gemini_model': 'gemini-1.5-flash'
                 }
+            # Ensure Gemini AI settings exist in detection section
+            elif 'detection' in settings:
+                if 'enable_gemini_ai' not in settings['detection']:
+                    settings['detection']['enable_gemini_ai'] = False
+                if 'gemini_api_key' not in settings['detection']:
+                    settings['detection']['gemini_api_key'] = ''
+                if 'gemini_model' not in settings['detection']:
+                    settings['detection']['gemini_model'] = 'gemini-1.5-flash'
         except Exception as e:
             print(f"Error loading settings: {str(e)}")
             # Default settings if JSON is invalid
@@ -365,7 +378,10 @@ def create_default_settings():
             'default_confidence': 0.45,
             'default_model': 'yolov5s',
             'save_images': True,
-            'image_retention_days': 1
+            'image_retention_days': 1,
+            'enable_gemini_ai': False,
+            'gemini_api_key': '',
+            'gemini_model': 'gemini-1.5-flash'
         }
     }
 
@@ -428,7 +444,11 @@ def save_settings():
             'default_confidence': float(request.form.get('default_confidence', 0.45)),
             'default_model': request.form.get('default_model', 'yolov5s'),
             'save_images': 'save_detection_images' in request.form,
-            'image_retention_days': int(request.form.get('image_retention_days', 7))
+            'image_retention_days': int(request.form.get('image_retention_days', 7)),
+            # Add Gemini AI settings
+            'enable_gemini_ai': 'enable_gemini_ai' in request.form,
+            'gemini_api_key': request.form.get('gemini_api_key', ''),
+            'gemini_model': request.form.get('gemini_model', 'gemini-1.5-flash')
         }
     }
     
@@ -444,6 +464,10 @@ def save_settings():
                     old_settings = json.load(f)
                     if 'notifications' in old_settings and 'smtp_password' in old_settings['notifications']:
                         settings['notifications']['smtp_password'] = old_settings['notifications']['smtp_password']
+                    
+                    # Preserve existing Gemini API key if not provided
+                    if not request.form.get('gemini_api_key') and 'detection' in old_settings and 'gemini_api_key' in old_settings['detection']:
+                        settings['detection']['gemini_api_key'] = old_settings['detection']['gemini_api_key']
             except:
                 pass
     
