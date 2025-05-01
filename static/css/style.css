@@ -141,25 +141,46 @@ body {
 
 /* User menu styling */
 .mac-user-menu {
-    background-color: transparent;
-    border: 1px solid var(--mac-border);
-    color: var(--mac-text);
-    border-radius: 20px;
-    padding: 6px 15px;
-    transition: all 0.3s ease;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    padding: 0;
+    background: none;
+    border: none;
 }
 
-.mac-user-menu:hover {
-    background-color: rgba(0, 123, 255, 0.1);
-    border-color: var(--mac-accent);
-    box-shadow: 0 2px 8px rgba(0, 123, 255, 0.2);
+.mac-user-menu:hover .user-avatar-circle {
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
 .mac-user-menu i {
     font-size: 18px;
+}
+
+/* User Avatar Circle in Header */
+.user-avatar-circle {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary, #9d63fa) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), 
+                box-shadow 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    will-change: transform, box-shadow;
+}
+
+.user-avatar-circle i {
+    font-size: 16px;
+}
+
+.dropdown-header {
+    font-weight: 600;
+    color: var(--mac-text);
+    background-color: var(--mac-header-bg);
+    border-bottom: 1px solid var(--mac-border);
+    padding: 10px 15px;
 }
 
 /* macOS style sidebar */
