@@ -156,20 +156,9 @@ function initSidebarToggle() {
 function enhanceMenuItems() {
     const menuItems = document.querySelectorAll('.mac-menu a:not(.active)');
     menuItems.forEach(item => {
-        // Add hover shine effect
+        // Add hover shine effect (CSS handles the main hover style)
         item.addEventListener('mouseover', function() {
-            this.style.transition = 'all 0.3s ease';
-        });
-        
-        item.addEventListener('mousemove', function(e) {
-            const x = e.pageX - this.offsetLeft;
-            const y = e.pageY - this.offsetTop;
-            
-            this.style.background = `radial-gradient(circle at ${x}px ${y}px, rgba(var(--color-primary-rgb, 75, 109, 222), 0.2) 0%, rgba(var(--color-primary-rgb, 75, 109, 222), 0.1) 20%, rgba(var(--color-primary-rgb, 75, 109, 222), 0.05) 60%)`;
-        });
-        
-        item.addEventListener('mouseleave', function() {
-            this.style.background = '';
+            this.style.transition = 'all 0.3s ease'; // Ensure transition is set if needed
         });
     });
 }
@@ -764,18 +753,6 @@ function toggleDarkMode() {
         showToast('Light mode activated ☀️', 'info', 2000);
     }
     
-    // Fix for form controls in dark mode
-    const formControls = document.querySelectorAll('.form-control, .form-select');
-    formControls.forEach(control => {
-        control.style.transition = 'all 0.5s ease';
-        // Force input elements to respect theme changes
-        if (!currentMode) {
-            control.classList.add('dark-mode-input');
-        } else {
-            control.classList.remove('dark-mode-input');
-        }
-    });
-    
     // Add animation to all cards during mode change
     const cards = document.querySelectorAll('.mac-card');
     cards.forEach(card => {
@@ -798,12 +775,6 @@ function checkDarkMode() {
         if (darkModeToggle) {
             darkModeToggle.className = 'fas fa-sun';
         }
-        
-        // Apply dark mode to form elements
-        const formControls = document.querySelectorAll('.form-control, .form-select');
-        formControls.forEach(control => {
-            control.classList.add('dark-mode-input');
-        });
     }
 }
 

@@ -285,11 +285,15 @@ document.addEventListener('DOMContentLoaded', function() {
     let currentDate = new Date().toISOString().split('T')[0];
     let recordings = [];
     let detections = [];
+    let timelineRecordings = []; // Lightweight timeline data
     let currentRecording = null;
     let playbackDirection = 1; // 1 for forward, -1 for backward
     let isPlaying = false;
     let backwardPlaybackAnimationId = null; // Track backward animation frame
     let lastTime = 0; // Track time for smoother backward playback
+    let currentPage = 1;
+    let totalPages = 1;
+    let isLoadingRecordings = false;
     
     // Set current date in date picker
     datePicker.value = currentDate;
@@ -348,52 +352,243 @@ document.addEventListener('DOMContentLoaded', function() {
         
         timelinePlayhead.style.left = position + '%';
     }
-    
-    // Load recordings for a specific camera and date
-    function loadRecordings() {
+
+    // Load only timeline data first for quick display
+    function loadTimelineData() {
         if (!currentCamera || !currentDate) {
             resetUI();
             return;
         }
         
-        // Show loading state
-        recordingItems.innerHTML = '<li class="list-group-item text-center"><div class="spinner-border spinner-border-sm" role="status"></div> Loading...</li>';
-        noRecordingsMessage.style.display = 'none';
+        // Show loading state in timeline
+        const loadingIndicator = document.createElement('div');
+        loadingIndicator.className = 'loading-indicator';
+        loadingIndicator.innerHTML = '<div class="spinner-border spinner-border-sm text-primary" role="status"></div> Loading timeline...';
+        loadingIndicator.style.position = 'absolute';
+        loadingIndicator.style.top = '50%';
+        loadingIndicator.style.left = '50%';
+        loadingIndicator.style.transform = 'translate(-50%, -50%)';
+        loadingIndicator.style.background = 'rgba(0,0,0,0.7)';
+        loadingIndicator.style.color = 'white';
+        loadingIndicator.style.padding = '10px';
+        loadingIndicator.style.borderRadius = '5px';
+        loadingIndicator.style.zIndex = '10';
+        timelineContainer.appendChild(loadingIndicator);
         
-        // Fetch recordings from API
-        fetch(`/api/cameras/${currentCamera}/recordings?date=${currentDate}&events_only=${showDetectionsOnly.checked}&object_type=${objectFilter.value}`)
+        // Fetch timeline data (lightweight) from API
+        fetch(`/api/cameras/${currentCamera}/recordings?date=${currentDate}&timeline_only=true`)
             .then(response => response.json())
             .then(data => {
-                recordings = data.recordings;
-                detections = data.detections;
+                // Remove loading indicator
+                timelineContainer.removeChild(loadingIndicator);
                 
-                // Update recordings list
-                updateRecordingsList();
+                if (!data.success) {
+                    console.error('Error loading timeline data:', data.message);
+                    return;
+                }
                 
-                // Update timeline
-                updateTimeline();
+                // Save timeline recordings for fast display
+                timelineRecordings = data.timeline_recordings;
                 
-                // Update detections list
-                updateDetectionsList();
+                // Update timeline UI with lightweight data
+                updateTimelineUI();
+                
+                // Now load the first page of detailed recordings
+                loadRecordingsPage(1);
             })
             .catch(error => {
-                console.error('Error loading recordings:', error);
+                console.error('Error loading timeline data:', error);
+                timelineContainer.removeChild(loadingIndicator);
                 resetUI();
             });
     }
     
+    // Update timeline with lightweight recordings data
+    function updateTimelineUI() {
+        timelineEvents.innerHTML = '';
+        
+        if (!timelineRecordings || timelineRecordings.length === 0) {
+            return;
+        }
+        
+        // Add recording events to timeline
+        timelineRecordings.forEach(recording => {
+            const event = document.createElement('div');
+            event.className = 'timeline-event';
+            const position = timeToPosition(recording.timestamp);
+            const width = (recording.duration / (24 * 3600)) * 100;
+            event.style.left = position + '%';
+            event.style.width = width + '%';
+            event.dataset.id = recording.id;
+            
+            event.addEventListener('click', () => {
+                // Find and select this recording (might need to load the page containing it)
+                selectRecordingById(recording.id);
+            });
+            
+            timelineEvents.appendChild(event);
+        });
+    }
+    
+    // Load a specific page of recordings
+    function loadRecordingsPage(page, keepExisting = false) {
+        if (!currentCamera || !currentDate || isLoadingRecordings) {
+            return;
+        }
+        
+        isLoadingRecordings = true;
+        currentPage = page;
+        
+        // Show loading state
+        if (!keepExisting) {
+            recordingItems.innerHTML = '<li class="list-group-item text-center"><div class="spinner-border spinner-border-sm" role="status"></div> Loading recordings...</li>';
+            detectionItems.innerHTML = '<li class="list-group-item text-center"><div class="spinner-border spinner-border-sm" role="status"></div> Loading detections...</li>';
+            noRecordingsMessage.style.display = 'none';
+            noDetectionsMessage.style.display = 'none';
+        } else {
+            // Add loading indicator at the bottom for pagination
+            const loadingItem = document.createElement('li');
+            loadingItem.className = 'list-group-item text-center loading-more';
+            loadingItem.innerHTML = '<div class="spinner-border spinner-border-sm" role="status"></div> Loading more...';
+            recordingItems.appendChild(loadingItem);
+        }
+        
+        // Fetch recordings for this page from API
+        fetch(`/api/cameras/${currentCamera}/recordings?date=${currentDate}&events_only=${showDetectionsOnly.checked}&object_type=${objectFilter.value}&page=${page}&per_page=20`)
+            .then(response => response.json())
+            .then(data => {
+                isLoadingRecordings = false;
+                
+                if (!data.success) {
+                    console.error('Error loading recordings:', data.message);
+                    if (!keepExisting) resetUI();
+                    return;
+                }
+                
+                // Update pagination state
+                totalPages = data.pagination.pages;
+                
+                // If keeping existing, remove loading indicator
+                if (keepExisting) {
+                    const loadingItems = recordingItems.querySelectorAll('.loading-more');
+                    loadingItems.forEach(item => recordingItems.removeChild(item));
+                    
+                    // Append new recordings to existing list
+                    recordings = recordings.concat(data.recordings);
+                    detections = detections.concat(data.detections);
+                } else {
+                    // Replace with new data
+                    recordings = data.recordings;
+                    detections = data.detections;
+                }
+                
+                // Update recordings list
+                updateRecordingsList(keepExisting);
+                
+                // Update detections list
+                updateDetectionsList(keepExisting);
+                
+                // Add pagination controls if needed
+                if (data.pagination.pages > 1) {
+                    updatePaginationControls(data.pagination);
+                }
+                
+                // Update detection markers on timeline 
+                updateDetectionMarkersOnTimeline();
+            })
+            .catch(error => {
+                console.error('Error loading recordings:', error);
+                isLoadingRecordings = false;
+                if (!keepExisting) resetUI();
+            });
+    }
+    
+    // Add detection markers to the timeline
+    function updateDetectionMarkersOnTimeline() {
+        // Remove existing detection markers
+        const existingMarkers = timelineEvents.querySelectorAll('.timeline-event.detection');
+        existingMarkers.forEach(marker => marker.remove());
+        
+        // Add detection events to timeline
+        detections.forEach(detection => {
+            const event = document.createElement('div');
+            event.className = 'timeline-event detection';
+            const position = timeToPosition(detection.timestamp);
+            event.style.left = position + '%';
+            event.style.width = '0.5%';
+            event.dataset.id = detection.id;
+            
+            event.addEventListener('click', () => {
+                jumpToDetection(detection);
+            });
+            
+            timelineEvents.appendChild(event);
+        });
+    }
+    
+    // Update pagination controls
+    function updatePaginationControls(pagination) {
+        // Check if pagination controls already exist
+        let paginationContainer = document.querySelector('.pagination-container');
+        if (!paginationContainer) {
+            paginationContainer = document.createElement('div');
+            paginationContainer.className = 'pagination-container mt-2 d-flex justify-content-between align-items-center';
+            
+            const recordingList = document.getElementById('recording-list');
+            recordingList.parentNode.insertBefore(paginationContainer, recordingList.nextSibling);
+        }
+        
+        paginationContainer.innerHTML = `
+            <small class="text-muted">Page ${pagination.page} of ${pagination.pages} (${pagination.total} recordings)</small>
+            <div>
+                ${pagination.has_prev ? '<button class="btn btn-sm btn-outline-primary me-1 prev-page">&laquo; Prev</button>' : ''}
+                ${pagination.has_next ? '<button class="btn btn-sm btn-outline-primary next-page">Next &raquo;</button>' : ''}
+            </div>
+        `;
+        
+        // Add event listeners to pagination buttons
+        const prevPageBtn = paginationContainer.querySelector('.prev-page');
+        if (prevPageBtn) {
+            prevPageBtn.addEventListener('click', () => loadRecordingsPage(pagination.page - 1));
+        }
+        
+        const nextPageBtn = paginationContainer.querySelector('.next-page');
+        if (nextPageBtn) {
+            nextPageBtn.addEventListener('click', () => loadRecordingsPage(pagination.page + 1));
+        }
+        
+        // Also add scroll listener to the recordings list for infinite scrolling
+        recordingItems.onscroll = function() {
+            if (recordingItems.scrollHeight - recordingItems.scrollTop <= recordingItems.clientHeight + 50) {
+                // Near the bottom, load more if available and not already loading
+                if (pagination.has_next && !isLoadingRecordings) {
+                    loadRecordingsPage(pagination.page + 1, true);
+                }
+            }
+        };
+    }
+    
     // Update recordings list UI
-    function updateRecordingsList() {
-        recordingItems.innerHTML = '';
+    function updateRecordingsList(keepExisting = false) {
+        if (!keepExisting) {
+            recordingItems.innerHTML = '';
+        }
         
         if (recordings.length === 0) {
-            noRecordingsMessage.style.display = 'block';
+            if (!keepExisting) {
+                noRecordingsMessage.style.display = 'block';
+            }
             return;
         }
         
         noRecordingsMessage.style.display = 'none';
         
-        recordings.forEach(recording => {
+        // Get the recordings we need to add (all if not keeping existing, or just the new ones)
+        const recordingsToAdd = keepExisting ? 
+            recordings.slice(recordings.length - 20) : // Just the last 20 that were added
+            recordings;
+        
+        recordingsToAdd.forEach(recording => {
             const item = document.createElement('li');
             item.className = 'list-group-item d-flex justify-content-between align-items-center';
             item.dataset.id = recording.id;
@@ -415,20 +610,41 @@ document.addEventListener('DOMContentLoaded', function() {
             
             recordingItems.appendChild(item);
         });
+        
+        // If we have a current recording, highlight it
+        if (currentRecording) {
+            recordingItems.querySelectorAll('.list-group-item').forEach(item => {
+                item.classList.remove('active');
+                if (item.dataset.id === currentRecording.id) {
+                    item.classList.add('active');
+                    // Scroll to make the active item visible
+                    item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            });
+        }
     }
     
     // Update detections list UI
-    function updateDetectionsList() {
-        detectionItems.innerHTML = '';
+    function updateDetectionsList(keepExisting = false) {
+        if (!keepExisting) {
+            detectionItems.innerHTML = '';
+        }
         
         if (detections.length === 0) {
-            noDetectionsMessage.style.display = 'block';
+            if (!keepExisting) {
+                noDetectionsMessage.style.display = 'block';
+            }
             return;
         }
         
         noDetectionsMessage.style.display = 'none';
         
-        detections.forEach(detection => {
+        // Get the detections we need to add (all if not keeping existing, or just the new ones)
+        const detectionsToAdd = keepExisting ? 
+            detections.slice(detections.length - 20) : // Just the last 20 that were added
+            detections;
+        
+        detectionsToAdd.forEach(detection => {
             const item = document.createElement('li');
             item.className = 'list-group-item d-flex justify-content-between align-items-center';
             item.dataset.id = detection.id;
@@ -451,42 +667,41 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Update timeline UI
-    function updateTimeline() {
-        timelineEvents.innerHTML = '';
+    // Find and select recording by ID (may need to load the page containing it)
+    function selectRecordingById(recordingId) {
+        // First check if the recording is already loaded
+        const existingRecording = recordings.find(r => r.id === recordingId);
+        if (existingRecording) {
+            selectRecording(existingRecording);
+            return;
+        }
         
-        // Add recording events to timeline
-        recordings.forEach(recording => {
-            const event = document.createElement('div');
-            event.className = 'timeline-event';
-            const position = timeToPosition(recording.timestamp);
-            const width = (recording.duration / (24 * 3600)) * 100;
-            event.style.left = position + '%';
-            event.style.width = width + '%';
-            event.dataset.id = recording.id;
-            
-            event.addEventListener('click', () => {
-                selectRecording(recording);
-            });
-            
-            timelineEvents.appendChild(event);
-        });
+        // If not loaded, show loading state and fetch the recording
+        videoContainer.querySelector('#no-video-message').style.display = 'none';
         
-        // Add detection events to timeline
-        detections.forEach(detection => {
-            const event = document.createElement('div');
-            event.className = 'timeline-event detection';
-            const position = timeToPosition(detection.timestamp);
-            event.style.left = position + '%';
-            event.style.width = '0.5%';
-            event.dataset.id = detection.id;
-            
-            event.addEventListener('click', () => {
-                jumpToDetection(detection);
+        const loadingOverlay = document.getElementById('video-loading-overlay');
+        const loadingProgressText = document.getElementById('loading-progress-text');
+        
+        loadingOverlay.style.display = 'flex';
+        loadingProgressText.textContent = 'Loading recording...';
+        
+        // Fetch the recording by ID
+        fetch(`/api/recordings/${recordingId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.recording) {
+                    selectRecording(data.recording);
+                } else {
+                    console.error('Error loading recording:', data.message);
+                    loadingOverlay.style.display = 'none';
+                    videoContainer.querySelector('#no-video-message').style.display = 'block';
+                }
+            })
+            .catch(error => {
+                console.error('Error loading recording:', error);
+                loadingOverlay.style.display = 'none';
+                videoContainer.querySelector('#no-video-message').style.display = 'block';
             });
-            
-            timelineEvents.appendChild(event);
-        });
     }
     
     // Select and play a recording
@@ -498,6 +713,8 @@ document.addEventListener('DOMContentLoaded', function() {
             item.classList.remove('active');
             if (item.dataset.id === recording.id.toString()) {
                 item.classList.add('active');
+                // Scroll to make the active item visible
+                item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }
         });
         
@@ -597,8 +814,8 @@ document.addEventListener('DOMContentLoaded', function() {
             loadingOverlay.style.display = 'none';
             clearInterval(bufferCheckInterval);
             
-            // Only need to handle this once
-            videoPlayer.ontimeupdate = updatePlayhead;
+            // Update playhead position
+            updatePlayhead();
         };
         
         // Add query param to try different format if needed
@@ -684,21 +901,72 @@ document.addEventListener('DOMContentLoaded', function() {
             return detTime >= recStart && detTime <= recEnd;
         });
         
-        if (!recording) return;
-        
-        // Select the recording
-        selectRecording(recording);
-        
-        // Calculate time offset within the recording
-        const recStart = new Date(recording.timestamp);
-        const detTime = new Date(detection.timestamp);
-        const offsetSeconds = (detTime - recStart) / 1000;
-        
-        // Set video current time to the detection
-        videoPlayer.addEventListener('loadedmetadata', function onceLoaded() {
-            videoPlayer.currentTime = offsetSeconds;
-            videoPlayer.removeEventListener('loadedmetadata', onceLoaded);
-        });
+        if (recording) {
+            // Select the recording
+            selectRecording(recording);
+            
+            // Calculate time offset within the recording
+            const recStart = new Date(recording.timestamp);
+            const detTime = new Date(detection.timestamp);
+            const offsetSeconds = (detTime - recStart) / 1000;
+            
+            // Set video current time to the detection
+            videoPlayer.addEventListener('loadedmetadata', function onceLoaded() {
+                videoPlayer.currentTime = offsetSeconds;
+                videoPlayer.removeEventListener('loadedmetadata', onceLoaded);
+            });
+        } else {
+            // If the recording isn't loaded yet, fetch it by looking at the timestamp
+            const detTime = new Date(detection.timestamp);
+            
+            // Show loading state
+            const loadingOverlay = document.getElementById('video-loading-overlay');
+            loadingOverlay.style.display = 'flex';
+            
+            // Look for recording that contains this detection time
+            fetch(`/api/recordings?camera_id=${currentCamera}&date_from=${detTime.toISOString().split('T')[0]}&per_page=5`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && data.recordings && data.recordings.length > 0) {
+                        // Find the recording that contains this detection time
+                        const matchingRecording = data.recordings.find(r => {
+                            const recStart = new Date(r.timestamp);
+                            const recEnd = new Date(recStart.getTime() + r.duration * 1000);
+                            const detTime = new Date(detection.timestamp);
+                            return detTime >= recStart && detTime <= recEnd;
+                        });
+                        
+                        if (matchingRecording) {
+                            // Select the recording
+                            selectRecording(matchingRecording);
+                            
+                            // Calculate time offset within the recording
+                            const recStart = new Date(matchingRecording.timestamp);
+                            const detTime = new Date(detection.timestamp);
+                            const offsetSeconds = (detTime - recStart) / 1000;
+                            
+                            // Set video current time to the detection
+                            videoPlayer.addEventListener('loadedmetadata', function onceLoaded() {
+                                videoPlayer.currentTime = offsetSeconds;
+                                videoPlayer.removeEventListener('loadedmetadata', onceLoaded);
+                            });
+                        } else {
+                            // Show error
+                            loadingOverlay.style.display = 'none';
+                            alert('Could not find the recording containing this detection.');
+                        }
+                    } else {
+                        // Show error
+                        loadingOverlay.style.display = 'none';
+                        alert('Could not find the recording containing this detection.');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error finding recording for detection:', error);
+                    loadingOverlay.style.display = 'none';
+                    alert('An error occurred while trying to find the recording.');
+                });
+        }
     }
     
     // Reset UI when no recordings are available
@@ -894,9 +1162,6 @@ document.addEventListener('DOMContentLoaded', function() {
         document.body.removeChild(link);
     });
     
-    // Update playhead position on timeupdate event
-    videoPlayer.addEventListener('timeupdate', updatePlayhead);
-    
     // Handle end of video
     videoPlayer.addEventListener('ended', () => {
         if (playbackDirection === 1) {
@@ -914,20 +1179,29 @@ document.addEventListener('DOMContentLoaded', function() {
     // Event listeners for controls
     cameraSelect.addEventListener('change', () => {
         currentCamera = cameraSelect.value;
-        loadRecordings();
+        currentPage = 1; // Reset pagination
+        loadTimelineData(); // First load timeline, then detailed data
     });
     
     datePicker.addEventListener('change', () => {
         currentDate = datePicker.value;
-        loadRecordings();
+        currentPage = 1; // Reset pagination
+        loadTimelineData(); // First load timeline, then detailed data
     });
     
-    showDetectionsOnly.addEventListener('change', loadRecordings);
-    objectFilter.addEventListener('change', loadRecordings);
+    showDetectionsOnly.addEventListener('change', () => {
+        currentPage = 1; // Reset pagination
+        loadRecordingsPage(1); // Reload with new filter
+    });
+    
+    objectFilter.addEventListener('change', () => {
+        currentPage = 1; // Reset pagination  
+        loadRecordingsPage(1); // Reload with new filter
+    });
     
     // Timeline drag
     timelineContainer.addEventListener('click', (e) => {
-        if (!recordings.length) return;
+        if (!timelineRecordings.length) return;
         
         const rect = timelineContainer.getBoundingClientRect();
         const clickPosition = (e.clientX - rect.left) / rect.width;
@@ -942,7 +1216,19 @@ document.addEventListener('DOMContentLoaded', function() {
         const clickDate = new Date(`${currentDate}T00:00:00`);
         clickDate.setHours(hours, minutes, seconds);
         
-        // Find recording that contains this timestamp
+        // First check timeline recordings (lightweight data)
+        for (const recording of timelineRecordings) {
+            const recStart = new Date(recording.timestamp);
+            const recEnd = new Date(recStart.getTime() + recording.duration * 1000);
+            
+            if (clickDate >= recStart && clickDate <= recEnd) {
+                // Found in timeline, now select it
+                selectRecordingById(recording.id);
+                return;
+            }
+        }
+        
+        // If not found in timeline, check loaded recordings
         for (const recording of recordings) {
             const recStart = new Date(recording.timestamp);
             const recEnd = new Date(recStart.getTime() + recording.duration * 1000);

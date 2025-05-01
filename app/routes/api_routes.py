@@ -522,7 +522,12 @@ def get_camera_recordings_by_date(camera_id):
     events_only = request.args.get('events_only', '').lower() in ('true', '1', 'yes')
     object_type = request.args.get('object_type')
     
-    logger.info(f"Getting recordings for camera {camera_id} on date {date}, events_only={events_only}, object_type={object_type}")
+    # Get pagination parameters
+    page = int(request.args.get('page', 1))
+    per_page = int(request.args.get('per_page', 20))
+    timeline_only = request.args.get('timeline_only', '').lower() in ('true', '1', 'yes')
+    
+    logger.info(f"Getting recordings for camera {camera_id} on date {date}, events_only={events_only}, object_type={object_type}, page={page}, per_page={per_page}")
     
     # Date is required
     if not date:
@@ -545,11 +550,41 @@ def get_camera_recordings_by_date(camera_id):
             }
         }
         
-        # Get recordings matching our criteria, sorted by timestamp
-        recordings_cursor = db.recordings.find(recordings_query).sort('timestamp', 1)
+        # First, get total count for pagination info
+        total_recordings = db.recordings.count_documents(recordings_query)
+        
+        # Calculate timeline data even with pagination
+        # For timeline, we need low-res data for all recordings of the day
+        if timeline_only:
+            # For timeline view, get simplified data for all recordings
+            timeline_recordings = list(db.recordings.find(
+                recordings_query,
+                {'timestamp': 1, 'duration': 1}
+            ).sort('timestamp', 1))
+            
+            simplified_recordings = []
+            for rec in timeline_recordings:
+                simplified_recordings.append({
+                    'id': str(rec['_id']),
+                    'timestamp': rec['timestamp'],
+                    'duration': rec['duration'] if 'duration' in rec else 0
+                })
+            
+            # Return just the simplified timeline data
+            return jsonify({
+                'success': True,
+                'timeline_recordings': simplified_recordings,
+                'total': total_recordings
+            })
+        
+        # For normal view, get paginated recordings with full details
+        skip = (page - 1) * per_page
+        
+        # Get recordings matching our criteria, sorted by timestamp and paginated
+        recordings_cursor = db.recordings.find(recordings_query).sort('timestamp', 1).skip(skip).limit(per_page)
         recordings = [Recording(rec) for rec in recordings_cursor]
         
-        logger.info(f"Found {len(recordings)} recordings for camera {camera_id} on date {date}")
+        logger.info(f"Found {len(recordings)} recordings (page {page} of {(total_recordings + per_page - 1) // per_page}) for camera {camera_id} on date {date}")
         
         # Build query for detections - used both for filtering recordings and returning detections
         detections_query = {
@@ -564,11 +599,32 @@ def get_camera_recordings_by_date(camera_id):
         if object_type:
             detections_query['class_name'] = object_type
         
+        # Calculate detection count
+        total_detections = db.detections.count_documents(detections_query)
+        
+        # For normal paginated results, we need to limit detections to current page recordings
+        if recordings:
+            # Get the time range for current page recordings
+            first_rec_time = recordings[0].timestamp if recordings else date_obj
+            last_rec_time = recordings[-1].timestamp if recordings else next_day
+            if isinstance(last_rec_time, datetime):
+                # Add the duration of the last recording to get the end time
+                last_duration = recordings[-1].duration if (recordings and hasattr(recordings[-1], 'duration')) else 0
+                last_rec_end = last_rec_time + timedelta(seconds=last_duration)
+            else:
+                last_rec_end = next_day
+            
+            # Get detections only for the current page time range
+            detections_query['timestamp'] = {
+                '$gte': first_rec_time,
+                '$lte': last_rec_end
+            }
+        
         # Get detections
         detections_cursor = db.detections.find(detections_query).sort('timestamp', 1)
         detections = [Detection(det) for det in detections_cursor]
         
-        logger.info(f"Found {len(detections)} detections for camera {camera_id} on date {date}")
+        logger.info(f"Found {len(detections)} detections for current page recordings")
         
         # If events_only is true, filter recordings to only include those with detections
         if events_only and detections:
@@ -587,13 +643,22 @@ def get_camera_recordings_by_date(camera_id):
         recordings_dict = [r.to_dict() for r in recordings]
         detections_dict = [d.to_dict() for d in detections]
         
-        # Return formatted response
+        # Return formatted response with pagination info
         return jsonify({
             'success': True,
             'date': date,
             'camera_id': camera_id,
             'recordings': recordings_dict,
-            'detections': detections_dict
+            'detections': detections_dict,
+            'pagination': {
+                'page': page,
+                'per_page': per_page,
+                'total': total_recordings,
+                'pages': (total_recordings + per_page - 1) // per_page,
+                'has_next': page < ((total_recordings + per_page - 1) // per_page),
+                'has_prev': page > 1
+            },
+            'detection_count': total_detections
         })
         
     except ValueError:
