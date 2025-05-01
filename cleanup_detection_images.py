@@ -130,6 +130,72 @@ def cleanup_detection_images():
             'error': str(e)
         }
 
+def memory_cleanup():
+    """Release memory and optimize RAM usage by cleaning up references and invoking garbage collection
+    
+    This function helps recover memory by:
+    1. Clearing detection image caches
+    2. Forcing explicit garbage collection
+    3. Releasing any detection mappings
+    
+    Returns:
+        dict: Memory cleanup statistics
+    """
+    import gc
+    import psutil
+    import time
+    import sys
+    
+    # Get initial memory usage
+    process = psutil.Process()
+    initial_memory = process.memory_info().rss / 1024 / 1024  # MB
+    
+    logger.info(f"Starting memory cleanup. Initial memory usage: {initial_memory:.2f} MB")
+    
+    # Clear any module-level caches
+    logger.info("Clearing module-level caches")
+    global CLASS_COLORS
+    if 'CLASS_COLORS' in globals():
+        CLASS_COLORS.clear()
+    
+    # Clear detection notification trackers
+    from app.utils.notifications import _tracked_objects, _last_email_time
+    _tracked_objects.clear()
+    _last_email_time.clear()
+    
+    # Release any large memory objects like detection mappings
+    cleared_count = 0
+    try:
+        from app.utils.camera_processor import CameraManager
+        camera_manager = CameraManager.get_instance()
+        for camera_id, processor in camera_manager.cameras.items():
+            # Clear detection caches
+            with processor.detection_lock:
+                processor.current_detections = []
+                cleared_count += 1
+    except Exception as e:
+        logger.error(f"Error clearing camera processor caches: {str(e)}")
+    
+    # Force garbage collection
+    collected = gc.collect(generation=2)
+    
+    # Get final memory usage
+    time.sleep(0.5)  # Brief pause to let memory settle
+    final_memory = process.memory_info().rss / 1024 / 1024  # MB
+    memory_diff = initial_memory - final_memory
+    
+    logger.info(f"Memory cleanup complete. Released: {memory_diff:.2f} MB, Objects collected: {collected}")
+    
+    # Return stats
+    return {
+        'success': True,
+        'initial_memory_mb': initial_memory,
+        'final_memory_mb': final_memory,
+        'memory_freed_mb': memory_diff,
+        'objects_collected': collected,
+        'caches_cleared': cleared_count
+    }
+
 if __name__ == '__main__':
     logger.info("Starting detection images cleanup")
     result = cleanup_detection_images()

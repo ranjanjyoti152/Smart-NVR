@@ -131,6 +131,9 @@ class BackgroundScheduler:
         # Register detection images cleanup task - Run every minute (for testing)
         self.register_task('cleanup_detection_images', self._cleanup_detection_images_task, interval=60)  # Every minute
         
+        # Register memory cleanup task - Run every 10 seconds for aggressive RAM optimization
+        self.register_task('memory_cleanup', self._memory_cleanup_task, interval=10)  # Every 10 seconds
+        
     def _cleanup_task(self):
         """Clean up old recordings based on retention settings"""
         from app.routes.main_routes import get_recording_settings
@@ -343,6 +346,38 @@ class BackgroundScheduler:
                 logger.error(f"Error in detection images cleanup task: {str(e)}")
                 import traceback
                 logger.error(traceback.format_exc())
+    
+    def _memory_cleanup_task(self):
+        """Periodically clean up memory to optimize RAM usage"""
+        from app import app
+        import importlib.util
+        import os
+        
+        logger.info("Running memory cleanup task")
+        
+        try:
+            # Import the cleanup_detection_images module
+            spec = importlib.util.spec_from_file_location(
+                "cleanup_detection_images", 
+                os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "cleanup_detection_images.py")
+            )
+            cleanup_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(cleanup_module)
+            
+            # Run the memory cleanup
+            result = cleanup_module.memory_cleanup()
+            
+            if result and result.get('success'):
+                logger.info(f"Memory cleanup completed successfully. "
+                           f"Released {result.get('memory_freed_mb', 0):.2f} MB of RAM. "
+                           f"Collected {result.get('objects_collected', 0)} objects.")
+            else:
+                logger.error(f"Memory cleanup failed: {result.get('error') if result else 'Unknown error'}")
+                
+        except Exception as e:
+            logger.error(f"Error in memory cleanup task: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
 
 # Global scheduler instance
 _scheduler = None

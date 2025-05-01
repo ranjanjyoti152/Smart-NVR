@@ -150,19 +150,9 @@ class CameraProcessor:
             
             # Ensure polygon is valid before checking containment
             if region['polygon'].is_valid and region['polygon'].contains(point_to_check):
-                # Check if classes are defined and if the detected class is allowed
-                allowed_classes = region.get('classes')
                 # Default to allowed if no specific classes are set for ROI
-                class_allowed = True 
-                
-                if allowed_classes:
-                    # We don't have class_id or class_name at this point, so we'll just return the ROI
-                    # The actual class filtering will need to happen at the call site
-                    pass
-                
-                if class_allowed:
-                    matched_roi_id = region['id']
-                    break  # Stop checking ROIs once a match is found
+                matched_roi_id = region['id']
+                break  # Stop checking ROIs once a match is found
         
         return matched_roi_id
         
@@ -593,8 +583,13 @@ class CameraProcessor:
         """Process frames for object detection using the loaded model"""
         while self.running:
             try:
-                # Get frame from queue
-                frame_to_process = self.frame_queue.get(timeout=1.0)
+                # Get frame from queue with timeout to avoid blocking forever
+                try:
+                    frame_to_process = self.frame_queue.get(timeout=1.0)
+                except queue.Empty:
+                    # If queue is empty, briefly pause to yield CPU
+                    time.sleep(0.01)
+                    continue
 
                 # Get image dimensions
                 height, width = frame_to_process.shape[:2]
@@ -603,192 +598,70 @@ class CameraProcessor:
                 # YOLOv5 from torch.hub uses __call__, while ultralytics YOLO uses predict
                 if hasattr(self.model, 'predict'):
                     # Ultralytics YOLO API
-                    results = self.model.predict(source=frame_to_process, conf=self.confidence_threshold, verbose=False) # verbose=False to reduce console spam
+                    results = self.model.predict(source=frame_to_process, conf=self.confidence_threshold, verbose=False)
                 else:
                     # YOLOv5 torch.hub API
-                    results = self.model(frame_to_process, size=640, augment=False) # Direct call for YOLOv5 models
+                    results = self.model(frame_to_process, size=640, augment=False)
 
                 # Process results (ultralytics results object is different)
                 detected_objects = []
                 current_time = datetime.now()
 
-                # Handle different result formats (YOLOv5 vs ultralytics YOLO)
-                # Check if results is a Detections object (from ultralytics YOLO or YOLOv5)
-                # or a list (from some YOLOv5 versions)
-                if results is not None:
-                    # For ultralytics YOLO: results is a ultralytics.yolo.engine.results.Results object
-                    # For YOLOv5: could be a list or models.common.Detections object
-                    if hasattr(results, 'boxes'):
-                        # Direct Detections object from ultralytics YOLO
-                        res = results
-                    elif isinstance(results, list) and len(results) > 0:
-                        # List of results from YOLOv5
-                        res = results[0]
-                    elif str(type(results)) == "<class 'models.common.Detections'>":
-                        # YOLOv5 models.common.Detections format
-                        res = results
-                    else:
-                        # Unknown format, skip processing
-                        logger.warning(f"Unknown results format: {type(results)}")
-                        continue
-                        
-                    # Try to access boxes - each model may have different property names
-                    if hasattr(res, 'boxes'):
-                        boxes = res.boxes  # Ultralytics format
-                        class_names = res.names  # Dictionary mapping class_id to class_name
-                        
-                        # Process Ultralytics YOLO format boxes
-                        for i in range(len(boxes)):
-                            try:
-                                box = boxes[i]
-                                conf = float(box.conf.item() if hasattr(box.conf, 'item') else box.conf[0])
-                                class_id = int(box.cls.item() if hasattr(box.cls, 'item') else box.cls[0])
-                                class_name = class_names.get(class_id, f"Class_{class_id}")
-                                
-                                # Get bounding box coordinates (xyxy format)
-                                if hasattr(box.xyxy, 'item'):
-                                    xyxy = box.xyxy.cpu().numpy()[0]
-                                    x1, y1, x2, y2 = map(int, xyxy)
-                                else:
-                                    x1, y1, x2, y2 = map(int, box.xyxy[0])
-                                
-                                # ROI Check
-                                center_x = (x1 + x2) / 2
-                                center_y = (y1 + y2) / 2
-                                pixel_center = Point(center_x, center_y)
-                                norm_center = Point(center_x / width, center_y / height)
-                                matched_roi_id = self._check_roi_match(pixel_center, norm_center)
-                                
-                                # Store detection details
-                                detected_obj = {
-                                    'camera_id': self.camera.id,
-                                    'class_name': class_name,
-                                    'confidence': conf,
-                                    'bbox_x': x1, 'bbox_y': y1,
-                                    'bbox_width': x2 - x1, 'bbox_height': y2 - y1,
-                                    'roi_id': matched_roi_id,
-                                    'timestamp': current_time
-                                }
-                                detected_objects.append(detected_obj)
-                            except Exception as e:
-                                logger.error(f"Error processing detection box: {str(e)}")
-                                continue
-                                
-                    elif hasattr(res, 'pred') and hasattr(res, 'names'):
-                        # YOLOv5 format - handle the YOLOv5 style detections
-                        pred = res.pred[0] if len(res.pred) > 0 else []
-                        class_names = res.names
-                        
-                        # Process YOLOv5 format boxes
-                        for *xyxy, conf, cls in pred:
-                            try:
-                                # Convert tensor values to Python types
-                                x1, y1, x2, y2 = map(int, xyxy)
-                                conf = float(conf)
-                                class_id = int(cls)
-                                class_name = class_names.get(class_id, f"Class_{class_id}")
-                                
-                                # ROI Check
-                                center_x = (x1 + x2) / 2
-                                center_y = (y1 + y2) / 2
-                                pixel_center = Point(center_x, center_y)
-                                norm_center = Point(center_x / width, center_y / height)
-                                matched_roi_id = self._check_roi_match(pixel_center, norm_center)
-                                
-                                # Store detection details
-                                detected_obj = {
-                                    'camera_id': self.camera.id,
-                                    'class_name': class_name,
-                                    'confidence': conf,
-                                    'bbox_x': x1, 'bbox_y': y1,
-                                    'bbox_width': x2 - x1, 'bbox_height': y2 - y1,
-                                    'roi_id': matched_roi_id,
-                                    'timestamp': current_time
-                                }
-                                detected_objects.append(detected_obj)
-                            except Exception as e:
-                                logger.error(f"Error processing YOLOv5 detection: {str(e)}")
-                                continue
-                    else:
-                        logger.warning(f"Cannot extract detection boxes from results: {type(res)}")
-                        continue
+                # Process detection results
+                try:
+                    # Handle different result formats (YOLOv5 vs ultralytics YOLO)
+                    if results is not None:
+                        if hasattr(results, 'boxes'):
+                            # Direct Detections object from ultralytics YOLO
+                            res = results
+                        elif isinstance(results, list) and len(results) > 0:
+                            # List of results from YOLOv5
+                            res = results[0]
+                        elif str(type(results)) == "<class 'models.common.Detections'>":
+                            # YOLOv5 models.common.Detections format
+                            res = results
+                        else:
+                            # Unknown format, skip processing
+                            logger.warning(f"Unknown results format: {type(results)}")
+                            self.frame_queue.task_done()
+                            continue
+                            
+                        # Process boxes based on the format of the detection results
+                        if hasattr(res, 'boxes'):
+                            # Process Ultralytics YOLO format boxes
+                            self._process_ultralytics_boxes(res.boxes, res.names, height, width, current_time, detected_objects)
+                        elif hasattr(res, 'pred') and hasattr(res, 'names'):
+                            # Process YOLOv5 format boxes
+                            self._process_yolov5_boxes(res.pred[0] if len(res.pred) > 0 else [], res.names, height, width, current_time, detected_objects)
+                        else:
+                            logger.warning(f"Cannot extract detection boxes from results: {type(res)}")
+                            self.frame_queue.task_done()
+                            continue
+                finally:
+                    # Explicitly release reference to large result objects to help garbage collection
+                    results = None
+                    res = None
 
-                    # Processing for boxes has been moved to the format-specific sections above
-
-                # --- Update shared state under lock ---
+                # Update shared state under lock
                 with self.detection_lock:
                     # Store the frame that was just processed and its detections
-                    self.last_processed_frame = frame_to_process # Store the actual frame used for detection
+                    self.last_processed_frame = frame_to_process
                     self.last_processed_detections = detected_objects
                     # Also update current_detections for the API
                     self.current_detections = detected_objects
 
-                # --- Post-detection actions (outside lock) ---
+                # Handle post-detection actions if there are detections
                 if detected_objects:
-                    self.last_detection_time = current_time # Update last detection time
-
-                    # Save detection image (optional)
-                    try:
-                        from app.routes.main_routes import get_detection_settings
-                        detection_settings = get_detection_settings()
-                        save_image = detection_settings.get('save_images', True) # Default to True if not specified
-                    except Exception as e:
-                        logger.warning(f"Could not load detection settings: {str(e)}, using defaults")
-                        save_image = True
-
-                    if save_image:
-                        # Draw boxes on a *copy* of the processed frame for saving
-                        frame_with_boxes = frame_to_process.copy()
-                        for obj in detected_objects:
-                             x1, y1 = int(obj['bbox_x']), int(obj['bbox_y'])
-                             x2, y2 = x1 + int(obj['bbox_width']), y1 + int(obj['bbox_height'])
-                             color = get_color_for_class(obj['class_name'])
-                             cv2.rectangle(frame_with_boxes, (x1, y1), (x2, y2), color, 2)
-                             # label = f"{obj['class_name']} {obj['confidence']:.2f}" # Optional label on saved image
-                             # cv2.putText(frame_with_boxes, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-
-                        detection_time_str = current_time.strftime("%Y%m%d_%H%M%S")
-                        # Ensure the base directory exists
-                        base_image_dir = os.path.join('storage', 'recordings', 'images')
-                        os.makedirs(base_image_dir, exist_ok=True)
-                        # Create camera-specific directory
-                        image_dir = os.path.join(base_image_dir, str(self.camera.id))
-                        os.makedirs(image_dir, exist_ok=True)
-
-                        image_path = os.path.join(image_dir, f"{detection_time_str}_{uuid.uuid4().hex[:8]}.jpg")
-                        try:
-                            cv2.imwrite(image_path, frame_with_boxes)
-                            # Add image path to detections
-                            for obj in detected_objects:
-                                obj['image_path'] = image_path
-                        except Exception as img_err:
-                             logger.error(f"Error saving detection image to {image_path}: {img_err}")
-                             for obj in detected_objects:
-                                obj['image_path'] = None
-
-                    else:
-                         for obj in detected_objects:
-                            obj['image_path'] = None
-
-                    # Set video path if recording
-                    video_path = self.current_video_path if self.recording else None
-                    for obj in detected_objects:
-                        obj['video_path'] = video_path
-
-                    # Report detection to API
-                    self._report_detection(detected_objects) # Pass the final list with image/video paths
+                    self.last_detection_time = current_time
+                    self._handle_detection_image_saving(frame_to_process, detected_objects, current_time)
+                    self._report_detection(detected_objects)
 
                 # Mark the frame queue task as done
                 self.frame_queue.task_done()
 
-            except queue.Empty:
-                # If queue is empty, briefly pause to yield CPU
-                time.sleep(0.01)
-                continue
             except Exception as e:
                 logger.error(f"Error in object detection: {str(e)}")
-                import traceback
-                logger.error(f"Traceback: {traceback.format_exc()}")
+                logger.error(traceback.format_exc())
                 # Ensure task_done is called even on error if a frame was retrieved
                 if 'frame_to_process' in locals():
                      try:
@@ -977,6 +850,174 @@ class CameraProcessor:
 
         except Exception as e:
             logger.error(f"Error reporting detection: {str(e)}")
+
+    def _process_ultralytics_boxes(self, boxes, class_names, height, width, current_time, detected_objects):
+        """Process boxes from Ultralytics YOLO format
+        
+        Args:
+            boxes: Detection boxes from the model
+            class_names: Dictionary mapping class IDs to class names
+            height: Frame height
+            width: Frame width
+            current_time: Current timestamp
+            detected_objects: List to append detections to
+        """
+        for i in range(len(boxes)):
+            try:
+                box = boxes[i]
+                conf = float(box.conf.item() if hasattr(box.conf, 'item') else box.conf[0])
+                
+                # Skip detections below confidence threshold
+                if conf < self.confidence_threshold:
+                    continue
+                    
+                class_id = int(box.cls.item() if hasattr(box.cls, 'item') else box.cls[0])
+                class_name = class_names.get(class_id, f"Class_{class_id}")
+                
+                # Get bounding box coordinates (xyxy format)
+                if hasattr(box.xyxy, 'item'):
+                    xyxy = box.xyxy.cpu().numpy()[0]
+                    x1, y1, x2, y2 = map(int, xyxy)
+                else:
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])
+                
+                # ROI Check
+                center_x = (x1 + x2) / 2
+                center_y = (y1 + y2) / 2
+                pixel_center = Point(center_x, center_y)
+                norm_center = Point(center_x / width, center_y / height)
+                matched_roi_id = self._check_roi_match(pixel_center, norm_center)
+                
+                # Store detection details
+                detected_obj = {
+                    'camera_id': self.camera.id,
+                    'class_name': class_name,
+                    'confidence': conf,
+                    'bbox_x': x1, 'bbox_y': y1,
+                    'bbox_width': x2 - x1, 'bbox_height': y2 - y1,
+                    'roi_id': matched_roi_id,
+                    'timestamp': current_time
+                }
+                detected_objects.append(detected_obj)
+            except Exception as e:
+                logger.error(f"Error processing ultralytics detection box: {str(e)}")
+                continue
+
+    def _process_yolov5_boxes(self, pred, class_names, height, width, current_time, detected_objects):
+        """Process boxes from YOLOv5 format
+        
+        Args:
+            pred: Detection prediction tensors from the model
+            class_names: Dictionary mapping class IDs to class names
+            height: Frame height
+            width: Frame width
+            current_time: Current timestamp
+            detected_objects: List to append detections to
+        """
+        # Process YOLOv5 format boxes
+        for *xyxy, conf, cls in pred:
+            try:
+                # Skip detections below confidence threshold
+                if float(conf) < self.confidence_threshold:
+                    continue
+                    
+                # Convert tensor values to Python types
+                x1, y1, x2, y2 = map(int, xyxy)
+                conf = float(conf)
+                class_id = int(cls)
+                class_name = class_names.get(class_id, f"Class_{class_id}")
+                
+                # ROI Check
+                center_x = (x1 + x2) / 2
+                center_y = (y1 + y2) / 2
+                pixel_center = Point(center_x, center_y)
+                norm_center = Point(center_x / width, center_y / height)
+                matched_roi_id = self._check_roi_match(pixel_center, norm_center)
+                
+                # Store detection details
+                detected_obj = {
+                    'camera_id': self.camera.id,
+                    'class_name': class_name,
+                    'confidence': conf,
+                    'bbox_x': x1, 'bbox_y': y1,
+                    'bbox_width': x2 - x1, 'bbox_height': y2 - y1,
+                    'roi_id': matched_roi_id,
+                    'timestamp': current_time
+                }
+                detected_objects.append(detected_obj)
+            except Exception as e:
+                logger.error(f"Error processing YOLOv5 detection box: {str(e)}")
+                continue
+
+    def _handle_detection_image_saving(self, frame, detected_objects, current_time):
+        """Handle saving detection images efficiently
+        
+        Args:
+            frame: The frame with detections
+            detected_objects: List of detection objects
+            current_time: Current timestamp
+        """
+        try:
+            # Check if image saving is enabled
+            from app.routes.main_routes import get_detection_settings
+            detection_settings = get_detection_settings()
+            save_image = detection_settings.get('save_images', True)
+            
+            if not save_image or not detected_objects:
+                # Skip image saving if disabled or no detections
+                for obj in detected_objects:
+                    obj['image_path'] = None
+                return
+            
+            # Draw boxes on a copy of the processed frame for saving
+            frame_with_boxes = frame.copy()
+            
+            for obj in detected_objects:
+                # Draw detection boxes
+                if all(k in obj for k in ['bbox_x', 'bbox_y', 'bbox_width', 'bbox_height']):
+                    x1, y1 = int(obj['bbox_x']), int(obj['bbox_y'])
+                    x2, y2 = x1 + int(obj['bbox_width']), y1 + int(obj['bbox_height'])
+                    color = get_color_for_class(obj['class_name'])
+                    cv2.rectangle(frame_with_boxes, (x1, y1), (x2, y2), color, 2)
+            
+            # Save a single image for all detections in this frame
+            detection_time_str = current_time.strftime("%Y%m%d_%H%M%S")
+            base_image_dir = os.path.join('storage', 'recordings', 'images')
+            os.makedirs(base_image_dir, exist_ok=True)
+            
+            # Create camera-specific directory
+            image_dir = os.path.join(base_image_dir, str(self.camera.id))
+            os.makedirs(image_dir, exist_ok=True)
+            
+            # Generate a unique filename
+            image_path = os.path.join(image_dir, f"{detection_time_str}_{uuid.uuid4().hex[:8]}.jpg")
+            
+            try:
+                # Save the image
+                cv2.imwrite(image_path, frame_with_boxes)
+                
+                # Add image path to all detections
+                for obj in detected_objects:
+                    obj['image_path'] = image_path
+                    
+            except Exception as img_err:
+                logger.error(f"Error saving detection image to {image_path}: {img_err}")
+                for obj in detected_objects:
+                    obj['image_path'] = None
+            
+            # Release memory
+            frame_with_boxes = None
+            
+        except Exception as e:
+            logger.error(f"Error in handling detection image saving: {str(e)}")
+            # Ensure image paths are set to None in case of error
+            for obj in detected_objects:
+                obj['image_path'] = None
+        
+        # Set video path if recording
+        video_path = self.current_video_path if self.recording else None
+        for obj in detected_objects:
+            obj['video_path'] = video_path
 
 # Camera Manager to handle multiple camera instances
 class CameraManager:
