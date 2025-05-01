@@ -315,6 +315,31 @@
                                 </h2>
                                 <div id="smartNotificationsCollapse" class="accordion-collapse collapse" aria-labelledby="smartNotificationsHeading">
                                     <div class="accordion-body p-3">
+                                        <!-- Notification Type Toggle -->
+                                        <div class="card border-0 bg-light mb-3">
+                                            <div class="card-body p-3">
+                                                <h6 class="fw-bold mb-3">
+                                                    <i class="fas fa-robot me-2 text-primary"></i>
+                                                    Gemini AI Descriptions
+                                                </h6>
+                                                <div class="form-check form-switch mb-2">
+                                                    <input class="form-check-input" type="checkbox" id="useGeminiNotifications" name="useGeminiNotifications">
+                                                    <label class="form-check-label fw-bold" for="useGeminiNotifications">
+                                                        Use Smart AI Descriptions
+                                                    </label>
+                                                </div>
+                                                <p class="form-text small mb-2">
+                                                    Gemini AI will create detailed, human-friendly descriptions for detection alerts
+                                                </p>
+                                                <div class="d-flex align-items-center mt-1">
+                                                    <i class="fas fa-info-circle me-2 text-info small"></i>
+                                                    <p class="form-text small mb-0">
+                                                        Requires Gemini AI to be enabled in <a href="{{ url_for('main.settings') }}" class="text-decoration-underline">Settings</a>
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
                                         <!-- Alert Box -->
                                         <div class="alert alert-info py-2 mb-3 small">
                                             <i class="fas fa-info-circle me-1"></i>
@@ -764,6 +789,9 @@ function setupROICanvas(cameraId) {
         // Get email notification setting
         const emailNotifications = document.getElementById('emailNotifications').checked;
         
+        // Get Gemini notifications setting
+        const useGeminiNotifications = document.getElementById('useGeminiNotifications').checked;
+        
         // Normalize points to percentages for responsive display
         const normalizedPoints = points.map(point => [
             point[0] / drawCanvas.width,
@@ -782,7 +810,8 @@ function setupROICanvas(cameraId) {
             coordinates: normalizedPoints,
             detection_classes: selectedClasses,
             is_active: true,
-            email_notifications: emailNotifications
+            email_notifications: emailNotifications,
+            use_gemini_notifications: useGeminiNotifications
         };
         
         console.log("ROI Data to save:", roiData);

@@ -1570,6 +1570,105 @@ def test_email():
             'error': result['error']
         }), 500
 
+@api_bp.route('/test_gemini', methods=['POST'])
+@login_required
+def test_gemini():
+    """Test Gemini AI connection"""
+    import requests
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    data = request.json
+    
+    if not data:
+        return jsonify({
+            'success': False,
+            'error': 'No configuration provided'
+        }), 400
+        
+    required_fields = ['api_key', 'model']
+    if not all(field in data for field in required_fields):
+        return jsonify({
+            'success': False,
+            'error': 'Missing required fields'
+        }), 400
+    
+    api_key = data['api_key']
+    model = data['model']
+    
+    # Create a simple test prompt
+    prompt = "Generate a single sentence that describes a security camera detection event."
+    
+    try:
+        # Prepare API request for Gemini
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        
+        headers = {
+            "Content-Type": "application/json"
+        }
+        
+        test_data = {
+            "contents": [
+                {
+                    "parts": [
+                        {"text": prompt}
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.2,
+                "maxOutputTokens": 100,
+                "topP": 0.8,
+                "topK": 40
+            }
+        }
+        
+        # Make the API request with a short timeout
+        response = requests.post(url, headers=headers, json=test_data, timeout=5)
+        
+        if response.status_code == 200:
+            response_data = response.json()
+            
+            # Check if the response contains the expected structure
+            if 'candidates' in response_data and response_data['candidates']:
+                # Test succeeded
+                return jsonify({
+                    'success': True,
+                    'message': 'Gemini AI connection successful'
+                })
+            else:
+                # Unexpected response structure
+                return jsonify({
+                    'success': False,
+                    'error': f'Unexpected response from Gemini API: {response_data}'
+                }), 500
+        else:
+            # API request failed
+            error_msg = f"API request failed with status {response.status_code}"
+            try:
+                error_details = response.json()
+                if 'error' in error_details:
+                    error_msg = f"{error_msg}: {error_details['error']['message']}"
+            except:
+                pass
+                
+            return jsonify({
+                'success': False,
+                'error': error_msg
+            }), 500
+            
+    except requests.exceptions.Timeout:
+        return jsonify({
+            'success': False,
+            'error': 'Request to Gemini API timed out'
+        }), 500
+    except Exception as e:
+        logger.error(f"Error testing Gemini AI connection: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Error: {str(e)}'
+        }), 500
+
 # --- Web Hooks & External API Endpoints ---
 
 @api_bp.route('/hooks/detection', methods=['POST'])

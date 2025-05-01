@@ -117,6 +117,70 @@
                             <div class="form-text">Number of days to keep detection images before deletion</div>
                         </div>
                     </div>
+
+                    <!-- Gemini AI Settings -->
+                    <div class="card border shadow-sm mb-3">
+                        <div class="card-header bg-light">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <i class="fas fa-robot me-2" style="color: var(--color-info);"></i>
+                                    <span class="fw-bold">Gemini AI Enhancement</span>
+                                </div>
+                                <div class="form-check form-switch mb-0">
+                                    <input class="form-check-input" type="checkbox" id="enable_gemini_ai" name="enable_gemini_ai" 
+                                        {% if settings.detection.enable_gemini_ai %}checked{% endif %}>
+                                    <label class="form-check-label" for="enable_gemini_ai">Enable Gemini AI</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-body p-3" id="geminiSettings" {% if not settings.detection.enable_gemini_ai %}style="display: none;"{% endif %}>
+                            <p class="text-muted mb-3">
+                                <i class="fas fa-info-circle me-1"></i> 
+                                When enabled, Gemini AI generates human-friendly, context-aware descriptions for ROI notifications.
+                            </p>
+
+                            <div class="row mb-3">
+                                <div class="col-md-8">
+                                    <label for="gemini_api_key" class="form-label">Gemini API Key</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text"><i class="fas fa-key"></i></span>
+                                        <input type="password" class="form-control" id="gemini_api_key" name="gemini_api_key" 
+                                            value="{{ settings.detection.gemini_api_key|default('') }}" 
+                                            placeholder="Enter your Gemini API key">
+                                        <button class="btn btn-outline-secondary" type="button" id="toggleGeminiKey">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                    </div>
+                                    <div class="form-text">
+                                        Get your API key from <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="gemini_model" class="form-label">Gemini Model</label>
+                                    <select class="form-select" id="gemini_model" name="gemini_model">
+                                        <option value="gemini-1.5-flash" {% if settings.detection.gemini_model == 'gemini-1.5-flash' %}selected{% endif %}>
+                                            Gemini 1.5 Flash
+                                        </option>
+                                        <option value="gemini-1.5-pro" {% if settings.detection.gemini_model == 'gemini-1.5-pro' %}selected{% endif %}>
+                                            Gemini 1.5 Pro
+                                        </option>
+                                        <option value="gemini-pro" {% if settings.detection.gemini_model == 'gemini-pro' %}selected{% endif %}>
+                                            Gemini Pro
+                                        </option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <button type="button" id="testGeminiBtn" class="btn btn-outline-primary">
+                                        <i class="fas fa-vial me-1"></i> Test Gemini Connection
+                                    </button>
+                                    <div id="geminiTestResult" class="mt-3"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 
                 <!-- Notification Settings -->
@@ -237,7 +301,8 @@
                 <strong>Default Confidence:</strong> The threshold (0.1-0.9) that determines how certain the AI must be to report a detection. Higher values (e.g., 0.7) reduce false positives but might miss some objects. Lower values (e.g., 0.3) catch more objects but may include false detections.<br>
                 <strong>Default AI Model:</strong> The AI model used for object detection. Smaller models run faster but with less accuracy; larger models are more accurate but require more processing power.<br>
                 <strong>Save Detection Images:</strong> When enabled, saves a snapshot image for each detection event for review later.<br>
-                <strong>Image Retention:</strong> Number of days to keep detection images before automatic deletion.
+                <strong>Image Retention:</strong> Number of days to keep detection images before automatic deletion.<br>
+                <strong>Gemini AI:</strong> Generates human-friendly, context-aware descriptions for ROI notifications when enabled.
             </p>
             
             <h6 class="mt-4 mb-2 fw-bold" style="color: var(--color-warning);">Email Notifications</h6>
@@ -322,6 +387,71 @@
             // Restore button state
             btn.disabled = false;
             btn.innerHTML = '<i class="fas fa-paper-plane me-1"></i> Test Email';
+        });
+    });
+
+    // Toggle Gemini AI settings visibility based on checkbox
+    document.getElementById('enable_gemini_ai').addEventListener('change', function() {
+        const geminiSettings = document.getElementById('geminiSettings');
+        geminiSettings.style.display = this.checked ? 'block' : 'none';
+    });
+
+    // Toggle visibility of Gemini API key
+    document.getElementById('toggleGeminiKey').addEventListener('click', function() {
+        const apiKeyInput = document.getElementById('gemini_api_key');
+        const icon = this.querySelector('i');
+        if (apiKeyInput.type === 'password') {
+            apiKeyInput.type = 'text';
+            icon.classList.remove('fa-eye');
+            icon.classList.add('fa-eye-slash');
+        } else {
+            apiKeyInput.type = 'password';
+            icon.classList.remove('fa-eye-slash');
+            icon.classList.add('fa-eye');
+        }
+    });
+
+    // Test Gemini AI connection
+    document.getElementById('testGeminiBtn').addEventListener('click', function() {
+        const btn = this;
+        const resultDiv = document.getElementById('geminiTestResult');
+        
+        // Get current form values for testing
+        const apiKey = document.getElementById('gemini_api_key').value;
+        const model = document.getElementById('gemini_model').value;
+        
+        // Change button state
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Testing...';
+        resultDiv.innerHTML = '';
+        
+        // Send test request
+        fetch('/api/test_gemini', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                api_key: apiKey,
+                model: model
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                resultDiv.innerHTML = '<div class="alert alert-success">Gemini AI connection successful!</div>';
+            } else {
+                resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+            }
+        })
+        .catch(error => {
+            resultDiv.innerHTML = '<div class="alert alert-danger">Error testing Gemini AI connection. Check server logs.</div>';
+            console.error('Error:', error);
+        })
+        .finally(() => {
+            // Restore button state
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-vial me-1"></i> Test Gemini Connection';
         });
     });
 </script>

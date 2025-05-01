@@ -17,6 +17,7 @@ class ROI:
         self.detection_classes = roi_data.get('detection_classes')  # Array of class names
         self.is_active = roi_data.get('is_active', True)
         self.email_notifications = roi_data.get('email_notifications', False)
+        self.use_gemini_notifications = roi_data.get('use_gemini_notifications', False)
         self.created_at = roi_data.get('created_at', datetime.utcnow())
     
     def __repr__(self):
@@ -61,7 +62,7 @@ class ROI:
             return []
     
     @classmethod
-    def create(cls, camera_id, name, coordinates, detection_classes=None, is_active=True, email_notifications=False):
+    def create(cls, camera_id, name, coordinates, detection_classes=None, is_active=True, email_notifications=False, use_gemini_notifications=False):
         """Create a new ROI"""
         try:
             # Ensure coordinates is properly formatted
@@ -85,6 +86,7 @@ class ROI:
                 'detection_classes': detection_classes or [],  # Store as native array
                 'is_active': is_active,
                 'email_notifications': email_notifications,
+                'use_gemini_notifications': use_gemini_notifications,
                 'created_at': datetime.utcnow()
             }
             
@@ -106,7 +108,8 @@ class ROI:
                 'coordinates': self.coordinates,
                 'detection_classes': self.detection_classes,
                 'is_active': self.is_active,
-                'email_notifications': self.email_notifications
+                'email_notifications': self.email_notifications,
+                'use_gemini_notifications': self.use_gemini_notifications
             }}
         )
     
@@ -169,5 +172,6 @@ class ROI:
             'active': self.is_active,  # For backward compatibility
             'detection_classes': detection_classes,
             'email_notifications': self.email_notifications,
+            'use_gemini_notifications': self.use_gemini_notifications,
             'created_at': self.created_at.isoformat() if isinstance(self.created_at, datetime) else self.created_at
         }

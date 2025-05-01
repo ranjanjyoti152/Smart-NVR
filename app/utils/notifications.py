@@ -3,6 +3,7 @@ import os
 import json
 import threading
 import time
+import requests
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
@@ -59,11 +60,116 @@ def load_config():
                         logger.info("Email notifications are enabled in configuration")
                     else:
                         logger.info("Email notifications are disabled in configuration")
+            
+            # Load detection settings for Gemini AI
+            detection_config = config.get('detection', {})
+            email_config['gemini_enabled'] = detection_config.get('enable_gemini_ai', False)
+            email_config['gemini_api_key'] = detection_config.get('gemini_api_key', '')
+            email_config['gemini_model'] = detection_config.get('gemini_model', 'gemini-1.5-flash')
                     
             return email_config
         except Exception as e:
             logger.error(f"Error loading email config: {str(e)}")
     return {}
+
+def generate_gemini_ai_description(detection_data, roi_data=None, camera_data=None):
+    """
+    Generate an AI-enhanced description of a detection event using Gemini AI
+    
+    Args:
+        detection_data (dict): Dict containing detection information
+        roi_data (dict): Dict containing ROI information
+        camera_data (dict): Dict containing camera information
+        
+    Returns:
+        str: AI-generated description or None if failed
+    """
+    # Load config to check if Gemini is enabled
+    config = load_config()
+    if not config.get('gemini_enabled', False):
+        logger.debug("Gemini AI is disabled, skipping enhanced description")
+        return None
+    
+    # Check for API key
+    api_key = config.get('gemini_api_key', '')
+    if not api_key:
+        logger.warning("Gemini AI is enabled but no API key is configured")
+        return None
+    
+    # Format timestamp if it's a datetime object
+    timestamp_str = detection_data['timestamp'].strftime('%I:%M %p') if isinstance(detection_data['timestamp'], datetime) else str(detection_data['timestamp'])
+    
+    # Construct prompt for Gemini
+    prompt = f"""
+    Generate a short, professional, human-friendly notification for a security camera detection:
+    
+    Details:
+    - Object detected: {detection_data['class_name']}
+    - Confidence: {detection_data['confidence']:.1%}
+    - Time: {timestamp_str}
+    - Camera: {camera_data['name'] if camera_data else 'Unknown'}
+    """
+    
+    # Add ROI information if available
+    if roi_data:
+        prompt += f"- Detection Zone: {roi_data['name']}\n"
+    
+    prompt += """
+    Generate a concise (1-2 sentences), informative, alert message suitable for a security notification.
+    Focus on clarity, professionalism, and actionability. The response should be in this format:
+    "Security Alert: A [object] was detected at [location] at [time]."
+    
+    Do not mention confidence percentages in the notification.
+    Keep your response very brief and direct - no introduction or explanation needed.
+    """
+    
+    # Prepare API request
+    try:
+        model = config.get('gemini_model', 'gemini-1.5-flash')
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+        
+        headers = {
+            "Content-Type": "application/json"
+        }
+        
+        data = {
+            "contents": [
+                {
+                    "parts": [
+                        {"text": prompt}
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "temperature": 0.2,
+                "maxOutputTokens": 100,
+                "topP": 0.8,
+                "topK": 40
+            }
+        }
+        
+        # Make the API request
+        response = requests.post(url, headers=headers, json=data, timeout=5)
+        
+        if response.status_code == 200:
+            response_data = response.json()
+            # Extract the generated text from the response
+            if 'candidates' in response_data and response_data['candidates']:
+                generated_text = response_data['candidates'][0]['content']['parts'][0]['text']
+                # Clean up the text (remove quotes, trim whitespace)
+                generated_text = generated_text.strip().strip('"\'')
+                logger.info(f"Generated Gemini AI description: {generated_text}")
+                return generated_text
+            else:
+                logger.warning(f"Gemini API returned empty response: {response_data}")
+        else:
+            logger.warning(f"Gemini API request failed with status {response.status_code}: {response.text}")
+            
+    except Exception as e:
+        logger.error(f"Error generating Gemini AI description: {str(e)}")
+    
+    # Return None if we couldn't generate a description
+    return None
 
 def _email_worker():
     """Background worker thread that processes the email queue"""
@@ -264,6 +370,13 @@ def _send_email_internal(email_data):
     camera_data = email_data['camera']
     detection_data = email_data['detection']
     roi_data = email_data['roi']
+    
+    # Generate AI-enhanced description if Gemini is enabled
+    ai_description = None
+    if email_config.get('gemini_enabled', False):
+        ai_description = generate_gemini_ai_description(detection_data, roi_data, camera_data)
+        if ai_description:
+            logger.info(f"Using Gemini AI description: {ai_description}")
     
     # Check required parameters
     smtp_server = email_config.get('smtp_server')
@@ -581,6 +694,14 @@ def _send_email_internal(email_data):
         # Add ROI information if available
         if roi_data:
             body += f"<p><strong>Detection Zone:</strong> {roi_data['name']}</p>"
+        
+        # Add AI-enhanced description if available
+        if ai_description:
+            body += f"""
+            <div style='background-color: #E3F2FD; border-left: 4px solid #2196F3; padding: 10px; margin: 15px 0; border-radius: 3px;'>
+                <p style='margin: 0;'><strong>AI Smart Analysis:</strong> {ai_description}</p>
+            </div>
+            """
         
         # Add action steps if available
         if action_steps:
