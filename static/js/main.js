@@ -202,16 +202,21 @@ function initDashboardWidgets() {
         const header = widget.querySelector('.widget-header');
         const body = widget.querySelector('.widget-body');
         const widgetId = widget.dataset.widgetId;
-        
+        const chevron = header ? header.querySelector('i.fa-chevron-down') : null; // Get chevron icon
+
         if (header && body) {
             // Add click event to header for collapsing
             header.addEventListener('click', function() {
+                const isCollapsed = body.classList.toggle('collapsed');
                 header.classList.toggle('collapsed');
-                body.classList.toggle('collapsed');
                 
                 // Save state to localStorage
-                const isCollapsed = body.classList.contains('collapsed');
                 localStorage.setItem(`widget-${widgetId}-collapsed`, isCollapsed);
+
+                // Optional: Add a class for animation trigger if needed, though CSS handles rotation
+                if (chevron) {
+                    // The CSS transition on the icon should handle the rotation smoothly
+                }
             });
         }
         
@@ -727,16 +732,23 @@ function toggleDarkMode() {
     localStorage.setItem('darkMode', !currentMode);
     
     const root = document.documentElement;
+    const toggleButton = document.querySelector('.dark-mode-toggle'); // Get the button itself
     
+    // Add a class to the body for global transition effects
+    document.body.classList.add('theme-transitioning');
+
     if (!currentMode) {
         // Add transition for smooth color changes
         root.style.transition = 'all 0.5s ease';
         root.setAttribute('data-theme', 'dark');
         
-        // Change dark mode button icon
-        const darkModeToggle = document.querySelector('.dark-mode-toggle i');
-        if (darkModeToggle) {
-            darkModeToggle.className = 'fas fa-sun';
+        // Change dark mode button icon and add animation
+        const darkModeToggleIcon = document.querySelector('.dark-mode-toggle i');
+        if (darkModeToggleIcon) {
+            darkModeToggleIcon.className = 'fas fa-sun';
+        }
+        if (toggleButton) {
+            toggleButton.classList.add('toggled'); // Add class for potential animation
         }
         
         showToast('Dark mode activated ✨', 'info', 2000);
@@ -744,10 +756,13 @@ function toggleDarkMode() {
         root.style.transition = 'all 0.5s ease';
         root.removeAttribute('data-theme');
         
-        // Change dark mode button icon back to moon
-        const darkModeToggle = document.querySelector('.dark-mode-toggle i');
-        if (darkModeToggle) {
-            darkModeToggle.className = 'fas fa-moon';
+        // Change dark mode button icon back to moon and add animation
+        const darkModeToggleIcon = document.querySelector('.dark-mode-toggle i');
+        if (darkModeToggleIcon) {
+            darkModeToggleIcon.className = 'fas fa-moon';
+        }
+         if (toggleButton) {
+            toggleButton.classList.remove('toggled'); // Remove class
         }
         
         showToast('Light mode activated ☀️', 'info', 2000);
@@ -760,8 +775,16 @@ function toggleDarkMode() {
         card.classList.add('pulse-animation');
         setTimeout(() => {
             card.classList.remove('pulse-animation');
+            // Remove inline transition style after animation to avoid conflicts
+            card.style.transition = ''; 
         }, 1000);
     });
+
+    // Remove the global transition class after the transition duration
+    setTimeout(() => {
+        document.body.classList.remove('theme-transitioning');
+        root.style.transition = ''; // Remove inline style to rely on CSS
+    }, 500); // Match CSS transition duration
 }
 
 // Check for dark mode on page load
