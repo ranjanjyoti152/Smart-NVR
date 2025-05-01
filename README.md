@@ -11,6 +11,7 @@ A powerful Network Video Recorder (NVR) application that leverages GPU accelerat
 - **Live Camera Dashboard**: Monitor multiple RTSP/IP cameras simultaneously with object detection overlays
 - **Regions of Interest (ROI)**: Define specific areas for detection to reduce false positives
 - **Advanced Playback**: Timeline-based video playback with object detection markers and filtering
+- **Gemini AI Integration**: Human-friendly, context-aware descriptions for detection events using Google's Gemini AI
 - **System Resource Monitoring**: Track CPU, RAM, GPU, and disk usage in real-time
 - **Modern UI**: Clean, responsive interface designed for ease of use
 - **Multi-User Support**: Role-based access with administrative and standard user accounts
@@ -202,6 +203,52 @@ Or using environment variables:
 export SMARTNVR_DB_TYPE=mongodb
 export SMARTNVR_DB_URI=mongodb://localhost:27017/smartnvr
 ```
+
+## Gemini AI Integration
+
+As of May 2025, Smart-NVR-GPU includes integration with Google's Gemini AI for enhanced detection notifications:
+
+### Features
+- **Smart Detection Descriptions**: Convert technical detection metadata into human-friendly descriptions
+- **Context-Aware Notifications**: Email alerts that describe what's happening in natural language
+- **Configurable per ROI**: Enable/disable Gemini AI on a per-region basis
+- **Fallback Mechanism**: Automatically reverts to standard notifications if Gemini AI is unavailable
+
+### Setup Instructions
+1. **Obtain a Gemini API Key**:
+   - Visit [Google AI Studio](https://aistudio.google.com/app/apikey) to get your API key
+   - Free tier is available with generous limits for typical home usage
+
+2. **Configure in Settings**:
+   - Navigate to Settings page in Smart-NVR
+   - Under "AI Detection Settings", find "Gemini AI Enhancement"  
+   - Enable Gemini AI, enter your API key, and select Gemini model
+   - Click "Test Gemini Connection" to verify functionality
+
+3. **Enable for ROI Notifications**:
+   - In the Camera Management page, click "Manage ROI" for any camera
+   - Create or edit a region, and ensure email notifications are enabled
+   - In the "Smart Email Notifications" panel, enable "Use Gemini AI Smart Descriptions"
+
+### Gemini Models
+- **Gemini 1.5 Flash**: Fastest response, good for typical descriptions (recommended)
+- **Gemini 1.5 Pro**: More detailed analysis, but slightly slower
+- **Gemini Pro**: Original model, maintained for backward compatibility
+
+### Example Usage
+When Gemini AI is enabled for an ROI, instead of a standard notification like:
+```
+Object detected: person (0.87 confidence) in ROI "Backyard"
+```
+
+You'll receive a more descriptive notification such as:
+```
+A person was detected walking through your Backyard at 3:42 PM. They appear to be carrying a package and approaching your back door.
+```
+
+### Environment Variables
+- `SMARTNVR_GEMINI_API_KEY`: API key for Gemini AI (alternative to UI configuration)
+- `SMARTNVR_GEMINI_MODEL`: Model to use (gemini-1.5-flash, gemini-1.5-pro, gemini-pro)
 
 ## Advanced Configuration
 
