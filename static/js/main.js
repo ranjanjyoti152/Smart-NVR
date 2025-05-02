@@ -122,7 +122,8 @@ function initSidebarToggle() {
     // Add hamburger menu button if it doesn't exist already
     const header = document.querySelector('.mac-header .container-fluid .row');
     
-    if (header && window.innerWidth < 992 && !document.querySelector('#sidebar-toggle')) {
+    // Create the toggle button regardless of screen width to ensure it exists
+    if (header && !document.querySelector('#sidebar-toggle')) {
         const toggleCol = document.createElement('div');
         toggleCol.className = 'col-auto d-lg-none';
         
@@ -130,26 +131,48 @@ function initSidebarToggle() {
         toggleBtn.className = 'btn btn-link text-decoration-none p-0 mac-sidebar-toggle';
         toggleBtn.id = 'sidebar-toggle';
         toggleBtn.innerHTML = '<i class="fas fa-bars"></i>';
+        toggleBtn.setAttribute('aria-label', 'Toggle sidebar');
         
         toggleCol.appendChild(toggleBtn);
         header.prepend(toggleCol);
         
-        // Add event listener
-        toggleBtn.addEventListener('click', () => {
+        // Add event listener with immediate binding
+        toggleBtn.addEventListener('click', function(e) {
+            e.stopPropagation(); // Prevent event bubbling
             document.body.classList.toggle('show-sidebar');
-        });
-        
-        // Close sidebar when clicking outside
-        document.addEventListener('click', (e) => {
-            if (
-                document.body.classList.contains('show-sidebar') && 
-                !e.target.closest('.mac-sidebar') && 
-                !e.target.closest('#sidebar-toggle')
-            ) {
-                document.body.classList.remove('show-sidebar');
-            }
+            console.log('Sidebar toggle clicked, show-sidebar class:', document.body.classList.contains('show-sidebar')); // Debug log
         });
     }
+    
+    // Add a direct event listener to any existing toggle button as well (in case it was added in HTML)
+    const existingToggle = document.querySelector('#sidebar-toggle');
+    if (existingToggle && !existingToggle.hasAttribute('data-event-bound')) {
+        existingToggle.setAttribute('data-event-bound', 'true');
+        existingToggle.addEventListener('click', function(e) {
+            e.stopPropagation(); // Prevent event bubbling
+            document.body.classList.toggle('show-sidebar');
+            console.log('Existing sidebar toggle clicked, show-sidebar class:', document.body.classList.contains('show-sidebar')); // Debug log
+        });
+    }
+    
+    // Close sidebar when clicking outside
+    document.addEventListener('click', function(e) {
+        if (
+            document.body.classList.contains('show-sidebar') && 
+            !e.target.closest('.mac-sidebar') && 
+            !e.target.closest('#sidebar-toggle')
+        ) {
+            document.body.classList.remove('show-sidebar');
+        }
+    });
+    
+    // Ensure the function runs on resize events
+    window.addEventListener('resize', function() {
+        // If screen size changes to desktop, hide the mobile sidebar
+        if (window.innerWidth >= 992 && document.body.classList.contains('show-sidebar')) {
+            document.body.classList.remove('show-sidebar');
+        }
+    });
 }
 
 // Add hover effects to menu items

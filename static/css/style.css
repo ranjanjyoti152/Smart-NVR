@@ -119,6 +119,22 @@ body {
     min-height: 100vh;
 }
 
+body.show-sidebar {
+    overflow: hidden; /* Prevent scrolling when sidebar is open */
+}
+
+body.show-sidebar::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 899; /* Below sidebar but above content */
+    animation: fadeIn 0.3s ease forwards;
+}
+
 /* macOS style header */
 .mac-header {
     height: 60px;
@@ -1283,6 +1299,13 @@ body {
     color: var(--mac-text);
     font-size: 24px;
     transition: color var(--transition-medium) ease, transform var(--transition-medium) ease;
+    margin-right: 15px;
+    padding: 5px !important;
+    height: 40px;
+    width: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .mac-sidebar-toggle:hover {
@@ -1291,31 +1314,203 @@ body {
 }
 
 .mac-sidebar-toggle:active {
-    transform: scale(1.0);
+    transform: scale(0.95);
 }
 
 /* Media queries for responsive design */
 @media (max-width: 992px) {
     .mac-sidebar {
         transform: translateX(-100%);
+        width: 280px; /* Wider for better touch targets */
+        box-shadow: 0 0 25px rgba(0, 0, 0, 0.2);
+        z-index: 1001;
+        top: 0; /* From the very top */
+        height: 100%; /* Full height */
+        transition: transform 0.3s ease-out;
+    }
+    
+    body.show-sidebar .mac-sidebar {
+        transform: translateX(0);
     }
     
     .mac-content {
         margin-left: 0;
+        padding: 15px 10px; /* Reduced padding for more content space */
     }
     
     .show-sidebar .mac-sidebar {
         transform: translateX(0);
     }
+    
+    /* Improve header spacing on mobile */
+    .mac-header {
+        height: 55px;
+    }
+    
+    .mac-content-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+        margin-bottom: 15px;
+    }
+    
+    .mac-content-header > div:last-child {
+        align-self: flex-end;
+        margin-top: -35px; /* Position buttons properly */
+    }
+    
+    /* Adjust widgets for mobile */
+    .dashboard-widgets {
+        grid-template-columns: 1fr;
+    }
+    
+    /* Touch-friendly widget headers */
+    .widget-header {
+        padding: 12px 15px;
+    }
+    
+    .col-auto.d-lg-none {
+        display: block !important; /* Ensure toggle button container is visible */
+    }
+}
+
+@media (max-width: 768px) {
+    /* Card adjustments for medium screens */
+    .mac-card {
+        padding: 18px;
+        margin-bottom: 15px;
+    }
+    
+    /* Improve form elements on mobile */
+    .form-control, .form-select {
+        padding: 10px 12px;
+        font-size: 16px; /* Prevent zoom on iOS */
+    }
+    
+    /* Touch-friendly buttons */
+    .btn {
+        padding: 8px 14px;
+        min-height: 40px; /* Better touch targets */
+    }
+    
+    /* Adjust modal sizing */
+    .modal-dialog {
+        max-width: 100%;
+        margin: 10px;
+    }
+    
+    /* Better fullscreen controls */
+    .fullscreen-header {
+        padding: 10px;
+    }
+    
+    .close-fullscreen {
+        font-size: 28px; /* Larger touch target */
+        padding: 5px;
+    }
 }
 
 @media (max-width: 576px) {
+    /* Small screen specific adjustments */
     .camera-grid {
         grid-template-columns: 1fr;
+        gap: 15px;
     }
     
     .mac-title {
         font-size: 1.2rem;
+    }
+    
+    /* Enhance mobile widgets */
+    #dashboard-widgets .widget {
+        margin-bottom: 12px;
+    }
+    
+    /* More vertical space for detection boxes */
+    .detection-box .detection-label {
+        top: -24px;
+        font-size: 10px;
+        padding: 2px 6px;
+    }
+    
+    /* Stack buttons on mobile */
+    .btn-group {
+        flex-direction: column;
+        width: 100%;
+    }
+    
+    .btn-group .btn {
+        margin-bottom: 5px;
+        border-radius: 8px !important;
+    }
+    
+    /* Adjust dark mode toggle position */
+    .dark-mode-toggle {
+        bottom: 15px;
+        right: 15px;
+        width: 40px;
+        height: 40px;
+    }
+    
+    /* Improve tables on mobile */
+    .table-responsive {
+        font-size: 14px;
+    }
+    
+    /* Better toast placement */
+    .mac-toast {
+        max-width: calc(100% - 30px);
+        right: 15px;
+        left: 15px;
+        min-width: auto;
+    }
+    
+    /* Improve playback controls */
+    .playback-controls button {
+        padding: 8px;
+        margin: 0 3px;
+    }
+}
+
+@media (max-width: 360px) {
+    .mac-card {
+        padding: 15px 12px;
+    }
+    
+    .mac-title {
+        font-size: 1.1rem;
+    }
+    
+    /* Stack footer buttons */
+    .modal-footer {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .modal-footer .btn {
+        width: 100%;
+    }
+}
+
+/* Touch-specific improvements */
+@media (pointer: coarse) {
+    /* Larger touch targets */
+    .mac-menu a {
+        padding: 14px 18px;
+    }
+    
+    .form-check-input {
+        min-width: 20px;
+        min-height: 20px;
+    }
+    
+    /* Adjust hover animations for touch */
+    .camera-card:hover {
+        transform: scale(1.01) translateY(-2px);
+    }
+    
+    .btn:hover {
+        transform: translateY(-1px);
     }
 }
 
