@@ -247,6 +247,48 @@ body.show-sidebar::after {
     padding: 10px 0;
 }
 
+/* Improved mobile sidebar styling */
+@media (max-width: 992px) {
+    .mac-sidebar {
+        transform: translateX(-100%);
+        width: 280px; /* Wider for better touch targets */
+        box-shadow: 0 0 25px rgba(0, 0, 0, 0.2);
+        z-index: 1001;
+        top: 0; /* From the very top */
+        height: 100%; /* Full height */
+        transition: transform 0.3s ease-out;
+        padding-top: 60px; /* Space for header */
+    }
+    
+    body.show-sidebar .mac-sidebar {
+        transform: translateX(0);
+    }
+    
+    body.show-sidebar::after {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 900; /* Below sidebar but above content */
+        animation: fadeIn 0.3s ease forwards;
+        backdrop-filter: blur(2px);
+    }
+    
+    .mac-content {
+        margin-left: 0;
+        padding: 15px 10px; /* Reduced padding for more content space */
+    }
+    
+    /* Touch-friendly menu items */
+    .mac-menu a {
+        padding: 14px 20px;
+        margin: 0 10px 8px;
+    }
+}
+
 .mac-menu {
     list-style: none;
     padding: 0;

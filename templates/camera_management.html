@@ -13,6 +13,7 @@
     </div>
 </div>
 
+<!-- Camera cards grid with improved mobile responsiveness -->
 <div class="row">
     {% if cameras %}
         {% for camera in cameras %}
@@ -22,37 +23,46 @@
                     <h5 class="mb-0"><i class="fas fa-video me-2"></i>{{ camera.name }}</h5>
                     <div class="form-check form-switch">
                         <input class="form-check-input camera-toggle" type="checkbox" role="switch" 
-                            id="camera-enabled-{{ camera.id }}" data-camera-id="{{ camera.id }}" 
-                            {% if camera.enabled %}checked{% endif %}>
-                        <label class="form-check-label" for="camera-enabled-{{ camera.id }}">
-                            {{ 'Enabled' if camera.enabled else 'Disabled' }}
-                        </label>
+                               id="camera-{{ camera.id }}" 
+                               data-camera-id="{{ camera.id }}"
+                               {% if camera.is_active %}checked{% endif %}>
                     </div>
                 </div>
-                <p class="camera-url"><strong>URL:</strong> {{ camera.url }}</p>
-                <p class="camera-location"><strong>Location:</strong> {{ camera.location }}</p>
-                <div class="d-flex gap-2 mb-3">
-                    <span class="badge {% if camera.status == 'online' %}badge-status-online{% else %}badge-status-offline{% endif %}\">
-                        {{ camera.status|capitalize }}
-                    </span>
-                    <span class="badge {% if camera.recording_enabled %}badge-recording-enabled{% else %}badge-recording-disabled{% endif %}\">
-                        {{ 'Recording' if camera.recording_enabled else 'Not Recording' }}
-                    </span>
-                    <span class="badge {% if camera.detection_enabled %}badge-detection-enabled{% else %}badge-detection-disabled{% endif %}\">
-                        {{ 'AI Detection' if camera.detection_enabled else 'No AI Detection' }}
-                    </span>
+                
+                <div class="camera-details mb-3">
+                    {% if camera.url %}
+                    <div class="small text-muted mb-1">
+                        <i class="fas fa-link me-1"></i> {{ camera.url }}
+                    </div>
+                    {% endif %}
+                    {% if camera.location %}
+                    <div class="small text-muted mb-1">
+                        <i class="fas fa-map-marker-alt me-1"></i> {{ camera.location }}
+                    </div>
+                    {% endif %}
                 </div>
-                <div class="btn-group w-100" role="group">
-                    <button type="button" class="btn btn-outline-primary edit-camera"
+                
+                <div class="text-center mb-3">
+                    <div class="badge-container mb-2 d-flex flex-wrap gap-2 justify-content-center">
+                        <span class="badge {% if camera.recording_enabled %}badge-recording-enabled{% else %}badge-recording-disabled{% endif %}">
+                            {{ 'Recording' if camera.recording_enabled else 'No Recording' }}
+                        </span>
+                        <span class="badge {% if camera.detection_enabled %}badge-detection-enabled{% else %}badge-detection-disabled{% endif %}">
+                            {{ 'AI Detection' if camera.detection_enabled else 'No AI Detection' }}
+                        </span>
+                    </div>
+                </div>
+                <div class="d-flex flex-wrap gap-2 mt-auto">
+                    <button type="button" class="btn btn-sm btn-outline-primary flex-grow-1 edit-camera"
                         data-camera-id="{{ camera.id }}" data-bs-toggle="modal" data-bs-target="#editCameraModal">
                         <i class="fas fa-edit"></i> Edit
                     </button>
-                    <button type="button" class="btn btn-outline-info manage-roi"
+                    <button type="button" class="btn btn-sm btn-outline-info flex-grow-1 manage-roi"
                         data-camera-id="{{ camera.id }}" data-camera-name="{{ camera.name }}"
                         data-bs-toggle="modal" data-bs-target="#roiModal">
                         <i class="fas fa-draw-polygon"></i> Manage ROI
                     </button>
-                    <button type="button" class="btn btn-outline-danger delete-camera"
+                    <button type="button" class="btn btn-sm btn-outline-danger flex-grow-1 delete-camera"
                         data-camera-id="{{ camera.id }}" data-camera-name="{{ camera.name }}"
                         data-bs-toggle="modal" data-bs-target="#deleteCameraModal">
                         <i class="fas fa-trash"></i> Delete
@@ -63,14 +73,15 @@
         {% endfor %}
     {% else %}
         <div class="col-12">
-            <div class="mac-card d-flex p-4">
-                <div class="text-center w-100">
-                    <i class="fas fa-camera-slash fa-3x mb-3" style="color: var(--color-muted);"></i>
-                    <p class="text-muted mb-3">No cameras have been added yet.</p>
-                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCameraModal">
-                        <i class="fas fa-plus"></i> Add Your First Camera
-                    </button>
+            <div class="mac-card text-center py-5">
+                <div class="mb-3">
+                    <i class="fas fa-camera-slash fa-3x text-muted mb-3"></i>
+                    <h4>No Cameras Found</h4>
+                    <p class="text-muted">Add your first camera to get started</p>
                 </div>
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCameraModal">
+                    <i class="fas fa-plus me-2"></i> Add Camera
+                </button>
             </div>
         </div>
     {% endif %}

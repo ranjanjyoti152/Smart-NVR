@@ -119,43 +119,31 @@ function animateCardsOnScroll() {
 
 // Initialize sidebar toggle functionality for mobile
 function initSidebarToggle() {
-    // Add hamburger menu button if it doesn't exist already
-    const header = document.querySelector('.mac-header .container-fluid .row');
+    // Get the existing sidebar toggle button
+    const sidebarToggle = document.getElementById('sidebar-toggle');
     
-    // Create the toggle button regardless of screen width to ensure it exists
-    if (header && !document.querySelector('#sidebar-toggle')) {
-        const toggleCol = document.createElement('div');
-        toggleCol.className = 'col-auto d-lg-none';
+    if (sidebarToggle) {
+        // Remove existing event listeners to prevent duplicates
+        const newSidebarToggle = sidebarToggle.cloneNode(true);
+        sidebarToggle.parentNode.replaceChild(newSidebarToggle, sidebarToggle);
         
-        const toggleBtn = document.createElement('button');
-        toggleBtn.className = 'btn btn-link text-decoration-none p-0 mac-sidebar-toggle';
-        toggleBtn.id = 'sidebar-toggle';
-        toggleBtn.innerHTML = '<i class="fas fa-bars"></i>';
-        toggleBtn.setAttribute('aria-label', 'Toggle sidebar');
-        
-        toggleCol.appendChild(toggleBtn);
-        header.prepend(toggleCol);
-        
-        // Add event listener with immediate binding
-        toggleBtn.addEventListener('click', function(e) {
+        // Add event listener to the fresh button
+        newSidebarToggle.addEventListener('click', function(e) {
+            e.preventDefault();
             e.stopPropagation(); // Prevent event bubbling
             document.body.classList.toggle('show-sidebar');
-            console.log('Sidebar toggle clicked, show-sidebar class:', document.body.classList.contains('show-sidebar')); // Debug log
+            console.log('Sidebar toggle clicked, show-sidebar class:', document.body.classList.contains('show-sidebar'));
         });
-    }
-    
-    // Add a direct event listener to any existing toggle button as well (in case it was added in HTML)
-    const existingToggle = document.querySelector('#sidebar-toggle');
-    if (existingToggle && !existingToggle.hasAttribute('data-event-bound')) {
-        existingToggle.setAttribute('data-event-bound', 'true');
-        existingToggle.addEventListener('click', function(e) {
-            e.stopPropagation(); // Prevent event bubbling
+        
+        // Add touchstart event for better mobile responsiveness
+        newSidebarToggle.addEventListener('touchstart', function(e) {
+            e.preventDefault();
             document.body.classList.toggle('show-sidebar');
-            console.log('Existing sidebar toggle clicked, show-sidebar class:', document.body.classList.contains('show-sidebar')); // Debug log
-        });
+            console.log('Sidebar toggle touched, show-sidebar class:', document.body.classList.contains('show-sidebar'));
+        }, { passive: false });
     }
     
-    // Close sidebar when clicking outside
+    // Close sidebar when clicking/touching outside
     document.addEventListener('click', function(e) {
         if (
             document.body.classList.contains('show-sidebar') && 
@@ -165,6 +153,32 @@ function initSidebarToggle() {
             document.body.classList.remove('show-sidebar');
         }
     });
+    
+    // Close sidebar when escape key is pressed
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && document.body.classList.contains('show-sidebar')) {
+            document.body.classList.remove('show-sidebar');
+        }
+    });
+    
+    // Add touch event to close sidebar when swiping left
+    const sidebar = document.querySelector('.mac-sidebar');
+    if (sidebar) {
+        let touchStartX = 0;
+        let touchEndX = 0;
+        
+        sidebar.addEventListener('touchstart', function(e) {
+            touchStartX = e.changedTouches[0].screenX;
+        }, { passive: true });
+        
+        sidebar.addEventListener('touchend', function(e) {
+            touchEndX = e.changedTouches[0].screenX;
+            // If swiped left (start > end) by at least 50px
+            if (touchStartX - touchEndX > 50) {
+                document.body.classList.remove('show-sidebar');
+            }
+        }, { passive: true });
+    }
     
     // Ensure the function runs on resize events
     window.addEventListener('resize', function() {

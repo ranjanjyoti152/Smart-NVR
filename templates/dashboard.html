@@ -373,32 +373,33 @@
 {% endblock %}
 
 {% block content %}
+<!-- Camera Controls - Improved for mobile -->
 <div class="camera-controls mb-3">
-    <div class="row align-items-center">
-        <div class="col-auto">
-            <div class="btn-group" role="group">
+    <div class="row g-2 align-items-center">
+        <div class="col-md-auto mb-2 mb-md-0">
+            <div class="btn-group d-flex d-md-inline-flex" role="group">
                 <button type="button" class="btn btn-outline-primary" id="grid-1">1×1</button>
                 <button type="button" class="btn btn-outline-primary" id="grid-4">2×2</button>
                 <button type="button" class="btn btn-outline-primary" id="grid-9">3×3</button>
                 <button type="button" class="btn btn-outline-primary active" id="grid-all">All</button>
             </div>
         </div>
-        <div class="col-auto">
-            <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" id="show-detections" checked>
+        <div class="col-md-auto mb-2 mb-md-0">
+            <div class="form-check form-switch d-flex align-items-center">
+                <input class="form-check-input me-2" type="checkbox" id="show-detections" checked>
                 <label class="form-check-label" for="show-detections">Show Detections</label>
             </div>
         </div>
-        <div class="col-auto">
-            <div class="stream-fps-control">
-                <label for="fps-slider">FPS:</label>
-                <input type="range" id="fps-slider" min="1" max="30" value="30" class="form-range" style="width: 100px;">
+        <div class="col-md-auto mb-2 mb-md-0">
+            <div class="stream-fps-control d-flex align-items-center">
+                <label for="fps-slider" class="me-2">FPS:</label>
+                <input type="range" id="fps-slider" min="1" max="30" value="30" class="form-range" style="width: 80px;">
                 <span id="fps-value" class="fps-value">30</span>
             </div>
         </div>
-        <div class="col-auto">
-            <div class="stream-quality-control">
-                <label for="quality-select">Quality:</label>
+        <div class="col-md-auto mb-2 mb-md-0">
+            <div class="stream-quality-control d-flex align-items-center">
+                <label for="quality-select" class="me-2">Quality:</label>
                 <select id="quality-select" class="form-select form-select-sm" style="width: 100px;">
                     <option value="high">High</option>
                     <option value="medium" selected>Medium</option>
@@ -406,15 +407,15 @@
                 </select>
             </div>
         </div>
-        <div class="col-auto ms-auto">
-            <button id="toggle-widgets" class="btn btn-outline-secondary btn-sm">
+        <div class="col-md-auto ms-md-auto mb-2 mb-md-0">
+            <button id="toggle-widgets" class="btn btn-outline-secondary w-100">
                 <i class="fas fa-tachometer-alt me-1"></i> Toggle Widgets
             </button>
         </div>
     </div>
 </div>
 
-<!-- Dashboard Widgets -->
+<!-- Dashboard Widgets - Improved for mobile with better spacing -->
 <div id="dashboard-widgets" class="dashboard-widgets mb-4">
     <!-- Camera Health Monitor Widget -->
     <div class="widget" data-widget-id="camera-health" draggable="true">
@@ -439,19 +440,18 @@
             <i class="fas fa-chevron-down"></i>
         </div>
         <div class="widget-body">
-            <div class="detection-chart-container">
+            <div class="detection-chart-container mb-2">
                 <canvas id="detection-chart"></canvas>
             </div>
             <div id="detection-list">
                 <div class="detection-item">
                     <span>Loading detection data...</span>
-                    <span class="detection-count">-</span>
                 </div>
             </div>
         </div>
     </div>
     
-    <!-- System Resource Widget -->
+    <!-- System Resources Widget -->
     <div class="widget" data-widget-id="system-resources" draggable="true">
         <div class="widget-header">
             <span><i class="fas fa-microchip me-2"></i> System Resources</span>

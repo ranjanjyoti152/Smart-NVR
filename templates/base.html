@@ -32,29 +32,28 @@
             <div class="row align-items-center">
                 <div class="col-auto d-lg-none">
                     <!-- Mobile sidebar toggle (only visible on small screens) -->
-                    <button class="btn mac-sidebar-toggle" id="sidebar-toggle">
+                    <button class="btn mac-sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation">
                         <i class="fas fa-bars"></i>
                     </button>
                 </div>
-                <div class="col text-center">
+                <div class="col d-flex justify-content-center">
                     <h1 class="mac-title">SmartNVR</h1>
                 </div>
                 <div class="col-auto">
                     {% if current_user.is_authenticated %}
                     <div class="dropdown">
-                        <button class="btn mac-user-menu" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <button class="btn mac-user-menu" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="User menu">
                             <div class="user-avatar-circle">
                                 <i class="fas fa-user"></i>
                             </div>
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end">
                             <li class="dropdown-header">{{ current_user.username }}</li>
-                            <li><a class="dropdown-item" href="{{ url_for('main.profile') }}">Profile</a></li>
-                            {% if current_user.is_admin %}
-                            <li><a class="dropdown-item" href="{{ url_for('admin.admin_index') }}">Admin Panel</a></li>
-                            {% endif %}
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}">Logout</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('main.profile') }}"><i class="fas fa-user-circle me-2"></i> Profile</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('main.settings') }}"><i class="fas fa-cog me-2"></i> Settings</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}"><i class="fas fa-sign-out-alt me-2"></i> Logout</a></li>
                         </ul>
                     </div>
                     {% endif %}
@@ -62,15 +61,15 @@
             </div>
         </div>
     </header>
-
+    
     {% if current_user.is_authenticated %}
-    <!-- Navigation Sidebar (only for authenticated users) -->
+    <!-- macOS-style sidebar navigation -->
     <div class="mac-sidebar">
         <nav>
             <ul class="mac-menu">
                 <li>
                     <a href="{{ url_for('main.dashboard') }}" class="{% if request.endpoint == 'main.dashboard' %}active{% endif %}">
-                        <i class="fas fa-video"></i> Live Dashboard
+                        <i class="fas fa-home"></i> Dashboard
                     </a>
                 </li>
                 <li>
@@ -147,7 +146,7 @@
     </main>
     
     <!-- Dark mode toggle button -->
-    <button class="dark-mode-toggle" onclick="toggleDarkMode()" id="dark-mode-toggle">
+    <button class="dark-mode-toggle" onclick="toggleDarkMode()" id="dark-mode-toggle" aria-label="Toggle dark mode">
         <i class="fas" id="dark-mode-icon"></i>
     </button>
     
@@ -173,7 +172,26 @@
             } else {
                 darkModeIcon.className = 'fas fa-moon';
             }
+            
+            // We will let the initSidebarToggle function in main.js handle the sidebar toggle
+            // to avoid duplicate event listeners
         });
+        
+        // Dark mode toggle function
+        function toggleDarkMode() {
+            const darkModeOn = localStorage.getItem('darkMode') === 'true';
+            const darkModeIcon = document.getElementById('dark-mode-icon');
+            
+            if (darkModeOn) {
+                document.documentElement.removeAttribute('data-theme');
+                localStorage.setItem('darkMode', 'false');
+                darkModeIcon.className = 'fas fa-moon';
+            } else {
+                document.documentElement.setAttribute('data-theme', 'dark');
+                localStorage.setItem('darkMode', 'true');
+                darkModeIcon.className = 'fas fa-sun';
+            }
+        }
     </script>
     
     <!-- Additional JavaScript specific to pages -->
