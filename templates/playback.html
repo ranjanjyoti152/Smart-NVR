@@ -419,8 +419,12 @@
             recordingItems.innerHTML = '';
             detectionItems.innerHTML = '';
             
-            // Fetch recordings and detections
-            fetch(`/api/cameras/${cameraId}/recordings?date=${date}&timeline_only=false`)
+            // Get the current protocol and host
+            const currentProtocol = window.location.protocol;
+            const host = window.location.host;
+            
+            // Fetch recordings and detections using the same protocol as the current page
+            fetch(`${currentProtocol}//${host}/api/cameras/${cameraId}/recordings?date=${date}&timeline_only=false`)
                 .then(response => {
                     if (!response.ok) {
                         throw new Error('Error fetching recordings');
@@ -615,6 +619,9 @@
             // Hide the no video message
             noVideoMessage.style.display = 'none';
             
+            // Store the current recording ID in a global variable to ensure it's always accessible
+            window.currentRecordingId = recording.id;
+            
             // Show loading indicator
             loadingContainer.classList.remove('d-none');
             const loadingProgressBar = document.getElementById('loading-progress-bar');
@@ -622,8 +629,54 @@
             loadingProgressBar.style.width = '0%';
             loadingProgressText.textContent = 'Loading video... 0%';
             
-            // Set video source
-            videoPlayer.src = `/api/recordings/${recording.id}/video`;
+            // Get the current protocol and host
+            const currentProtocol = window.location.protocol;
+            const host = window.location.host;
+            
+            // Log for debugging
+            console.log(`Loading video for recording ${recording.id}`);
+            
+            // Reset the video player
+            videoPlayer.pause();
+            videoPlayer.currentTime = 0;
+            videoPlayer.src = '';
+            
+            // Create the video URL with additional parameters to help with browser compatibility
+            const videoUrl = `${currentProtocol}//${host}/api/recordings/${recording.id}/video?convert=false&quality=medium`;
+            console.log(`Video URL: ${videoUrl}`);
+            
+            // Set video source with the same protocol as the current page
+            videoPlayer.src = videoUrl;
+            videoPlayer.type = 'video/mp4';
+            
+            // Add error handler before other events
+            const errorHandler = function(e) {
+                console.error('Error loading video:', e);
+                console.error('Video error code:', videoPlayer.error ? videoPlayer.error.code : 'unknown');
+                console.error('Video error message:', videoPlayer.error ? videoPlayer.error.message : 'unknown');
+                
+                // Get the recording ID from global variable to ensure we always use the correct one
+                const currentId = window.currentRecordingId;
+                
+                // If we get a format error (error code 4), try with WebM conversion
+                if (videoPlayer.error && videoPlayer.error.code === 4) {
+                    console.log('Format error detected, trying WebM conversion...');
+                    // Try loading with convert parameter using the CURRENT recording ID
+                    const webmUrl = `${currentProtocol}//${host}/api/recordings/${currentId}/video?convert=true&quality=medium`;
+                    console.log(`Retrying with WebM URL: ${webmUrl}`);
+                    videoPlayer.src = webmUrl;
+                    videoPlayer.type = 'video/webm';
+                    videoPlayer.load(); // Force reload
+                } else {
+                    // Show error message
+                    loadingContainer.classList.add('d-none');
+                    showToast('Error loading video', 'error');
+                }
+            };
+            
+            // Reset event listeners
+            videoPlayer.removeEventListener('error', errorHandler);
+            videoPlayer.addEventListener('error', errorHandler);
             
             // Progress handling
             let progressTracker;
@@ -651,21 +704,33 @@
                 }
             }, 200);
             
+            // Enable snapshot button when video is loaded
+            downloadSnapshot.disabled = false;
+            
             // Play video after loading
             videoPlayer.addEventListener('loadeddata', function onLoadedData() {
+                console.log('Video loaded, attempting to play');
                 loadingContainer.classList.add('d-none');
                 clearInterval(progressTracker);
-                playVideo();
+                
+                // Force play with a slight delay to ensure browser is ready
+                setTimeout(() => {
+                    playVideo();
+                }, 100);
+                
                 videoPlayer.removeEventListener('loadeddata', onLoadedData);
             });
             
-            // Handle loading error
-            videoPlayer.addEventListener('error', function onError() {
+            // Add canplay event handler
+            videoPlayer.addEventListener('canplay', function onCanPlay() {
+                console.log('Video can play');
                 loadingContainer.classList.add('d-none');
                 clearInterval(progressTracker);
-                showToast('Error loading video', 'error');
-                videoPlayer.removeEventListener('error', onError);
+                videoPlayer.removeEventListener('canplay', onCanPlay);
             });
+            
+            // Force loading
+            videoPlayer.load();
         }
         
         function initializeTimeline() {
@@ -777,37 +842,50 @@
         function updatePlayheadPosition() {
             if (!selectedRecording || !videoPlayer.duration) return;
             
-            // Calculate the position of the playhead within the current recording
-            const currentTime = videoPlayer.currentTime;
-            const recordingDuration = videoPlayer.duration;
+            // Only update every few frames to reduce performance impact
+            // Use requestAnimationFrame for better performance
+            if (window.playheadUpdateScheduled) return;
             
-            // Get the recording start and end times
-            const recordingStartTime = new Date(selectedRecording.timestamp).getTime();
-            const recordingEndTime = recordingStartTime + (recordingDuration * 1000);
-            
-            // Get timeline container width
-            const timelineWidth = document.getElementById('timeline-container').offsetWidth;
-            
-            // Find the recording element in the timeline
-            const recordingElement = document.querySelector(`.timeline-event[data-recording-id="${selectedRecording.id}"]`);
-            
-            if (recordingElement) {
-                // Calculate position based on the recording element's position and the current time
-                const recordingLeft = parseFloat(recordingElement.style.left);
-                const recordingWidth = parseFloat(recordingElement.style.width);
+            window.playheadUpdateScheduled = true;
+            requestAnimationFrame(() => {
+                window.playheadUpdateScheduled = false;
                 
-                // Calculate the percentage through the recording
-                const percentComplete = (currentTime / recordingDuration);
+                // Calculate the position of the playhead within the current recording
+                const currentTime = videoPlayer.currentTime;
+                const recordingDuration = videoPlayer.duration;
                 
-                // Calculate the position on the timeline
-                const playheadPosition = recordingLeft + (recordingWidth * percentComplete);
+                // Get the recording start and end times
+                const recordingStartTime = new Date(selectedRecording.timestamp).getTime();
                 
-                // Update playhead position
-                timelinePlayhead.style.left = `${playheadPosition}%`;
-            }
-            
-            // Also update the active recording in the list
-            updateActiveRecordingInList();
+                // Find the recording element in the timeline
+                const recordingElement = document.querySelector(`.timeline-event[data-recording-id="${selectedRecording.id}"]`);
+                
+                if (recordingElement) {
+                    // Cache DOM reads to avoid forced reflows
+                    if (!recordingElement.cachedLeft) {
+                        recordingElement.cachedLeft = parseFloat(recordingElement.style.left);
+                    }
+                    if (!recordingElement.cachedWidth) {
+                        recordingElement.cachedWidth = parseFloat(recordingElement.style.width);
+                    }
+                    
+                    // Calculate the percentage through the recording
+                    const percentComplete = (currentTime / recordingDuration);
+                    
+                    // Calculate the position on the timeline
+                    const playheadPosition = recordingElement.cachedLeft + (recordingElement.cachedWidth * percentComplete);
+                    
+                    // Update playhead position
+                    timelinePlayhead.style.left = `${playheadPosition}%`;
+                }
+                
+                // Only update recording list state every 1 second to reduce performance impact
+                const now = Date.now();
+                if (!window.lastRecordingListUpdate || now - window.lastRecordingListUpdate > 1000) {
+                    window.lastRecordingListUpdate = now;
+                    updateActiveRecordingInList();
+                }
+            });
         }
         
         function updateActiveRecordingInList() {
@@ -986,14 +1064,24 @@
             if (playbackDirection < 0) {
                 // For reverse play, if already at the beginning, go to the end
                 if (videoPlayer.currentTime <= 0.1) {
-                    videoPlayer.currentTime = videoPlayer.duration;
+                    videoPlayer.currentTime = videoPlayer.duration || 0;
                 }
                 
                 // Use a timer to manually update the position
                 if (!window.reversePlayTimer) {
                     window.reversePlayTimer = setInterval(() => {
                         if (isPlaying && playbackDirection < 0) {
-                            const newTime = videoPlayer.currentTime - 0.1;
+                            // Check if the current time is valid and not NaN
+                            if (!isFinite(videoPlayer.currentTime) || videoPlayer.currentTime <= 0) {
+                                pauseVideo();
+                                clearInterval(window.reversePlayTimer);
+                                window.reversePlayTimer = null;
+                                return;
+                            }
+                            
+                            // Calculate new time, ensuring it's a valid number
+                            const newTime = Math.max(0, videoPlayer.currentTime - 0.1);
+                            
                             if (newTime <= 0) {
                                 pauseVideo();
                                 clearInterval(window.reversePlayTimer);
@@ -1018,7 +1106,11 @@
                 }
                 
                 // Normal playback
-                videoPlayer.play();
+                videoPlayer.play().catch(err => {
+                    console.error("Error playing video:", err);
+                    // Handle autoplay restrictions if needed
+                    showToast("Playback error: " + err.message, "error");
+                });
             }
             
             isPlaying = true;
@@ -1129,8 +1221,14 @@
         function downloadCurrentVideo() {
             if (!selectedRecording) return;
             
+            // Get the current protocol (http: or https:)
+            const currentProtocol = window.location.protocol;
+            
+            // Create a download URL using the same protocol as the current page
+            const downloadUrl = `${currentProtocol}//${window.location.host}/api/recordings/${selectedRecording.id}/download`;
+            
             // Navigate to download URL
-            window.location.href = `/api/recordings/${selectedRecording.id}/download`;
+            window.location.href = downloadUrl;
         }
         
         function takeSnapshot() {
