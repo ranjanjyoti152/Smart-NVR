@@ -327,3 +327,930 @@
     }
 </style>
 {% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // DOM elements
+        const cameraSelect = document.getElementById('camera-select');
+        const datePicker = document.getElementById('date-picker');
+        const showDetectionsOnly = document.getElementById('show-detections-only');
+        const objectFilter = document.getElementById('object-filter');
+        const recordingItems = document.getElementById('recording-items');
+        const noRecordingsMessage = document.getElementById('no-recordings-message');
+        const detectionItems = document.getElementById('detection-items');
+        const noDetectionsMessage = document.getElementById('no-detections-message');
+        const videoPlayer = document.getElementById('video-player');
+        const noVideoMessage = document.getElementById('no-video-message');
+        const loadingContainer = document.getElementById('loading-container');
+        const downloadVideo = document.getElementById('download-video');
+        const downloadSnapshot = document.getElementById('download-snapshot');
+        const timelineEvents = document.getElementById('timeline-events');
+        const timelineScale = document.getElementById('timeline-scale');
+        const timelinePlayhead = document.getElementById('timeline-playhead');
+        
+        // Set default date to today
+        if (datePicker && !datePicker.value) {
+            const today = new Date();
+            const year = today.getFullYear();
+            const month = String(today.getMonth() + 1).padStart(2, '0');
+            const day = String(today.getDate()).padStart(2, '0');
+            datePicker.value = `${year}-${month}-${day}`;
+        }
+        
+        // State variables
+        let currentRecordings = [];
+        let currentDetections = [];
+        let selectedRecording = null;
+        let selectedDetection = null;
+        let isPlaying = false;
+        let playbackDirection = 1; // 1 for forward, -1 for backward
+        
+        // Event listeners
+        if (cameraSelect) {
+            cameraSelect.addEventListener('change', loadRecordingsAndDetections);
+        }
+        
+        if (datePicker) {
+            datePicker.addEventListener('change', loadRecordingsAndDetections);
+        }
+        
+        if (showDetectionsOnly) {
+            showDetectionsOnly.addEventListener('change', filterRecordings);
+        }
+        
+        if (objectFilter) {
+            objectFilter.addEventListener('change', filterDetections);
+        }
+        
+        // Playback control event listeners
+        document.getElementById('play-pause').addEventListener('click', togglePlayPause);
+        document.getElementById('play-forward').addEventListener('click', playForward);
+        document.getElementById('play-backward').addEventListener('click', playBackward);
+        document.getElementById('play-next').addEventListener('click', playNext);
+        document.getElementById('play-prev').addEventListener('click', playPrevious);
+        document.getElementById('fullscreen').addEventListener('click', toggleFullscreen);
+        
+        // Video player events
+        videoPlayer.addEventListener('loadedmetadata', initializeTimeline);
+        videoPlayer.addEventListener('timeupdate', updatePlayheadPosition);
+        videoPlayer.addEventListener('ended', handleVideoEnded);
+        
+        // Timeline interaction
+        document.getElementById('timeline-container').addEventListener('click', seekToPosition);
+        
+        // Download buttons
+        downloadVideo.addEventListener('click', downloadCurrentVideo);
+        downloadSnapshot.addEventListener('click', takeSnapshot);
+        
+        // Functions
+        function loadRecordingsAndDetections() {
+            const cameraId = cameraSelect.value;
+            const date = datePicker.value;
+            
+            if (!cameraId || !date) {
+                resetPlayback();
+                return;
+            }
+            
+            // Show loading states
+            noRecordingsMessage.textContent = 'Loading recordings...';
+            noDetectionsMessage.textContent = 'Loading detections...';
+            recordingItems.innerHTML = '';
+            detectionItems.innerHTML = '';
+            
+            // Fetch recordings and detections
+            fetch(`/api/cameras/${cameraId}/recordings?date=${date}&timeline_only=false`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Error fetching recordings');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        // Store data
+                        currentRecordings = data.recordings || [];
+                        currentDetections = data.detections || [];
+                        
+                        // Display recordings
+                        displayRecordings(currentRecordings);
+                        
+                        // Display detections
+                        displayDetections(currentDetections);
+                        
+                        // Initialize timeline
+                        initializeTimeline();
+                    } else {
+                        throw new Error(data.message || 'Error loading data');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    noRecordingsMessage.textContent = 'Error loading recordings';
+                    noDetectionsMessage.textContent = 'Error loading detections';
+                    showToast('Error loading recordings and detections', 'error');
+                });
+        }
+        
+        function displayRecordings(recordings) {
+            recordingItems.innerHTML = '';
+            
+            if (!recordings || recordings.length === 0) {
+                noRecordingsMessage.style.display = 'block';
+                return;
+            }
+            
+            noRecordingsMessage.style.display = 'none';
+            
+            recordings.forEach(recording => {
+                const item = document.createElement('li');
+                item.className = 'list-group-item';
+                item.dataset.recordingId = recording.id;
+                
+                // Format timestamp
+                const timestamp = new Date(recording.timestamp);
+                const time = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                
+                // Create inner content
+                item.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span>${time}</span>
+                        <span class="badge bg-primary rounded-pill">${formatDuration(recording.duration)}</span>
+                    </div>
+                `;
+                
+                // Add click event
+                item.addEventListener('click', () => {
+                    selectRecording(recording);
+                });
+                
+                recordingItems.appendChild(item);
+            });
+        }
+        
+        function displayDetections(detections) {
+            detectionItems.innerHTML = '';
+            
+            if (!detections || detections.length === 0) {
+                noDetectionsMessage.style.display = 'block';
+                return;
+            }
+            
+            noDetectionsMessage.style.display = 'none';
+            
+            // Group detections by timestamp to avoid duplicates
+            const groupedDetections = {};
+            
+            detections.forEach(detection => {
+                const timestamp = new Date(detection.timestamp).getTime();
+                if (!groupedDetections[timestamp]) {
+                    groupedDetections[timestamp] = {
+                        timestamp: detection.timestamp,
+                        recording_id: detection.recording_id,
+                        classes: [detection.class_name],
+                        count: 1
+                    };
+                } else {
+                    if (!groupedDetections[timestamp].classes.includes(detection.class_name)) {
+                        groupedDetections[timestamp].classes.push(detection.class_name);
+                    }
+                    groupedDetections[timestamp].count++;
+                }
+            });
+            
+            // Convert back to array and sort
+            const groupedArray = Object.values(groupedDetections);
+            groupedArray.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+            
+            // Display grouped detections
+            groupedArray.forEach(detection => {
+                const item = document.createElement('li');
+                item.className = 'list-group-item';
+                item.dataset.timestamp = detection.timestamp;
+                item.dataset.recordingId = detection.recording_id;
+                
+                // Format timestamp
+                const timestamp = new Date(detection.timestamp);
+                const time = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                
+                // Combine classes for display
+                const classText = detection.classes.join(', ');
+                
+                // Create inner content
+                item.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span>${time} - ${classText}</span>
+                        <span class="badge bg-danger rounded-pill">${detection.count}</span>
+                    </div>
+                `;
+                
+                // Add click event
+                item.addEventListener('click', () => {
+                    selectDetection(detection);
+                });
+                
+                detectionItems.appendChild(item);
+            });
+        }
+        
+        function selectRecording(recording) {
+            // Highlight selected recording
+            const items = document.querySelectorAll('.recording-items .list-group-item');
+            items.forEach(item => {
+                if (item.dataset.recordingId === recording.id) {
+                    item.classList.add('active');
+                } else {
+                    item.classList.remove('active');
+                }
+            });
+            
+            // Store selected recording
+            selectedRecording = recording;
+            
+            // Load video
+            loadVideo(recording);
+            
+            // Enable download button
+            downloadVideo.disabled = false;
+        }
+        
+        function selectDetection(detection) {
+            // Find the recording for this detection
+            const recordingId = detection.recording_id;
+            if (!recordingId) return;
+            
+            const recording = currentRecordings.find(r => r.id === recordingId);
+            if (!recording) return;
+            
+            // Select the recording
+            selectRecording(recording);
+            
+            // Calculate timestamp offset
+            const detectionTime = new Date(detection.timestamp).getTime();
+            const recordingTime = new Date(recording.timestamp).getTime();
+            const offsetSeconds = (detectionTime - recordingTime) / 1000;
+            
+            // Seek to detection time
+            if (videoPlayer.readyState >= 2) {
+                videoPlayer.currentTime = Math.max(0, offsetSeconds);
+                playVideo();
+            }
+            
+            // Highlight selected detection
+            const items = document.querySelectorAll('.detection-items .list-group-item');
+            items.forEach(item => {
+                if (item.dataset.timestamp === detection.timestamp) {
+                    item.classList.add('active');
+                } else {
+                    item.classList.remove('active');
+                }
+            });
+            
+            // Store selected detection
+            selectedDetection = detection;
+        }
+        
+        function loadVideo(recording) {
+            // Hide the no video message
+            noVideoMessage.style.display = 'none';
+            
+            // Show loading indicator
+            loadingContainer.classList.remove('d-none');
+            const loadingProgressBar = document.getElementById('loading-progress-bar');
+            const loadingProgressText = document.getElementById('loading-progress-text');
+            loadingProgressBar.style.width = '0%';
+            loadingProgressText.textContent = 'Loading video... 0%';
+            
+            // Set video source
+            videoPlayer.src = `/api/recordings/${recording.id}/video`;
+            
+            // Progress handling
+            let progressTracker;
+            
+            // Update progress for large files
+            progressTracker = setInterval(() => {
+                if (videoPlayer.readyState < 3) {
+                    // If not enough data yet, show progress based on buffered ranges
+                    if (videoPlayer.buffered.length > 0) {
+                        const bufferedEnd = videoPlayer.buffered.end(0);
+                        const duration = videoPlayer.duration || 1;
+                        const percentLoaded = Math.round((bufferedEnd / duration) * 100);
+                        
+                        loadingProgressBar.style.width = `${percentLoaded}%`;
+                        loadingProgressText.textContent = `Loading video... ${percentLoaded}%`;
+                    }
+                } else {
+                    // If enough data, complete progress and hide
+                    loadingProgressBar.style.width = '100%';
+                    loadingProgressText.textContent = 'Video loaded';
+                    setTimeout(() => {
+                        loadingContainer.classList.add('d-none');
+                    }, 500);
+                    clearInterval(progressTracker);
+                }
+            }, 200);
+            
+            // Play video after loading
+            videoPlayer.addEventListener('loadeddata', function onLoadedData() {
+                loadingContainer.classList.add('d-none');
+                clearInterval(progressTracker);
+                playVideo();
+                videoPlayer.removeEventListener('loadeddata', onLoadedData);
+            });
+            
+            // Handle loading error
+            videoPlayer.addEventListener('error', function onError() {
+                loadingContainer.classList.add('d-none');
+                clearInterval(progressTracker);
+                showToast('Error loading video', 'error');
+                videoPlayer.removeEventListener('error', onError);
+            });
+        }
+        
+        function initializeTimeline() {
+            if (!currentRecordings || currentRecordings.length === 0) {
+                return;
+            }
+            
+            // Clear timeline
+            timelineEvents.innerHTML = '';
+            timelineScale.innerHTML = '';
+            
+            // Determine start and end times for the timeline (using entire day)
+            const date = datePicker.value;
+            const dayStart = new Date(date);
+            dayStart.setHours(0, 0, 0, 0);
+            
+            const dayEnd = new Date(date);
+            dayEnd.setHours(23, 59, 59, 999);
+            
+            const timeRange = dayEnd.getTime() - dayStart.getTime();
+            
+            // Add timeline scale markers (every hour)
+            for (let hour = 0; hour <= 24; hour++) {
+                const time = new Date(dayStart);
+                time.setHours(hour, 0, 0, 0);
+                
+                const position = ((time.getTime() - dayStart.getTime()) / timeRange) * 100;
+                
+                const marker = document.createElement('div');
+                marker.className = 'timeline-scale-mark';
+                marker.style.left = `${position}%`;
+                timelineScale.appendChild(marker);
+                
+                if (hour % 2 === 0) { // Only show every 2 hours to avoid crowding
+                    const label = document.createElement('div');
+                    label.className = 'timeline-scale-label';
+                    label.style.left = `${position}%`;
+                    label.textContent = `${hour}:00`;
+                    timelineScale.appendChild(label);
+                }
+            }
+            
+            // Add recording events to timeline
+            currentRecordings.forEach(recording => {
+                const startTime = new Date(recording.timestamp).getTime();
+                const duration = recording.duration * 1000; // Convert to milliseconds
+                const endTime = startTime + duration;
+                
+                const startPos = ((startTime - dayStart.getTime()) / timeRange) * 100;
+                const width = ((endTime - startTime) / timeRange) * 100;
+                
+                // Create recording event marker
+                const eventMarker = document.createElement('div');
+                eventMarker.className = 'timeline-event';
+                eventMarker.style.left = `${startPos}%`;
+                eventMarker.style.width = `${Math.max(0.5, width)}%`; // Ensure minimum width
+                eventMarker.dataset.recordingId = recording.id;
+                eventMarker.title = `${new Date(recording.timestamp).toLocaleTimeString()}`;
+                
+                // Add click event
+                eventMarker.addEventListener('click', (e) => {
+                    const recording = currentRecordings.find(r => r.id === eventMarker.dataset.recordingId);
+                    if (recording) {
+                        selectRecording(recording);
+                    }
+                });
+                
+                timelineEvents.appendChild(eventMarker);
+            });
+            
+            // Add detection events to timeline
+            currentDetections.forEach(detection => {
+                const time = new Date(detection.timestamp).getTime();
+                
+                const position = ((time - dayStart.getTime()) / timeRange) * 100;
+                
+                // Create detection event marker
+                const eventMarker = document.createElement('div');
+                eventMarker.className = 'timeline-event detection';
+                eventMarker.style.left = `${position}%`;
+                eventMarker.style.width = '0.5%'; // Small width for detection events
+                eventMarker.title = `${detection.class_name} @ ${new Date(detection.timestamp).toLocaleTimeString()}`;
+                eventMarker.dataset.timestamp = detection.timestamp;
+                eventMarker.dataset.recordingId = detection.recording_id;
+                
+                // Add click event
+                eventMarker.addEventListener('click', (e) => {
+                    // Find the detection
+                    const clickedTime = eventMarker.dataset.timestamp;
+                    const matchingDetection = currentDetections.find(d => new Date(d.timestamp).getTime() === new Date(clickedTime).getTime());
+                    
+                    if (matchingDetection) {
+                        // Create a grouped detection object similar to what we use in displayDetections
+                        const groupedDetection = {
+                            timestamp: matchingDetection.timestamp,
+                            recording_id: matchingDetection.recording_id,
+                            classes: [matchingDetection.class_name],
+                            count: 1
+                        };
+                        
+                        selectDetection(groupedDetection);
+                    }
+                });
+                
+                timelineEvents.appendChild(eventMarker);
+            });
+        }
+        
+        function updatePlayheadPosition() {
+            if (!selectedRecording || !videoPlayer.duration) return;
+            
+            // Calculate the position of the playhead within the current recording
+            const currentTime = videoPlayer.currentTime;
+            const recordingDuration = videoPlayer.duration;
+            
+            // Get the recording start and end times
+            const recordingStartTime = new Date(selectedRecording.timestamp).getTime();
+            const recordingEndTime = recordingStartTime + (recordingDuration * 1000);
+            
+            // Get timeline container width
+            const timelineWidth = document.getElementById('timeline-container').offsetWidth;
+            
+            // Find the recording element in the timeline
+            const recordingElement = document.querySelector(`.timeline-event[data-recording-id="${selectedRecording.id}"]`);
+            
+            if (recordingElement) {
+                // Calculate position based on the recording element's position and the current time
+                const recordingLeft = parseFloat(recordingElement.style.left);
+                const recordingWidth = parseFloat(recordingElement.style.width);
+                
+                // Calculate the percentage through the recording
+                const percentComplete = (currentTime / recordingDuration);
+                
+                // Calculate the position on the timeline
+                const playheadPosition = recordingLeft + (recordingWidth * percentComplete);
+                
+                // Update playhead position
+                timelinePlayhead.style.left = `${playheadPosition}%`;
+            }
+            
+            // Also update the active recording in the list
+            updateActiveRecordingInList();
+        }
+        
+        function updateActiveRecordingInList() {
+            if (!selectedRecording) return;
+            
+            // Find all recordings that contain the current playback time
+            const currentPlaybackTime = new Date(selectedRecording.timestamp).getTime() + (videoPlayer.currentTime * 1000);
+            
+            // Remove active class from all recordings
+            document.querySelectorAll('.recording-items .list-group-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            
+            // Add active class to the current recording
+            const currentRecordingItem = document.querySelector(`.recording-items .list-group-item[data-recording-id="${selectedRecording.id}"]`);
+            if (currentRecordingItem) {
+                currentRecordingItem.classList.add('active');
+                
+                // Scroll to the item if not in view
+                const container = document.querySelector('.recording-list');
+                const itemTop = currentRecordingItem.offsetTop;
+                const itemHeight = currentRecordingItem.offsetHeight;
+                const containerTop = container.scrollTop;
+                const containerHeight = container.offsetHeight;
+                
+                if (itemTop < containerTop || itemTop + itemHeight > containerTop + containerHeight) {
+                    container.scrollTop = itemTop - (containerHeight / 2) + (itemHeight / 2);
+                }
+            }
+            
+            // Find detection that might be happening at current time
+            document.querySelectorAll('.detection-items .list-group-item').forEach(item => {
+                item.classList.remove('active');
+                
+                const detectionTime = new Date(item.dataset.timestamp).getTime();
+                const timeDiff = Math.abs(detectionTime - currentPlaybackTime);
+                
+                // If within 1 second of a detection, highlight it
+                if (timeDiff < 1000) {
+                    item.classList.add('active');
+                    
+                    // Scroll to the detection if not in view
+                    const container = document.querySelector('.detection-list');
+                    const itemTop = item.offsetTop;
+                    const itemHeight = item.offsetHeight;
+                    const containerTop = container.scrollTop;
+                    const containerHeight = container.offsetHeight;
+                    
+                    if (itemTop < containerTop || itemTop + itemHeight > containerTop + containerHeight) {
+                        container.scrollTop = itemTop - (containerHeight / 2) + (itemHeight / 2);
+                    }
+                }
+            });
+        }
+        
+        function seekToPosition(event) {
+            // Don't do anything if no recordings are loaded
+            if (!currentRecordings || currentRecordings.length === 0) return;
+            
+            // Calculate click position as percentage of timeline width
+            const timelineRect = event.currentTarget.getBoundingClientRect();
+            const clickX = event.clientX - timelineRect.left;
+            const percentPosition = (clickX / timelineRect.width) * 100;
+            
+            // Determine the time corresponding to this position
+            const date = datePicker.value;
+            const dayStart = new Date(date);
+            dayStart.setHours(0, 0, 0, 0);
+            
+            const dayEnd = new Date(date);
+            dayEnd.setHours(23, 59, 59, 999);
+            
+            const timeRange = dayEnd.getTime() - dayStart.getTime();
+            const clickTime = dayStart.getTime() + (timeRange * (percentPosition / 100));
+            
+            // Find the recording that contains this time
+            let foundRecording = null;
+            
+            for (const recording of currentRecordings) {
+                const startTime = new Date(recording.timestamp).getTime();
+                const endTime = startTime + (recording.duration * 1000);
+                
+                if (clickTime >= startTime && clickTime <= endTime) {
+                    foundRecording = recording;
+                    break;
+                }
+            }
+            
+            // If no recording contains this exact time, find the closest one
+            if (!foundRecording) {
+                let closestDistance = Infinity;
+                let closestRecording = null;
+                
+                for (const recording of currentRecordings) {
+                    const startTime = new Date(recording.timestamp).getTime();
+                    const endTime = startTime + (recording.duration * 1000);
+                    
+                    // Calculate distance to start or end of recording
+                    let distance;
+                    if (clickTime < startTime) {
+                        distance = startTime - clickTime;
+                    } else {
+                        distance = clickTime - endTime;
+                    }
+                    
+                    if (distance < closestDistance) {
+                        closestDistance = distance;
+                        closestRecording = recording;
+                    }
+                }
+                
+                foundRecording = closestRecording;
+            }
+            
+            // If found a recording, load it and seek to the right time
+            if (foundRecording) {
+                // If this is already the selected recording, just seek
+                if (selectedRecording && selectedRecording.id === foundRecording.id) {
+                    // Calculate the seek position within the recording
+                    const recordingStartTime = new Date(foundRecording.timestamp).getTime();
+                    const seekOffset = (clickTime - recordingStartTime) / 1000; // Convert to seconds
+                    
+                    // Clamp to valid range
+                    const clampedTime = Math.max(0, Math.min(seekOffset, videoPlayer.duration));
+                    
+                    // Seek to position
+                    videoPlayer.currentTime = clampedTime;
+                    
+                    // Update playhead
+                    updatePlayheadPosition();
+                } else {
+                    // Select the recording first
+                    selectRecording(foundRecording);
+                    
+                    // Add event listener to seek after video loads
+                    videoPlayer.addEventListener('loadedmetadata', function seekWhenReady() {
+                        // Calculate the seek position
+                        const recordingStartTime = new Date(foundRecording.timestamp).getTime();
+                        const seekOffset = (clickTime - recordingStartTime) / 1000; // Convert to seconds
+                        
+                        // Clamp to valid range
+                        const clampedTime = Math.max(0, Math.min(seekOffset, videoPlayer.duration));
+                        
+                        // Seek to position
+                        videoPlayer.currentTime = clampedTime;
+                        
+                        // Update playhead
+                        updatePlayheadPosition();
+                        
+                        // Remove this listener
+                        videoPlayer.removeEventListener('loadedmetadata', seekWhenReady);
+                    });
+                }
+            }
+        }
+        
+        function togglePlayPause() {
+            if (isPlaying) {
+                pauseVideo();
+            } else {
+                playVideo();
+            }
+        }
+        
+        function playVideo() {
+            if (!selectedRecording) return;
+            
+            // Update button icon
+            const playPauseButton = document.getElementById('play-pause');
+            playPauseButton.innerHTML = '<i class="fas fa-pause"></i>';
+            
+            // Set playback rate based on direction
+            videoPlayer.playbackRate = Math.abs(playbackDirection);
+            
+            // Enable reverse playback if needed (basic implementation)
+            if (playbackDirection < 0) {
+                // For reverse play, if already at the beginning, go to the end
+                if (videoPlayer.currentTime <= 0.1) {
+                    videoPlayer.currentTime = videoPlayer.duration;
+                }
+                
+                // Use a timer to manually update the position
+                if (!window.reversePlayTimer) {
+                    window.reversePlayTimer = setInterval(() => {
+                        if (isPlaying && playbackDirection < 0) {
+                            const newTime = videoPlayer.currentTime - 0.1;
+                            if (newTime <= 0) {
+                                pauseVideo();
+                                clearInterval(window.reversePlayTimer);
+                                window.reversePlayTimer = null;
+                            } else {
+                                videoPlayer.currentTime = newTime;
+                            }
+                        } else {
+                            clearInterval(window.reversePlayTimer);
+                            window.reversePlayTimer = null;
+                        }
+                    }, 100);
+                }
+                
+                // We don't actually play the video in reverse mode
+                videoPlayer.pause();
+            } else {
+                // Clear any reverse timer
+                if (window.reversePlayTimer) {
+                    clearInterval(window.reversePlayTimer);
+                    window.reversePlayTimer = null;
+                }
+                
+                // Normal playback
+                videoPlayer.play();
+            }
+            
+            isPlaying = true;
+        }
+        
+        function pauseVideo() {
+            // Update button icon
+            const playPauseButton = document.getElementById('play-pause');
+            playPauseButton.innerHTML = '<i class="fas fa-play"></i>';
+            
+            // Pause video
+            videoPlayer.pause();
+            
+            // Clear any reverse timer
+            if (window.reversePlayTimer) {
+                clearInterval(window.reversePlayTimer);
+                window.reversePlayTimer = null;
+            }
+            
+            isPlaying = false;
+        }
+        
+        function playForward() {
+            // Update button states
+            document.getElementById('play-forward').classList.add('active');
+            document.getElementById('play-backward').classList.remove('active');
+            
+            // Set direction to forward
+            playbackDirection = 1;
+            
+            // If already playing, update playback
+            if (isPlaying) {
+                playVideo();
+            }
+        }
+        
+        function playBackward() {
+            // Update button states
+            document.getElementById('play-backward').classList.add('active');
+            document.getElementById('play-forward').classList.remove('active');
+            
+            // Set direction to backward
+            playbackDirection = -1;
+            
+            // If already playing, update playback
+            if (isPlaying) {
+                playVideo();
+            }
+        }
+        
+        function playNext() {
+            if (!selectedRecording || !currentRecordings.length) return;
+            
+            // Find index of current recording
+            const currentIndex = currentRecordings.findIndex(r => r.id === selectedRecording.id);
+            
+            // If found and not the last one, play next recording
+            if (currentIndex !== -1 && currentIndex < currentRecordings.length - 1) {
+                selectRecording(currentRecordings[currentIndex + 1]);
+            }
+        }
+        
+        function playPrevious() {
+            if (!selectedRecording || !currentRecordings.length) return;
+            
+            // Find index of current recording
+            const currentIndex = currentRecordings.findIndex(r => r.id === selectedRecording.id);
+            
+            // If found and not the first one, play previous recording
+            if (currentIndex > 0) {
+                selectRecording(currentRecordings[currentIndex - 1]);
+            }
+        }
+        
+        function handleVideoEnded() {
+            // If playing forward and at the end, go to next recording
+            if (playbackDirection > 0) {
+                playNext();
+            } else {
+                // If playing backward and at the beginning, pause
+                pauseVideo();
+            }
+        }
+        
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                // Enter fullscreen
+                const videoContainer = document.getElementById('video-container');
+                if (videoContainer.requestFullscreen) {
+                    videoContainer.requestFullscreen();
+                } else if (videoContainer.webkitRequestFullscreen) {
+                    videoContainer.webkitRequestFullscreen();
+                } else if (videoContainer.msRequestFullscreen) {
+                    videoContainer.msRequestFullscreen();
+                }
+            } else {
+                // Exit fullscreen
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                } else if (document.msExitFullscreen) {
+                    document.msExitFullscreen();
+                }
+            }
+        }
+        
+        function downloadCurrentVideo() {
+            if (!selectedRecording) return;
+            
+            // Navigate to download URL
+            window.location.href = `/api/recordings/${selectedRecording.id}/download`;
+        }
+        
+        function takeSnapshot() {
+            if (!videoPlayer.currentSrc) return;
+            
+            // Create a canvas to capture the current frame
+            const canvas = document.createElement('canvas');
+            canvas.width = videoPlayer.videoWidth;
+            canvas.height = videoPlayer.videoHeight;
+            
+            // Draw the current frame on the canvas
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(videoPlayer, 0, 0, canvas.width, canvas.height);
+            
+            // Convert to image and trigger download
+            try {
+                const imageUrl = canvas.toDataURL('image/jpeg');
+                
+                // Create download link
+                const link = document.createElement('a');
+                link.href = imageUrl;
+                
+                // Generate filename based on camera and timestamp
+                const currentRecording = selectedRecording;
+                const cameraName = cameraSelect.options[cameraSelect.selectedIndex].text;
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                link.download = `${cameraName}_snapshot_${timestamp}.jpg`;
+                
+                // Trigger download
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            } catch (e) {
+                console.error('Error creating snapshot:', e);
+                showToast('Error creating snapshot', 'error');
+            }
+        }
+        
+        function filterRecordings() {
+            // Apply filter only if checkbox is checked
+            if (showDetectionsOnly.checked) {
+                // Get unique recording IDs from detections
+                const recordingIdsWithDetections = new Set();
+                currentDetections.forEach(det => {
+                    if (det.recording_id) {
+                        recordingIdsWithDetections.add(det.recording_id);
+                    }
+                });
+                
+                // Filter to only show recordings with detections
+                const filteredRecordings = currentRecordings.filter(rec => 
+                    recordingIdsWithDetections.has(rec.id)
+                );
+                
+                displayRecordings(filteredRecordings);
+            } else {
+                // Show all recordings
+                displayRecordings(currentRecordings);
+            }
+            
+            // Refresh timeline
+            initializeTimeline();
+        }
+        
+        function filterDetections() {
+            const objectType = objectFilter.value;
+            
+            // If no filter is set, show all detections
+            if (!objectType) {
+                displayDetections(currentDetections);
+                return;
+            }
+            
+            // Filter detections by object type
+            const filteredDetections = currentDetections.filter(det => 
+                det.class_name === objectType
+            );
+            
+            displayDetections(filteredDetections);
+            
+            // Refresh timeline
+            initializeTimeline();
+        }
+        
+        function resetPlayback() {
+            // Clear recordings and detections
+            currentRecordings = [];
+            currentDetections = [];
+            selectedRecording = null;
+            selectedDetection = null;
+            
+            // Update UI
+            noRecordingsMessage.style.display = 'block';
+            recordingItems.innerHTML = '';
+            
+            noDetectionsMessage.style.display = 'block';
+            detectionItems.innerHTML = '';
+            
+            // Reset video
+            videoPlayer.src = '';
+            noVideoMessage.style.display = 'flex';
+            
+            // Clear timeline
+            timelineEvents.innerHTML = '';
+            timelineScale.innerHTML = '';
+            
+            // Disable download buttons
+            downloadVideo.disabled = true;
+            downloadSnapshot.disabled = true;
+        }
+        
+        // Helper function to format duration
+        function formatDuration(seconds) {
+            if (!seconds) return '00:00';
+            
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = Math.floor(seconds % 60);
+            
+            return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+        }
+    });
+</script>
+{% endblock %}
