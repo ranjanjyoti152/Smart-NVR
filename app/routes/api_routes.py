@@ -15,38 +15,16 @@ from app.models.camera import Camera
 from app.models.recording import Recording
 from app.models.detection import Detection
 from app.models.roi import ROI
-from app.models.person import Person
-from app.utils.face_recognition_service import store_person, generate_face_encoding
-from app.utils.camera_processor import CameraManager
-from werkzeug.utils import secure_filename
-from flask import current_app # To access app config or root_path
-
 from app.utils.decorators import admin_required, api_key_required
 from app.utils.system_monitor import get_system_stats
 
 # Create blueprint
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
-# Define at the top of the file or in a config
-# UPLOAD_FOLDER = 'storage/faces' # Relative to app root
-# More robust way to define UPLOAD_FOLDER relative to instance path or app root
-UPLOAD_FOLDER = os.path.join(os.getcwd(), 'storage', 'faces') # Assumes cwd is app root
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp'}
-
-def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
-# Ensure UPLOAD_FOLDER exists during app initialization or here
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
 # --- Camera API Endpoints ---
 
 # Function to handle detection reports from camera processor
-# This function is called internally by the CameraProcessor, not a direct API route.
-# @api_bp.route('/internal/report_detection', methods=['POST']) # If it were an API endpoint
-# @api_key_required # Or some internal auth
-def report_detection(request): # request here is a mock or internal request object
+def report_detection(request):
     """
     Process detection report from camera processor
     Not a route, called directly from camera processor
@@ -169,188 +147,6 @@ def get_cameras():
         'success': True,
         'cameras': [camera.to_dict() for camera in cameras]
     })
-
-# --- Person Management API Endpoints ---
-
-@api_bp.route('/persons', methods=['POST'])
-@login_required
-def create_person():
-    """Create a new person with face encoding."""
-    if 'image' not in request.files:
-        return jsonify({'success': False, 'message': 'No image file provided'}), 400
-    
-    file = request.files['image']
-    name = request.form.get('name')
-    description = request.form.get('description')
-
-    if not name:
-        return jsonify({'success': False, 'message': 'Name is required'}), 400
-    if file.filename == '':
-        return jsonify({'success': False, 'message': 'No selected file'}), 400
-
-    if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        # Create a more unique path if desired, e.g., using UUID
-        # For now, ensure UPLOAD_FOLDER is correctly defined and accessible
-        # The UPLOAD_FOLDER was defined as os.path.join(os.getcwd(), 'storage', 'faces')
-        # which should be relative to the project root where run.py is.
-        image_path = os.path.join(UPLOAD_FOLDER, filename)
-        
-        try:
-            os.makedirs(UPLOAD_FOLDER, exist_ok=True) # Ensure directory exists
-            file.save(image_path)
-            
-            # Use the face_recognition_service.store_person function
-            # This function handles encoding generation and DB storage via Person.create
-            person = store_person(name=name, image_path=image_path, description=description)
-            
-            if person:
-                # Reload known persons in camera processors
-                manager = CameraManager.get_instance()
-                manager.reload_persons_for_all_cameras()
-                return jsonify({'success': True, 'person': person.to_dict()}), 201
-            else:
-                # Cleanup saved image if store_person failed
-                if os.path.exists(image_path):
-                    os.remove(image_path)
-                return jsonify({'success': False, 'message': 'Failed to store person. Encoding might have failed or database error.'}), 500
-        except Exception as e:
-            # Cleanup saved image if any error occurred
-            if os.path.exists(image_path):
-                os.remove(image_path)
-            return jsonify({'success': False, 'message': f'Error creating person: {str(e)}'}), 500
-    else:
-        return jsonify({'success': False, 'message': 'Invalid file type. Allowed types: png, jpg, jpeg, webp'}), 400
-
-@api_bp.route('/persons', methods=['GET'])
-@login_required
-def get_persons():
-    """Get all persons with pagination."""
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 20, type=int)
-    
-    persons_list = Person.get_all(page=page, per_page=per_page)
-    total_persons = Person.count() # Assuming Person model has a count method
-    
-    return jsonify({
-        'success': True,
-        'persons': [p.to_dict() for p in persons_list],
-        'pagination': {
-            'page': page,
-            'per_page': per_page,
-            'total': total_persons,
-            'pages': (total_persons + per_page - 1) // per_page
-        }
-    })
-
-@api_bp.route('/persons/<person_id>', methods=['GET'])
-@login_required
-def get_person(person_id):
-    """Get a specific person by ID."""
-    person = Person.get_by_id(person_id)
-    if not person:
-        return jsonify({'success': False, 'message': 'Person not found'}), 404
-    return jsonify({'success': True, 'person': person.to_dict()})
-
-@api_bp.route('/persons/<person_id>', methods=['PUT'])
-@login_required
-def update_person(person_id):
-    """Update a person's details."""
-    person = Person.get_by_id(person_id)
-    if not person:
-        return jsonify({'success': False, 'message': 'Person not found'}), 404
-
-    data = {}
-    if request.content_type.startswith('multipart/form-data'):
-        data = request.form.to_dict()
-    elif request.content_type.startswith('application/json'):
-        data = request.get_json()
-    
-    if not data and 'image' not in request.files:
-         return jsonify({'success': False, 'message': 'No data provided for update.'}), 400
-
-    needs_reload = False
-
-    if 'name' in data:
-        person.name = data['name']
-    if 'description' in data:
-        person.description = data.get('description')
-    if 'is_active' in data:
-        # Ensure is_active is boolean
-        person.is_active = str(data.get('is_active')).lower() in ['true', '1', 'yes']
-        needs_reload = True # Active status change requires reload
-
-    if 'image' in request.files:
-        file = request.files['image']
-        if file.filename != '' and allowed_file(file.filename):
-            old_image_path = person.image_path
-            
-            filename = secure_filename(file.filename)
-            new_image_path = os.path.join(UPLOAD_FOLDER, filename)
-            try:
-                os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-                file.save(new_image_path)
-
-                new_encoding_list = generate_face_encoding(new_image_path)
-                if new_encoding_list:
-                    person.face_encoding = json.dumps(new_encoding_list) # Store as string
-                    person.image_path = new_image_path
-                    needs_reload = True
-                    # Delete old image after successful processing of new one
-                    if old_image_path and os.path.exists(old_image_path) and old_image_path != new_image_path:
-                        try:
-                            os.remove(old_image_path)
-                        except Exception as e_remove:
-                            current_app.logger.error(f"Error deleting old person image {old_image_path}: {e_remove}")
-                else:
-                    # Don't save new image if encoding fails
-                    if os.path.exists(new_image_path):
-                        os.remove(new_image_path)
-                    return jsonify({'success': False, 'message': 'Failed to generate face encoding for the new image.'}), 400
-            except Exception as e_img:
-                return jsonify({'success': False, 'message': f'Error processing image: {str(e_img)}'}), 500
-        elif file.filename != '': # File provided but not allowed
-             return jsonify({'success': False, 'message': 'Invalid file type for new image.'}), 400
-
-
-    try:
-        person.save() # This updates updated_at
-        if needs_reload:
-            manager = CameraManager.get_instance()
-            manager.reload_persons_for_all_cameras()
-        return jsonify({'success': True, 'person': person.to_dict()})
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'Error updating person: {str(e)}'}), 500
-
-@api_bp.route('/persons/<person_id>', methods=['DELETE'])
-@login_required
-def delete_person(person_id):
-    """Delete a person."""
-    person = Person.get_by_id(person_id)
-    if not person:
-        return jsonify({'success': False, 'message': 'Person not found'}), 404
-
-    image_path_to_delete = person.image_path 
-
-    try:
-        if not person.delete(): # Person.delete() should return True on success
-            return jsonify({'success': False, 'message': 'Failed to delete person from database.'}), 500
-
-        # If DB deletion was successful, try to delete the image file
-        if image_path_to_delete and os.path.exists(image_path_to_delete):
-            try:
-                os.remove(image_path_to_delete)
-            except Exception as e_remove:
-                # Log error but don't fail the request if DB deletion succeeded
-                current_app.logger.error(f"Error deleting person image file {image_path_to_delete}: {e_remove}")
-        
-        manager = CameraManager.get_instance()
-        manager.reload_persons_for_all_cameras()
-        
-        return jsonify({'success': True, 'message': 'Person deleted successfully'})
-    except Exception as e:
-        return jsonify({'success': False, 'message': f'Error deleting person: {str(e)}'}), 500
-
 
 @api_bp.route('/cameras/<camera_id>')
 @login_required
@@ -1371,7 +1167,6 @@ def get_detections():
     class_name = request.args.get('class_name')
     date_from = request.args.get('date_from')
     date_to = request.args.get('date_to')
-    person_id = request.args.get('person_id') # Added person_id filter
     
     # Build MongoDB query
     query = {}
@@ -1381,9 +1176,6 @@ def get_detections():
     
     if class_name:
         query['class_name'] = class_name
-    
-    if person_id: # Add person_id to the query if provided
-        query['person_id'] = str(person_id)
     
     # Date range filtering
     date_filter = {}
@@ -1425,16 +1217,9 @@ def get_detections():
     # Calculate pagination info
     total_pages = (total + per_page - 1) // per_page  # ceiling division
     
-    # Prepare detections for response (include person_name if available)
-    detections_response = []
-    for det in detections:
-        det_dict = det.to_dict()
-        # person_name is already part of to_dict() if Detection model was updated correctly
-        detections_response.append(det_dict)
-
     return jsonify({
         'success': True,
-        'detections': detections_response,
+        'detections': [detection.to_dict() for detection in detections],
         'pagination': {
             'total': total,
             'pages': total_pages,
@@ -1442,45 +1227,6 @@ def get_detections():
             'per_page': per_page
         }
     })
-
-@api_bp.route('/cameras/<camera_id>/recognized', methods=['GET'])
-@login_required
-def get_camera_recognized_persons(camera_id):
-    """Get recent recognized persons for a camera."""
-    # Verify camera exists
-    camera = Camera.get_by_id(camera_id)
-    if not camera:
-        return jsonify({'success': False, 'message': 'Camera not found'}), 404
-
-    limit = request.args.get('limit', 10, type=int)
-    
-    # Query detections for this camera where person_id is not null
-    # The Detection model should have person_id and person_name fields.
-    query = {
-        'camera_id': str(camera_id),
-        'person_id': {'$ne': None} # Filter for detections where a person was recognized
-    }
-    
-    # Query MongoDB with pagination/limit
-    detections_cursor = db.detections.find(query).sort('timestamp', -1).limit(limit)
-    
-    recognized_events = []
-    for det_doc in detections_cursor:
-        detection = Detection(det_doc)
-        recognized_events.append({
-            'detection_id': detection.id,
-            'person_id': detection.person_id, # Assumes Detection model has this
-            'person_name': detection.person_name, # Assumes Detection model has this
-            'timestamp': detection.timestamp.isoformat() if isinstance(detection.timestamp, datetime) else detection.timestamp,
-            'image_path': detection.image_path # Image of the detection event
-        })
-            
-    return jsonify({
-        'success': True,
-        'camera_id': camera_id,
-        'recognized_events': recognized_events
-    })
-
 
 @api_bp.route('/cameras/<camera_id>/status')
 @login_required
