@@ -20,6 +20,8 @@ class Camera:
         self.model_id = camera_data.get('model_id')
         self.confidence_threshold = camera_data.get('confidence_threshold', 0.5)
         self.created_at = camera_data.get('created_at', datetime.utcnow())
+        self.face_recognition_enabled = camera_data.get('face_recognition_enabled', False)
+        self.face_recognition_confidence = camera_data.get('face_recognition_confidence', 0.6)
     
     def __repr__(self):
         return f'<Camera {self.name}>'
@@ -90,7 +92,8 @@ class Camera:
     @classmethod
     def create(cls, name, rtsp_url, username=None, password=None, model_id=None, 
                is_active=True, recording_enabled=True, detection_enabled=True,
-               confidence_threshold=0.5):
+               confidence_threshold=0.5, face_recognition_enabled=False, 
+               face_recognition_confidence=0.6):
         """Create a new camera"""
         try:
             camera_data = {
@@ -103,6 +106,8 @@ class Camera:
                 'detection_enabled': detection_enabled,
                 'model_id': model_id,
                 'confidence_threshold': confidence_threshold,
+                'face_recognition_enabled': face_recognition_enabled,
+                'face_recognition_confidence': face_recognition_confidence,
                 'created_at': datetime.utcnow()
             }
             
@@ -128,7 +133,9 @@ class Camera:
                     'recording_enabled': self.recording_enabled,
                     'detection_enabled': self.detection_enabled,
                     'model_id': self.model_id,
-                    'confidence_threshold': self.confidence_threshold
+                    'confidence_threshold': self.confidence_threshold,
+                    'face_recognition_enabled': self.face_recognition_enabled,
+                    'face_recognition_confidence': self.face_recognition_confidence
                 }}
             )
             return True
@@ -189,6 +196,8 @@ class Camera:
                 'stream_url': f'/api/cameras/{self.id}/stream',
                 'snapshot_url': f'/api/cameras/{self.id}/snapshot',
                 'created_at': self.created_at.isoformat() if isinstance(self.created_at, datetime) else self.created_at,
+                'face_recognition_enabled': self.face_recognition_enabled,
+                'face_recognition_confidence': self.face_recognition_confidence,
             }
             
             if include_credentials:

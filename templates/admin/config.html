@@ -102,6 +102,70 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- Per-Camera Settings -->
+                    <div class="mb-4">
+                        <h6 class="fw-bold">Per-Camera Settings</h6>
+                        <hr>
+                        {% if cameras %} {# cameras should be passed from the route rendering this template #}
+                            {% for camera in cameras %}
+                                <div class="camera-config-block mb-4 p-3 border rounded">
+                                    <h6 class="fw-semibold">{{ camera.name }} (ID: {{ camera.id }})</h6>
+                                    <input type="hidden" name="cameras[{{ loop.index0 }}][id]" value="{{ camera.id }}">
+                                    
+                                    <div class="form-check form-switch mb-2">
+                                        <input class="form-check-input" type="checkbox" 
+                                               name="cameras[{{ loop.index0 }}][face_recognition_enabled]" 
+                                               id="face_recognition_enabled_{{ camera.id }}"
+                                               {% if camera.face_recognition_enabled %}checked{% endif %}>
+                                        <label class="form-check-label" for="face_recognition_enabled_{{ camera.id }}">
+                                            Enable Face Recognition
+                                        </label>
+                                    </div>
+
+                                    <div class="mb-2">
+                                        <label for="cameras[{{ loop.index0 }}][face_recognition_confidence]" class="form-label">
+                                            Face Recognition Confidence (0.1-1.0)
+                                        </label>
+                                        <input type="number" class="form-control form-control-sm" 
+                                               step="0.05" min="0.1" max="1.0" 
+                                               name="cameras[{{ loop.index0 }}][face_recognition_confidence]" 
+                                               id="face_recognition_confidence_{{ camera.id }}"
+                                               value="{{ camera.face_recognition_confidence | default(0.6) }}">
+                                        <div class="form-text">Lower is stricter (e.g., 0.4-0.6). Higher values (e.g. >0.7) may result in more false negatives. Default is 0.6.</div>
+                                    </div>
+                                    
+                                    {# Add other per-camera settings here as needed, e.g., is_active, model_id, confidence_threshold #}
+                                    <div class="row">
+                                        <div class="col-md-6 mb-2">
+                                            <label for="cameras[{{ loop.index0 }}][confidence_threshold]" class="form-label">
+                                                Object Detection Confidence
+                                            </label>
+                                            <input type="number" class="form-control form-control-sm"
+                                                   step="0.05" min="0.1" max="0.95"
+                                                   name="cameras[{{ loop.index0 }}][confidence_threshold]"
+                                                   id="confidence_threshold_{{ camera.id }}"
+                                                   value="{{ camera.confidence_threshold | default(0.45) }}">
+                                        </div>
+                                        <div class="col-md-6 mb-2">
+                                            <label for="cameras[{{ loop.index0 }}][is_active]" class="form-label">
+                                                Camera Enabled
+                                            </label>
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input" type="checkbox"
+                                                       name="cameras[{{ loop.index0 }}][is_active]"
+                                                       id="is_active_{{ camera.id }}"
+                                                       {% if camera.is_active %}checked{% endif %}>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            {% endfor %}
+                        {% else %}
+                            <p>No cameras found or passed to the template. Please add cameras first.</p>
+                        {% endif %}
+                    </div>
                     
                     <button type="submit" class="btn btn-primary">Save Configuration</button>
                 </form>

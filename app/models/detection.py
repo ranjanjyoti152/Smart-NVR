@@ -24,6 +24,8 @@ class Detection:
         self.video_path = detection_data.get('video_path')
         self.notified = detection_data.get('notified', False)
         self.created_at = detection_data.get('created_at', datetime.utcnow())
+        self.person_id = detection_data.get('person_id') # String, optional
+        self.person_name = detection_data.get('person_name') # String, optional
     
     def __repr__(self):
         return f'<Detection {self.id} {self.class_name} at {self.timestamp}>'
@@ -132,7 +134,8 @@ class Detection:
     
     @classmethod
     def create(cls, camera_id, class_name, confidence, bbox_x, bbox_y, bbox_width, bbox_height, 
-               timestamp=None, recording_id=None, roi_id=None, image_path=None, video_path=None):
+               timestamp=None, recording_id=None, roi_id=None, image_path=None, video_path=None,
+               person_id=None, person_name=None):
         """Create a new detection"""
         try:
             detection_data = {
@@ -160,6 +163,11 @@ class Detection:
             if video_path:
                 detection_data['video_path'] = video_path
             
+            if person_id:
+                detection_data['person_id'] = str(person_id) # Ensure it's a string
+            if person_name:
+                detection_data['person_name'] = person_name
+            
             result = db.detections.insert_one(detection_data)
             detection_data['_id'] = result.inserted_id
             return Detection(detection_data)
@@ -186,7 +194,9 @@ class Detection:
                     'bbox_height': self.bbox_height,
                     'image_path': self.image_path,
                     'video_path': self.video_path,
-                    'notified': self.notified
+                    'notified': self.notified,
+                    'person_id': self.person_id,
+                    'person_name': self.person_name,
                 }}
             )
             return True
@@ -230,5 +240,7 @@ class Detection:
             'video_path': self.video_path,
             'timestamp': self.timestamp.isoformat() if isinstance(self.timestamp, datetime) else self.timestamp,
             'created_at': self.created_at.isoformat() if isinstance(self.created_at, datetime) else self.created_at,
-            'notified': self.notified
+            'notified': self.notified,
+            'person_id': self.person_id,
+            'person_name': self.person_name
         }

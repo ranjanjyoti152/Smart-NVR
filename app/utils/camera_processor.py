@@ -22,6 +22,9 @@ from ultralytics import YOLO # Import YOLO from ultralytics
 import re  # Import re for regex pattern matching
 from bson.objectid import ObjectId  # Add missing import for MongoDB ObjectId
 
+from app.models.person import Person
+from app.utils.face_recognition_service import recognize_faces
+
 logger = logging.getLogger(__name__)
 
 # Define a color map for object classes (you can customize this)
@@ -77,6 +80,18 @@ class CameraProcessor:
             'frames_dropped': 0,
             'last_update': time.time()
         }
+        # Use camera-specific settings
+        self.face_recognition_enabled = self.camera.face_recognition_enabled
+        # self.face_recognition_confidence is not stored directly in CameraProcessor,
+        # it will be accessed via self.camera.face_recognition_confidence when needed.
+        self.known_persons = []
+
+        # Initialize AI model first
+        # ... (model initialization logic from existing code is assumed to be above or handled by _get_model_path) ...
+        
+        # Then load known persons if face recognition is enabled for this camera
+        if self.face_recognition_enabled:
+            self.reload_known_persons()
         
     def is_running(self):
         """Check if the camera processor is running"""
@@ -201,6 +216,24 @@ class CameraProcessor:
         logger.info(f"Reloading ROIs for camera {self.camera.id}")
         self.detection_regions = self._load_detection_regions()
         return len(self.detection_regions)
+
+    def reload_known_persons(self):
+        '''Loads/reloads known persons from the database for face recognition.'''
+        if not self.face_recognition_enabled:
+            self.known_persons = []
+            logger.info(f"Face recognition is disabled for camera {self.camera.name}. Known persons list cleared.")
+            return
+
+        try:
+            # Assuming Person.get_all() can filter by is_active or returns all and we filter here
+            all_persons = Person.get_all(page=1, per_page=1000) # Get a large number of persons
+            self.known_persons = [p for p in all_persons if p.is_active and p.face_encoding]
+            # The Person objects should have face_encoding ready for recognize_faces.
+            # recognize_faces service handles parsing stringified encodings.
+            logger.info(f"Loaded {len(self.known_persons)} active persons with encodings for face recognition for camera {self.camera.name}.")
+        except Exception as e:
+            logger.error(f"Error loading known persons for camera {self.camera.name}: {e}")
+            self.known_persons = []
 
     def start(self):
         """Start processing camera stream"""
@@ -377,6 +410,13 @@ class CameraProcessor:
             self.detection_thread = threading.Thread(target=self._detect_objects)
             self.detection_thread.daemon = True
             self.detection_thread.start()
+        
+        # Load known persons after model is loaded and thread is about to start,
+        # especially if face_recognition_enabled might change after __init__
+        # However, current logic in __init__ already calls this.
+        # If camera settings (like face_recognition_enabled) can change dynamically,
+        # this might need to be called upon such changes.
+        # For now, __init__ handles the initial load.
 
         logger.info(f"Started processing camera: {self.camera.name}")
         return True
@@ -658,6 +698,56 @@ class CameraProcessor:
 
                 # Mark the frame queue task as done
                 self.frame_queue.task_done()
+
+
+                # --- Face Recognition Integration ---
+                if self.face_recognition_enabled and self.known_persons and detected_objects: # only run if objects are detected
+                    try:
+                        # frame_to_process is BGR. recognize_faces service handles conversion to RGB.
+                        logger.debug(f"Running face recognition for camera {self.camera.name} on {len(detected_objects)} detected objects with tolerance {self.camera.face_recognition_confidence}.")
+                        recognized_face_data = recognize_faces(
+                            frame_to_process, 
+                            self.known_persons, 
+                            tolerance=self.camera.face_recognition_confidence
+                        )
+
+                        if recognized_face_data:
+                            logger.info(f"Recognized {len(recognized_face_data)} faces for camera {self.camera.name}.")
+                            # Augment existing 'person' detections
+                            for i, detected_obj in enumerate(detected_objects):
+                                if detected_obj['class_name'].lower() == 'person': # Only try to augment 'person' detections
+                                    obj_bbox_x1 = detected_obj['bbox_x']
+                                    obj_bbox_y1 = detected_obj['bbox_y']
+                                    obj_bbox_x2 = detected_obj['bbox_x'] + detected_obj['bbox_width']
+                                    obj_bbox_y2 = detected_obj['bbox_y'] + detected_obj['bbox_height']
+
+                                    for face_info in recognized_face_data:
+                                        # face_info['bbox'] is [top, right, bottom, left]
+                                        face_bbox_x1 = face_info['bbox'][3] 
+                                        face_bbox_y1 = face_info['bbox'][0]
+                                        face_bbox_x2 = face_info['bbox'][1]
+                                        face_bbox_y2 = face_info['bbox'][2]
+
+                                        # Simple center point check for matching
+                                        face_center_x = (face_bbox_x1 + face_bbox_x2) / 2
+                                        face_center_y = (face_bbox_y1 + face_bbox_y2) / 2
+
+                                        if (obj_bbox_x1 <= face_center_x <= obj_bbox_x2 and
+                                            obj_bbox_y1 <= face_center_y <= obj_bbox_y2):
+                                            
+                                            original_person_id = detected_objects[i].get('person_id')
+                                            detected_objects[i]['person_id'] = face_info['person_id']
+                                            detected_objects[i]['person_name'] = face_info['person_name']
+                                            # Optionally update confidence or class_name if needed
+                                            # detected_objects[i]['confidence'] = face_info['confidence'] # If desired
+                                            logger.info(f"Camera {self.camera.name}: Associated recognized face '{face_info['person_name']}' (ID: {face_info['person_id']}) with detected 'person' object. Original person_id: {original_person_id}")
+                                            # Break from inner loop (faces) once a match is found for this detected_obj
+                                            break 
+                    except Exception as e_face:
+                        logger.error(f"Error during face recognition in camera {self.camera.name}: {e_face}")
+                        import traceback
+                        logger.error(traceback.format_exc())
+                # --- End Face Recognition ---
 
             except Exception as e:
                 logger.error(f"Error in object detection: {str(e)}")
@@ -1104,3 +1194,31 @@ class CameraManager:
             if processor:
                 return processor.reload_rois()
             return -1
+
+    def reload_persons_for_camera(self, camera_id):
+        with self.lock:
+            processor = self.cameras.get(camera_id)
+            if processor: # Check if processor exists
+                # The subtask specifies to check processor.face_recognition_enabled
+                # This check should ideally be inside processor.reload_known_persons()
+                # or here if we want to avoid calling it altogether.
+                # For now, let's assume reload_known_persons handles the enabled check.
+                if processor.face_recognition_enabled:
+                    processor.reload_known_persons()
+                    logger.info(f"Triggered reload of known persons for camera {camera_id}")
+                    return True
+                else:
+                    logger.info(f"Face recognition not enabled for camera {camera_id}. Did not reload persons.")
+                    return False # Or True, depending on desired semantics (action attempted vs. state changed)
+            logger.warning(f"Camera processor not found for ID {camera_id} during reload_persons_for_camera.")
+            return False
+
+    def reload_persons_for_all_cameras(self):
+        with self.lock:
+            reloaded_count = 0
+            for camera_id, processor in self.cameras.items():
+                if processor and processor.face_recognition_enabled:
+                    processor.reload_known_persons()
+                    reloaded_count +=1
+            logger.info(f"Triggered reload of known persons for {reloaded_count} applicable cameras.")
+            return reloaded_count
