@@ -56,8 +56,8 @@ class CameraProcessor:
         self.thread = None
         self.recording_thread = None
         self.detection_thread = None
-        self.frame_queue = queue.Queue(maxsize=5)  # Reduced queue size for lower latency
-        self.recording_queue = queue.Queue(maxsize=30)
+        self.frame_queue = queue.Queue(maxsize=2)  # Very small queue for minimal latency
+        self.recording_queue = queue.Queue(maxsize=10)  # Reduced for better memory management
         self.last_frame = None # Stores the latest raw frame from camera
         self.last_processed_frame = None # Stores the latest frame processed by detection
         self.last_processed_detections = [] # Stores detections for the last_processed_frame
@@ -75,8 +75,11 @@ class CameraProcessor:
             'latency': 0.0,
             'frames_processed': 0,
             'frames_dropped': 0,
-            'last_update': time.time()
+            'last_update': time.time(),
+            'processing_time': 0.0,
+            'avg_processing_time': 0.0
         }
+        self.frame_timestamps = {}  # Track frame processing times
         
     def is_running(self):
         """Check if the camera processor is running"""
