@@ -304,11 +304,16 @@ def send_detection_email(camera, detection, roi=None):
                 if not match_found:
                     logger.info(f"Email notification skipped - {detection.class_name} not in ROI's detection classes: {roi_classes}")
                     return False
+            else:
+                # Empty detection_classes list means "all classes allowed" - don't skip
+                logger.debug(f"ROI {roi.name} has empty detection_classes list - allowing all detections")
                     
         except Exception as e:
-            # If there's any error parsing the classes, log the error and skip notification
-            logger.error(f"Error parsing detection classes for ROI {roi.id}: {str(e)}")
-            return False
+            # If there's any error parsing the classes, log the error but allow notification
+            logger.warning(f"Error parsing detection classes for ROI {roi.id}: {str(e)} - allowing notification")
+    else:
+        # No detection_classes specified means "all classes allowed" - don't skip
+        logger.debug(f"ROI {roi.name if roi else 'None'} has no detection_classes specified - allowing all detections")
     
     # Apply rate limiting for this ROI and object
     roi_id = getattr(roi, 'id', 'unknown')

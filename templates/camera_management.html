@@ -727,15 +727,19 @@ function setupROICanvas(cameraId) {
         startDrawingBtn.classList.remove('btn-primary');
         startDrawingBtn.classList.add('btn-outline-primary');
         saveROIBtn.disabled = true;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Use the correct canvas reference
+        const drawCanvas = document.getElementById('roiCanvas');
+        const drawCtx = drawCanvas.getContext('2d');
+        drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
     });
     
     // Remove existing canvas click handler by cloning and replacing
     const newCanvas = canvas.cloneNode(true);
     canvas.parentNode.replaceChild(newCanvas, canvas);
     
-    // Get reference to the new canvas
+    // Get reference to the new canvas and context
     const drawCanvas = document.getElementById('roiCanvas');
+    const drawCtx = drawCanvas.getContext('2d');
     drawCanvas.dataset.cameraId = cameraId;
     
     // Add click handler to the new canvas
@@ -750,38 +754,38 @@ function setupROICanvas(cameraId) {
         points.push([x, y]);
         
         // Draw point
-        ctx.fillStyle = 'red';
-        ctx.beginPath();
-        ctx.arc(x, y, 4, 0, 2 * Math.PI);
-        ctx.fill();
+        drawCtx.fillStyle = 'red';
+        drawCtx.beginPath();
+        drawCtx.arc(x, y, 4, 0, 2 * Math.PI);
+        drawCtx.fill();
         
         // Draw line if we have more than one point
         if (points.length > 1) {
-            ctx.strokeStyle = 'red';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(points[points.length - 2][0], points[points.length - 2][1]);
-            ctx.lineTo(x, y);
-            ctx.stroke();
+            drawCtx.strokeStyle = 'red';
+            drawCtx.lineWidth = 2;
+            drawCtx.beginPath();
+            drawCtx.moveTo(points[points.length - 2][0], points[points.length - 2][1]);
+            drawCtx.lineTo(x, y);
+            drawCtx.stroke();
         }
         
         // If we have at least 3 points, draw a line back to the first point
         if (points.length >= 3) {
-            ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
-            ctx.beginPath();
-            ctx.moveTo(x, y);
-            ctx.lineTo(points[0][0], points[0][1]);
-            ctx.stroke();
+            drawCtx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+            drawCtx.beginPath();
+            drawCtx.moveTo(x, y);
+            drawCtx.lineTo(points[0][0], points[0][1]);
+            drawCtx.stroke();
             
             // Fill the polygon with semi-transparent color
-            ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
-            ctx.beginPath();
-            ctx.moveTo(points[0][0], points[0][1]);
+            drawCtx.fillStyle = 'rgba(255, 0, 0, 0.2)';
+            drawCtx.beginPath();
+            drawCtx.moveTo(points[0][0], points[0][1]);
             for (let i = 1; i < points.length; i++) {
-                ctx.lineTo(points[i][0], points[i][1]);
+                drawCtx.lineTo(points[i][0], points[i][1]);
             }
-            ctx.closePath();
-            ctx.fill();
+            drawCtx.closePath();
+            drawCtx.fill();
             
             // Enable the save button
             saveROIBtn.disabled = false;
@@ -853,7 +857,10 @@ function setupROICanvas(cameraId) {
                 points = [];
                 startDrawingBtn.classList.remove('btn-primary');
                 startDrawingBtn.classList.add('btn-outline-primary');
-                ctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+                // Use the correct canvas reference
+                const drawCanvas = document.getElementById('roiCanvas');
+                const drawCtx = drawCanvas.getContext('2d');
+                drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
                 document.getElementById('roiName').value = '';
                 detectionClassesSelect.selectedIndex = -1;
                 document.getElementById('emailNotifications').checked = false;
