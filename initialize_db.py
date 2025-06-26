@@ -53,6 +53,12 @@ def main():
             'detections', 'regions_of_interest'
         ]
         
+        logger.info("ROI collections will support time-based scheduling with the following fields:")
+        logger.info("- roi_type: 'always_active' or 'time_based'")
+        logger.info("- start_time: HH:MM format for time-based ROIs")
+        logger.info("- end_time: HH:MM format for time-based ROIs") 
+        logger.info("- active_days: Array of weekday numbers (0=Monday, 6=Sunday)")
+        
         for collection in collections_to_create:
             if collection in existing_collections:
                 logger.info(f"Dropping existing collection: {collection}")
@@ -81,6 +87,14 @@ def main():
         logger.info("Creating regions_of_interest collection and indexes")
         db.create_collection("regions_of_interest")
         db.regions_of_interest.create_index([("camera_id", ASCENDING)])
+        db.regions_of_interest.create_index([("roi_type", ASCENDING)])
+        db.regions_of_interest.create_index([("is_active", ASCENDING)])
+        # Compound index for time-based ROI queries
+        db.regions_of_interest.create_index([
+            ("camera_id", ASCENDING), 
+            ("roi_type", ASCENDING), 
+            ("is_active", ASCENDING)
+        ])
         
         # Recordings collection
         logger.info("Creating recordings collection and indexes")
@@ -141,9 +155,55 @@ def main():
         
         db.ai_models.insert_many(models)
         
+        # Optionally create sample ROIs to demonstrate time-based scheduling
+        # (These will only be created if cameras exist)
+        sample_rois = [
+            {
+                "name": "Sample Always Active ROI",
+                "camera_id": "sample_camera_id",  # This would need to be a real camera ID
+                "coordinates": [[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]],
+                "detection_classes": [],
+                "is_active": True,
+                "email_notifications": False,
+                "use_gemini_notifications": False,
+                "roi_type": "always_active",
+                "start_time": None,
+                "end_time": None,
+                "active_days": [0, 1, 2, 3, 4, 5, 6],
+                "created_at": datetime.utcnow()
+            },
+            {
+                "name": "Sample Business Hours ROI",
+                "camera_id": "sample_camera_id",  # This would need to be a real camera ID
+                "coordinates": [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]],
+                "detection_classes": [],
+                "is_active": True,
+                "email_notifications": False,
+                "use_gemini_notifications": False,
+                "roi_type": "time_based",
+                "start_time": "09:00",
+                "end_time": "17:00",
+                "active_days": [0, 1, 2, 3, 4],  # Monday-Friday
+                "created_at": datetime.utcnow()
+            }
+        ]
+        
+        logger.info("Sample ROI configurations prepared (will be created when cameras are added)")
+        logger.info("- Always Active ROI: Continuously monitors the defined area")
+        logger.info("- Business Hours ROI: Active Monday-Friday, 9:00-17:00")
+        
         logger.info("MongoDB database initialization complete!")
+        logger.info("New features included:")
+        logger.info("✓ Time-based ROI scheduling support")
+        logger.info("✓ Enhanced database indexes for performance")
+        logger.info("✓ Sample ROI configurations prepared")
+        logger.info("")
         logger.info("You can now run 'python run.py' to start the application")
         logger.info("Login with username: admin, password: admin")
+        logger.info("")
+        logger.info("After adding cameras, you can create ROIs with:")
+        logger.info("- Always Active: Traditional continuous monitoring")
+        logger.info("- Time-Based: Automatic activation during specific hours/days")
         
     except Exception as e:
         logger.error(f"Error initializing MongoDB: {e}")

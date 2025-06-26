@@ -1737,3 +1737,68 @@ a {
     50% { transform: scale(1.02); opacity: 0.8; }
     100% { transform: scale(1); opacity: 1; }
 }
+
+/* ROI Time-based Schedule Styling */
+#timeScheduleSettings {
+    border-radius: 0.5rem;
+    background: rgba(var(--color-info-rgb), 0.05);
+    border: 1px solid rgba(var(--color-info-rgb), 0.2);
+}
+
+#timeScheduleSettings h6 {
+    color: var(--color-info);
+    margin-bottom: 1rem;
+}
+
+#timeScheduleSettings .form-control {
+    border-radius: 0.375rem;
+    border: 1px solid rgba(var(--color-info-rgb), 0.3);
+}
+
+#timeScheduleSettings .form-control:focus {
+    border-color: var(--color-info);
+    box-shadow: 0 0 0 0.2rem rgba(var(--color-info-rgb), 0.25);
+}
+
+#timeScheduleSettings .form-check-input:checked {
+    background-color: var(--color-info);
+    border-color: var(--color-info);
+}
+
+/* ROI Type Radio Styling */
+input[name="roiType"] {
+    margin-right: 0.5rem;
+}
+
+input[name="roiType"]:checked + label {
+    color: var(--color-primary);
+    font-weight: 600;
+}
+
+/* ROI List Item Badges */
+.list-group-item .badge.bg-info {
+    background-color: var(--color-info) !important;
+}
+
+.list-group-item .badge.bg-primary {
+    background-color: var(--color-primary) !important;
+}
+
+.list-group-item .badge.bg-success {
+    background-color: var(--color-success) !important;
+}
+
+.list-group-item .badge.bg-secondary {
+    background-color: #6c757d !important;
+}
+
+/* Time schedule form styling */
+.row.mb-3 .col-6 input[type="time"] {
+    font-family: monospace;
+    font-size: 0.9rem;
+}
+
+/* Days of week grid */
+#timeScheduleSettings .row .col-6 .form-check {
+    margin-bottom: 0.25rem;
+}

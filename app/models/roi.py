@@ -18,6 +18,11 @@ class ROI:
         self.is_active = roi_data.get('is_active', True)
         self.email_notifications = roi_data.get('email_notifications', False)
         self.use_gemini_notifications = roi_data.get('use_gemini_notifications', False)
+        # Time-based activation fields
+        self.roi_type = roi_data.get('roi_type', 'always_active')  # 'always_active' or 'time_based'
+        self.start_time = roi_data.get('start_time')  # Time when ROI becomes active (HH:MM format)
+        self.end_time = roi_data.get('end_time')  # Time when ROI becomes inactive (HH:MM format)
+        self.active_days = roi_data.get('active_days', [0, 1, 2, 3, 4, 5, 6])  # Days of week (0=Monday, 6=Sunday)
         self.created_at = roi_data.get('created_at', datetime.utcnow())
     
     def __repr__(self):
@@ -62,7 +67,9 @@ class ROI:
             return []
     
     @classmethod
-    def create(cls, camera_id, name, coordinates, detection_classes=None, is_active=True, email_notifications=False, use_gemini_notifications=False):
+    def create(cls, camera_id, name, coordinates, detection_classes=None, is_active=True, 
+               email_notifications=False, use_gemini_notifications=False, roi_type='always_active',
+               start_time=None, end_time=None, active_days=None):
         """Create a new ROI"""
         try:
             # Ensure coordinates is properly formatted
@@ -79,6 +86,10 @@ class ROI:
                 except:
                     detection_classes = []
             
+            # Set default active_days if not provided
+            if active_days is None:
+                active_days = [0, 1, 2, 3, 4, 5, 6]  # All days by default
+            
             roi_data = {
                 'camera_id': str(camera_id),
                 'name': name,
@@ -87,6 +98,10 @@ class ROI:
                 'is_active': is_active,
                 'email_notifications': email_notifications,
                 'use_gemini_notifications': use_gemini_notifications,
+                'roi_type': roi_type,
+                'start_time': start_time,
+                'end_time': end_time,
+                'active_days': active_days,
                 'created_at': datetime.utcnow()
             }
             
@@ -109,7 +124,11 @@ class ROI:
                 'detection_classes': self.detection_classes,
                 'is_active': self.is_active,
                 'email_notifications': self.email_notifications,
-                'use_gemini_notifications': self.use_gemini_notifications
+                'use_gemini_notifications': self.use_gemini_notifications,
+                'roi_type': self.roi_type,
+                'start_time': self.start_time,
+                'end_time': self.end_time,
+                'active_days': self.active_days
             }}
         )
     
@@ -120,6 +139,37 @@ class ROI:
         
         # Delete the ROI
         db.regions_of_interest.delete_one({'_id': self._id})
+
+    def is_currently_active(self):
+        """Check if ROI should be active based on current time and schedule"""
+        if self.roi_type == 'always_active':
+            return self.is_active
+        
+        if self.roi_type == 'time_based':
+            if not self.is_active:
+                return False
+            
+            now = datetime.now()
+            current_weekday = now.weekday()  # 0=Monday, 6=Sunday
+            current_time = now.strftime('%H:%M')
+            
+            # Check if current day is in active days
+            if current_weekday not in self.active_days:
+                return False
+            
+            # Check if current time is within the active time range
+            if self.start_time and self.end_time:
+                if self.start_time <= self.end_time:
+                    # Same day range (e.g., 09:00 to 17:00)
+                    return self.start_time <= current_time <= self.end_time
+                else:
+                    # Overnight range (e.g., 22:00 to 06:00)
+                    return current_time >= self.start_time or current_time <= self.end_time
+            
+            # If no time range specified for time_based ROI, default to active
+            return True
+        
+        return self.is_active
     
     def get_detections(self):
         """Get all detections for this ROI"""
@@ -173,5 +223,10 @@ class ROI:
             'detection_classes': detection_classes,
             'email_notifications': self.email_notifications,
             'use_gemini_notifications': self.use_gemini_notifications,
+            'roi_type': self.roi_type,
+            'start_time': self.start_time,
+            'end_time': self.end_time,
+            'active_days': self.active_days,
+            'currently_active': self.is_currently_active(),
             'created_at': self.created_at.isoformat() if isinstance(self.created_at, datetime) else self.created_at
         }

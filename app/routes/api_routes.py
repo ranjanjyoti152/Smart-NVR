@@ -329,7 +329,12 @@ def create_camera_roi(camera_id):
             coordinates=data['coordinates'],  # Pass as-is, ROI.create handles conversion
             detection_classes=data.get('detection_classes', []),  # Pass as-is
             is_active=data.get('is_active', True),
-            email_notifications=data.get('email_notifications', False)
+            email_notifications=data.get('email_notifications', False),
+            use_gemini_notifications=data.get('use_gemini_notifications', False),
+            roi_type=data.get('roi_type', 'always_active'),
+            start_time=data.get('start_time'),
+            end_time=data.get('end_time'),
+            active_days=data.get('active_days', [0, 1, 2, 3, 4, 5, 6])
         )
         
         # Now try to reload ROIs for the camera
@@ -386,6 +391,16 @@ def update_camera_roi(camera_id, roi_id):
         roi.is_active = data['is_active']
     if 'email_notifications' in data:
         roi.email_notifications = data['email_notifications']
+    if 'use_gemini_notifications' in data:
+        roi.use_gemini_notifications = data['use_gemini_notifications']
+    if 'roi_type' in data:
+        roi.roi_type = data['roi_type']
+    if 'start_time' in data:
+        roi.start_time = data['start_time']
+    if 'end_time' in data:
+        roi.end_time = data['end_time']
+    if 'active_days' in data:
+        roi.active_days = data['active_days']
     
     # Save the updated ROI
     roi.save()

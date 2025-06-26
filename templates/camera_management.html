@@ -280,6 +280,86 @@
                                 </div>
                             </div>
                             
+                            <!-- ROI Type Selection -->
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Region Type</label>
+                                <div class="form-check form-switch mb-2">
+                                    <input class="form-check-input" type="radio" id="roiTypeAlways" name="roiType" value="always_active" checked>
+                                    <label class="form-check-label" for="roiTypeAlways">
+                                        <i class="fas fa-infinity me-1"></i>Always Active
+                                    </label>
+                                </div>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="radio" id="roiTypeScheduled" name="roiType" value="time_based">
+                                    <label class="form-check-label" for="roiTypeScheduled">
+                                        <i class="fas fa-clock me-1"></i>Time-Based Schedule
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <!-- Time Schedule Settings (shown only for time-based ROIs) -->
+                            <div id="timeScheduleSettings" class="mb-3" style="display: none;">
+                                <div class="card border-0 bg-light p-3">
+                                    <h6 class="mb-3"><i class="fas fa-calendar-clock me-2"></i>Schedule Settings</h6>
+                                    
+                                    <!-- Time Range -->
+                                    <div class="row mb-3">
+                                        <div class="col-6">
+                                            <label for="startTime" class="form-label">Start Time</label>
+                                            <input type="time" class="form-control" id="startTime">
+                                        </div>
+                                        <div class="col-6">
+                                            <label for="endTime" class="form-label">End Time</label>
+                                            <input type="time" class="form-control" id="endTime">
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Active Days -->
+                                    <div class="mb-2">
+                                        <label class="form-label">Active Days</label>
+                                        <div class="row">
+                                            <div class="col-6">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" id="dayMon" value="0" checked>
+                                                    <label class="form-check-label" for="dayMon">Monday</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" id="dayTue" value="1" checked>
+                                                    <label class="form-check-label" for="dayTue">Tuesday</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" id="dayWed" value="2" checked>
+                                                    <label class="form-check-label" for="dayWed">Wednesday</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" id="dayThu" value="3" checked>
+                                                    <label class="form-check-label" for="dayThu">Thursday</label>
+                                                </div>
+                                            </div>
+                                            <div class="col-6">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" id="dayFri" value="4" checked>
+                                                    <label class="form-check-label" for="dayFri">Friday</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" id="daySat" value="5" checked>
+                                                    <label class="form-check-label" for="daySat">Saturday</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" id="daySun" value="6" checked>
+                                                    <label class="form-check-label" for="daySun">Sunday</label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="form-text small">
+                                        <i class="fas fa-info-circle me-1"></i>
+                                        This region will only be active during the specified time and days.
+                                    </div>
+                                </div>
+                            </div>
+                            
                             <!-- Detection Classes -->
                             <div class="mb-3">
                                 <label for="detectionClasses" class="form-label fw-bold">Object Classes to Detect</label>
@@ -807,6 +887,25 @@ function setupROICanvas(cameraId) {
         // Get Gemini notifications setting
         const useGeminiNotifications = document.getElementById('useGeminiNotifications').checked;
         
+        // Get ROI type
+        const roiType = document.querySelector('input[name="roiType"]:checked').value;
+        
+        // Get time schedule settings
+        let startTime = null;
+        let endTime = null;
+        let activeDays = [0, 1, 2, 3, 4, 5, 6]; // Default to all days
+        
+        if (roiType === 'time_based') {
+            startTime = document.getElementById('startTime').value || null;
+            endTime = document.getElementById('endTime').value || null;
+            
+            // Get selected active days
+            activeDays = [];
+            document.querySelectorAll('input[id^="day"]:checked').forEach(checkbox => {
+                activeDays.push(parseInt(checkbox.value));
+            });
+        }
+        
         // Normalize points to percentages for responsive display
         const normalizedPoints = points.map(point => [
             point[0] / drawCanvas.width,
@@ -826,7 +925,11 @@ function setupROICanvas(cameraId) {
             detection_classes: selectedClasses,
             is_active: true,
             email_notifications: emailNotifications,
-            use_gemini_notifications: useGeminiNotifications
+            use_gemini_notifications: useGeminiNotifications,
+            roi_type: roiType,
+            start_time: startTime,
+            end_time: endTime,
+            active_days: activeDays
         };
         
         console.log("ROI Data to save:", roiData);
@@ -865,6 +968,18 @@ function setupROICanvas(cameraId) {
                 detectionClassesSelect.selectedIndex = -1;
                 document.getElementById('emailNotifications').checked = false;
                 
+                // Reset ROI type to always active
+                document.getElementById('roiTypeAlways').checked = true;
+                document.getElementById('roiTypeScheduled').checked = false;
+                document.getElementById('timeScheduleSettings').style.display = 'none';
+                
+                // Reset time schedule fields
+                document.getElementById('startTime').value = '';
+                document.getElementById('endTime').value = '';
+                document.querySelectorAll('input[id^="day"]').forEach(checkbox => {
+                    checkbox.checked = true;
+                });
+                
                 // Show success message
                 alert('Region of Interest saved successfully!');
                 
@@ -888,6 +1003,28 @@ function setupROICanvas(cameraId) {
             saveROIBtn.innerHTML = 'Save Region';
         });
     });
+    
+    // Add ROI type switching functionality
+    const roiTypeRadios = document.querySelectorAll('input[name="roiType"]');
+    const timeScheduleSettings = document.getElementById('timeScheduleSettings');
+    
+    roiTypeRadios.forEach(radio => {
+        radio.addEventListener('change', function() {
+            if (this.value === 'time_based') {
+                timeScheduleSettings.style.display = 'block';
+            } else {
+                timeScheduleSettings.style.display = 'none';
+            }
+        });
+    });
+    
+    // Initialize the time schedule visibility
+    const checkedType = document.querySelector('input[name="roiType"]:checked');
+    if (checkedType && checkedType.value === 'time_based') {
+        timeScheduleSettings.style.display = 'block';
+    } else {
+        timeScheduleSettings.style.display = 'none';
+    }
 }
 
 // Load existing ROIs for a camera
@@ -932,9 +1069,33 @@ function loadROIs(cameraId) {
                         emailBadge = '<span class="badge bg-success ms-2"><i class="fas fa-envelope"></i></span>';
                     }
                     
+                    // Add ROI type badge
+                    let typeBadge = '';
+                    let scheduleInfo = '';
+                    
+                    if (roi.roi_type === 'time_based') {
+                        typeBadge = '<span class="badge bg-info ms-2"><i class="fas fa-clock"></i></span>';
+                        
+                        // Add schedule info if available
+                        if (roi.start_time && roi.end_time) {
+                            scheduleInfo = `<small class="text-muted d-block">${roi.start_time} - ${roi.end_time}</small>`;
+                        }
+                        
+                        // Show current status
+                        const statusBadge = roi.currently_active ? 
+                            '<span class="badge bg-success ms-1">Active</span>' : 
+                            '<span class="badge bg-secondary ms-1">Inactive</span>';
+                        typeBadge += statusBadge;
+                    } else {
+                        typeBadge = '<span class="badge bg-primary ms-2"><i class="fas fa-infinity"></i></span>';
+                    }
+                    
                     // Create the ROI item content
                     roiItem.innerHTML = `
-                        <div>${roi.name} ${emailBadge}</div>
+                        <div>
+                            <div>${roi.name} ${emailBadge} ${typeBadge}</div>
+                            ${scheduleInfo}
+                        </div>
                         <button class="btn btn-sm btn-danger delete-roi" data-roi-id="${roi.id}">
                             <i class="fas fa-trash"></i>
                         </button>

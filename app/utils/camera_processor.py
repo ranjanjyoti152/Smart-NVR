@@ -163,20 +163,28 @@ class CameraProcessor:
         """Load detection regions (ROIs) for this camera"""
         from app import db
         from bson.objectid import ObjectId
+        from app.models.roi import ROI
 
         regions = []
-        # Use MongoDB style query instead of SQLAlchemy
-        rois_data = db.regions_of_interest.find({'camera_id': str(self.camera.id), 'is_active': True})
+        # Load all ROIs for this camera (not just active ones)
+        rois_data = db.regions_of_interest.find({'camera_id': str(self.camera.id)})
 
         for roi_data in rois_data:
             try:
+                # Create ROI object to check if it should be currently active
+                roi = ROI(roi_data)
+                
+                # Only include if currently active based on time schedule
+                if not roi.is_currently_active():
+                    continue
+                
                 # Parse ROI coordinates and allowed classes
                 import json
                 coords = json.loads(roi_data['coordinates']) if isinstance(roi_data['coordinates'], str) else roi_data['coordinates']
                 classes = json.loads(roi_data['detection_classes']) if roi_data.get('detection_classes') and isinstance(roi_data['detection_classes'], str) else None
 
                 # Log the loaded ROI for debugging
-                logger.info(f"Loading ROI {roi_data['_id']}: {roi_data['name']}, classes: {classes}, email_notifications: {roi_data.get('email_notifications', False)}")
+                logger.info(f"Loading ROI {roi_data['_id']}: {roi_data['name']}, type: {roi.roi_type}, classes: {classes}, email_notifications: {roi_data.get('email_notifications', False)}")
                 logger.info(f"ROI coordinates: {coords}")
 
                 if len(coords) >= 4:  # Need at least 3 points for a polygon
@@ -188,7 +196,8 @@ class CameraProcessor:
                         'normalized_coords': True,  # Flag to indicate coordinates are normalized
                         'polygon': Polygon(coords),
                         'classes': classes,
-                        'email_notifications': roi_data.get('email_notifications', False)
+                        'email_notifications': roi_data.get('email_notifications', False),
+                        'roi_type': roi.roi_type
                     })
                     logger.info(f"Successfully created ROI polygon for {roi_data['name']}")
             except Exception as e:
@@ -196,7 +205,11 @@ class CameraProcessor:
                 import traceback
                 logger.error(traceback.format_exc())
 
-        logger.info(f"Loaded {len(regions)} ROIs for camera {self.camera.id}")
+        logger.info(f"Loaded {len(regions)} currently active ROIs for camera {self.camera.id}")
+        
+        # Store the last reload time to check for time-based ROI updates
+        self.last_roi_reload = datetime.now()
+        
         return regions
 
     def reload_rois(self):
@@ -204,6 +217,18 @@ class CameraProcessor:
         logger.info(f"Reloading ROIs for camera {self.camera.id}")
         self.detection_regions = self._load_detection_regions()
         return len(self.detection_regions)
+    
+    def _should_reload_rois(self):
+        """Check if ROIs should be reloaded due to time-based schedule changes"""
+        if not hasattr(self, 'last_roi_reload'):
+            return True
+        
+        # Check every minute for time-based ROI changes
+        time_since_reload = datetime.now() - self.last_roi_reload
+        if time_since_reload.total_seconds() >= 60:  # Check every minute
+            return True
+        
+        return False
 
     def start(self):
         """Start processing camera stream"""
@@ -491,6 +516,10 @@ class CameraProcessor:
 
         while self.running:
             try:
+                # Check if ROIs need to be reloaded for time-based scheduling
+                if self._should_reload_rois():
+                    self.reload_rois()
+                
                 ret, frame = self.cap.read()
 
                 if not ret:

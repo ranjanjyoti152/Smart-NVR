@@ -9,7 +9,7 @@ A powerful Network Video Recorder (NVR) application that leverages GPU accelerat
 - **GPU-Accelerated AI Detection**: Real-time object detection using YOLOv5, v8, v9, v10 models with CUDA acceleration
 - **Smart Recording Management**: Automatic recording based on motion or specific AI detection events
 - **Live Camera Dashboard**: Monitor multiple RTSP/IP cameras simultaneously with object detection overlays
-- **Regions of Interest (ROI)**: Define specific areas for detection to reduce false positives
+- **Regions of Interest (ROI)**: Define specific areas for detection with time-based scheduling support
 - **Advanced Playback**: Timeline-based video playback with object detection markers and filtering
 - **Gemini AI Integration**: Human-friendly, context-aware descriptions for detection events using Google's Gemini AI
 - **System Resource Monitoring**: Track CPU, RAM, GPU, and disk usage in real-time
@@ -149,6 +149,8 @@ docker-compose up -d
 4. Configure Regions of Interest (ROI) to focus detection on specific areas:
    - Click "Manage ROI" on any camera card
    - Draw regions using the interface
+   - Choose between "Always Active" or "Time-Based Schedule" ROI types
+   - Configure time schedules and active days for time-based ROIs
    - Select specific object classes for detection in each region
    - Enable email notifications if desired
 
