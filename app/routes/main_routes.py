@@ -340,6 +340,17 @@ def settings():
                     settings['detection']['gemini_api_key'] = ''
                 if 'gemini_model' not in settings['detection']:
                     settings['detection']['gemini_model'] = 'gemini-1.5-flash'
+                    
+            # Get available AI models
+            ai_models = AIModel.get_all()
+            
+            # Validate that the current default model exists
+            if settings.get('detection', {}).get('default_model'):
+                current_model = settings['detection']['default_model']
+                model_exists = any(model.name == current_model for model in ai_models)
+                if not model_exists and ai_models:
+                    # Update to the first available model if current doesn't exist
+                    settings['detection']['default_model'] = ai_models[0].name
         except Exception as e:
             print(f"Error loading settings: {str(e)}")
             # Default settings if JSON is invalid
@@ -355,6 +366,19 @@ def settings():
 
 def create_default_settings():
     """Create default settings dictionary"""
+    # Get the default model from the database, fallback to a hardcoded value if none exists
+    default_model = AIModel.get_default_model()
+    if not default_model:
+        # Try to get the first available model
+        all_models = AIModel.get_all()
+        if all_models:
+            default_model_name = all_models[0].name
+        else:
+            # Ultimate fallback - this should rarely happen after initialization
+            default_model_name = 'yolov5s'
+    else:
+        default_model_name = default_model.name
+    
     return {
         'recording': {
             'retention_days': 30,
@@ -376,7 +400,7 @@ def create_default_settings():
         },
         'detection': {
             'default_confidence': 0.45,
-            'default_model': 'yolov5s',
+            'default_model': default_model_name,
             'save_images': True,
             'image_retention_days': 1,
             'enable_gemini_ai': False,

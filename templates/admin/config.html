@@ -94,11 +94,37 @@
                             <div class="col-md-6">
                                 <label for="default_model" class="form-label">Default AI Model</label>
                                 <select class="form-select" id="default_model" name="default_model">
-                                    <option value="yolov5s" {% if config.detection.default_model == 'yolov5s' %}selected{% endif %}>YOLOv5s (Small)</option>
-                                    <option value="yolov5m" {% if config.detection.default_model == 'yolov5m' %}selected{% endif %}>YOLOv5m (Medium)</option>
-                                    <option value="yolov5l" {% if config.detection.default_model == 'yolov5l' %}selected{% endif %}>YOLOv5l (Large)</option>
+                                    <!-- Custom trained models -->
+                                    {% if ai_models|selectattr("is_custom")|list %}
+                                        <optgroup label="Custom Trained Models">
+                                        {% for model in ai_models|selectattr("is_custom")|list %}
+                                            <option value="{{ model.name }}" {% if config.detection.default_model == model.name %}selected{% endif %}>
+                                                {{ model.name }}{% if model.description %} - {{ model.description }}{% endif %}
+                                            </option>
+                                        {% endfor %}
+                                        </optgroup>
+                                    {% endif %}
+                                    
+                                    <!-- Pre-trained models -->
+                                    {% if ai_models|rejectattr("is_custom")|list %}
+                                        <optgroup label="Pre-trained Models">
+                                        {% for model in ai_models|rejectattr("is_custom")|list %}
+                                            <option value="{{ model.name }}" {% if config.detection.default_model == model.name %}selected{% endif %}>
+                                                {{ model.name }}{% if model.description %} - {{ model.description }}{% endif %}
+                                            </option>
+                                        {% endfor %}
+                                        </optgroup>
+                                    {% endif %}
+                                    
+                                    <!-- Message if no models are available -->
+                                    {% if not ai_models %}
+                                        <option value="" disabled>No AI models available - Please add models first</option>
+                                    {% endif %}
                                 </select>
                                 <div class="form-text">Default model for new cameras</div>
+                                <a href="{{ url_for('admin.manage_models') }}" class="btn btn-sm btn-outline-secondary mt-2">
+                                    <i class="fas fa-cog"></i> Manage Models
+                                </a>
                             </div>
                         </div>
                     </div>

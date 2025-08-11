@@ -584,5 +584,8 @@ def config():
     # Get system stats for display
     system_stats = get_system_stats()
     
+    # Get available AI models
+    ai_models = AIModel.get_all()
+    
     return render_template('admin/config.html', title='System Configuration', 
-                          config=config, system_stats=system_stats)
+                          config=config, system_stats=system_stats, ai_models=ai_models)

@@ -1684,6 +1684,164 @@ def test_gemini():
             'error': f'Error: {str(e)}'
         }), 500
 
+@api_bp.route('/gemini_models', methods=['GET'])
+@login_required
+def get_gemini_models():
+    """Fetch available Gemini models from Google's API"""
+    import requests
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Get API key from current settings
+        from app.routes.main_routes import load_settings
+        settings = load_settings()
+        api_key = settings.get('detection', {}).get('gemini_api_key', '')
+        
+        if not api_key:
+            return jsonify({
+                'success': False,
+                'error': 'Gemini API key not configured',
+                'models': []
+            })
+        
+        # Fetch models from Google's API
+        url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+        
+        response = requests.get(url, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            available_models = []
+            
+            # Filter and format Gemini models
+            if 'models' in data:
+                for model in data['models']:
+                    model_name = model.get('name', '')
+                    display_name = model.get('displayName', '')
+                    
+                    # Only include Gemini models that support generateContent
+                    if 'gemini' in model_name.lower() and 'generateContent' in model.get('supportedGenerationMethods', []):
+                        # Extract model ID from full name (e.g., "models/gemini-pro" -> "gemini-pro")
+                        model_id = model_name.split('/')[-1] if '/' in model_name else model_name
+                        
+                        available_models.append({
+                            'id': model_id,
+                            'name': display_name or model_id,
+                            'description': model.get('description', ''),
+                            'version': model.get('version', ''),
+                            'inputTokenLimit': model.get('inputTokenLimit', 0),
+                            'outputTokenLimit': model.get('outputTokenLimit', 0)
+                        })
+            
+            # Sort models by name for consistent ordering
+            available_models.sort(key=lambda x: x['id'])
+            
+            # If no models found from API, return fallback models
+            if not available_models:
+                available_models = [
+                    {
+                        'id': 'gemini-1.5-flash',
+                        'name': 'Gemini 1.5 Flash',
+                        'description': 'Fast and efficient model for most tasks',
+                        'version': '1.5',
+                        'inputTokenLimit': 1000000,
+                        'outputTokenLimit': 8192
+                    },
+                    {
+                        'id': 'gemini-1.5-pro',
+                        'name': 'Gemini 1.5 Pro',
+                        'description': 'Advanced model with superior performance',
+                        'version': '1.5',
+                        'inputTokenLimit': 2000000,
+                        'outputTokenLimit': 8192
+                    },
+                    {
+                        'id': 'gemini-pro',
+                        'name': 'Gemini Pro',
+                        'description': 'Original Gemini Pro model',
+                        'version': '1.0',
+                        'inputTokenLimit': 30720,
+                        'outputTokenLimit': 2048
+                    }
+                ]
+            
+            return jsonify({
+                'success': True,
+                'models': available_models
+            })
+        else:
+            logger.warning(f"Failed to fetch Gemini models: {response.status_code} - {response.text}")
+            # Return fallback models if API fails
+            return jsonify({
+                'success': True,
+                'models': [
+                    {
+                        'id': 'gemini-1.5-flash',
+                        'name': 'Gemini 1.5 Flash',
+                        'description': 'Fast and efficient model for most tasks',
+                        'version': '1.5',
+                        'inputTokenLimit': 1000000,
+                        'outputTokenLimit': 8192
+                    },
+                    {
+                        'id': 'gemini-1.5-pro',
+                        'name': 'Gemini 1.5 Pro',
+                        'description': 'Advanced model with superior performance',
+                        'version': '1.5',
+                        'inputTokenLimit': 2000000,
+                        'outputTokenLimit': 8192
+                    },
+                    {
+                        'id': 'gemini-pro',
+                        'name': 'Gemini Pro',
+                        'description': 'Original Gemini Pro model',
+                        'version': '1.0',
+                        'inputTokenLimit': 30720,
+                        'outputTokenLimit': 2048
+                    }
+                ]
+            })
+            
+    except requests.exceptions.Timeout:
+        logger.warning("Timeout fetching Gemini models, using fallback")
+        return jsonify({
+            'success': True,
+            'models': [
+                {
+                    'id': 'gemini-1.5-flash',
+                    'name': 'Gemini 1.5 Flash',
+                    'description': 'Fast and efficient model for most tasks',
+                    'version': '1.5',
+                    'inputTokenLimit': 1000000,
+                    'outputTokenLimit': 8192
+                },
+                {
+                    'id': 'gemini-1.5-pro',
+                    'name': 'Gemini 1.5 Pro',
+                    'description': 'Advanced model with superior performance',
+                    'version': '1.5',
+                    'inputTokenLimit': 2000000,
+                    'outputTokenLimit': 8192
+                },
+                {
+                    'id': 'gemini-pro',
+                    'name': 'Gemini Pro',
+                    'description': 'Original Gemini Pro model',
+                    'version': '1.0',
+                    'inputTokenLimit': 30720,
+                    'outputTokenLimit': 2048
+                }
+            ]
+        })
+    except Exception as e:
+        logger.error(f"Error fetching Gemini models: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Error fetching models: {str(e)}',
+            'models': []
+        }), 500
+
 # --- Web Hooks & External API Endpoints ---
 
 @api_bp.route('/hooks/detection', methods=['POST'])

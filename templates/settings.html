@@ -80,20 +80,20 @@
                                 {% endif %}
                                 
                                 <!-- Pre-trained models -->
-                                <optgroup label="Pre-trained Models">
-                                {% for model in ai_models|rejectattr("is_custom")|list %}
-                                    <option value="{{ model.name }}" {% if settings.detection.default_model == model.name %}selected{% endif %}>
-                                        {{ model.name }}{% if model.description %} - {{ model.description }}{% endif %}
-                                    </option>
-                                {% endfor %}
-                                
-                                <!-- Fallback options if no models are in database -->
-                                {% if not ai_models %}
-                                    <option value="yolov5s" {% if settings.detection.default_model == 'yolov5s' %}selected{% endif %}>YOLOv5s (Small)</option>
-                                    <option value="yolov5m" {% if settings.detection.default_model == 'yolov5m' %}selected{% endif %}>YOLOv5m (Medium)</option>
-                                    <option value="yolov5l" {% if settings.detection.default_model == 'yolov5l' %}selected{% endif %}>YOLOv5l (Large)</option>
+                                {% if ai_models|rejectattr("is_custom")|list %}
+                                    <optgroup label="Pre-trained Models">
+                                    {% for model in ai_models|rejectattr("is_custom")|list %}
+                                        <option value="{{ model.name }}" {% if settings.detection.default_model == model.name %}selected{% endif %}>
+                                            {{ model.name }}{% if model.description %} - {{ model.description }}{% endif %}
+                                        </option>
+                                    {% endfor %}
+                                    </optgroup>
                                 {% endif %}
-                                </optgroup>
+                                
+                                <!-- Message if no models are available -->
+                                {% if not ai_models %}
+                                    <option value="" disabled>No AI models available - Please add models in Admin > AI Models</option>
+                                {% endif %}
                             </select>
                             <div class="form-text">Default AI model for object detection</div>
                             <a href="{{ url_for('admin.manage_models') }}" class="btn btn-sm btn-outline-secondary mt-2">
@@ -157,17 +157,17 @@
                                 </div>
                                 <div class="col-md-4">
                                     <label for="gemini_model" class="form-label">Gemini Model</label>
-                                    <select class="form-select" id="gemini_model" name="gemini_model">
-                                        <option value="gemini-1.5-flash" {% if settings.detection.gemini_model == 'gemini-1.5-flash' %}selected{% endif %}>
-                                            Gemini 1.5 Flash
-                                        </option>
-                                        <option value="gemini-1.5-pro" {% if settings.detection.gemini_model == 'gemini-1.5-pro' %}selected{% endif %}>
-                                            Gemini 1.5 Pro
-                                        </option>
-                                        <option value="gemini-pro" {% if settings.detection.gemini_model == 'gemini-pro' %}selected{% endif %}>
-                                            Gemini Pro
-                                        </option>
-                                    </select>
+                                    <div class="input-group">
+                                        <select class="form-select" id="gemini_model" name="gemini_model">
+                                            <option value="">Loading models...</option>
+                                        </select>
+                                        <button class="btn btn-outline-secondary" type="button" id="refreshGeminiModels" title="Refresh model list">
+                                            <i class="fas fa-sync-alt"></i>
+                                        </button>
+                                    </div>
+                                    <div class="form-text">
+                                        <span id="gemini_model_info">Select a Gemini model for AI descriptions</span>
+                                    </div>
                                 </div>
                             </div>
 
@@ -334,6 +334,133 @@
 
 {% block scripts %}
 <script>
+    // Store current selected model for restoration after loading
+    const currentGeminiModel = "{{ settings.detection.gemini_model|default('gemini-1.5-flash') }}";
+    
+    // Load Gemini models dynamically
+    function loadGeminiModels() {
+        const modelSelect = document.getElementById('gemini_model');
+        const modelInfo = document.getElementById('gemini_model_info');
+        
+        fetch('/api/gemini_models')
+            .then(response => response.json())
+            .then(data => {
+                // Clear loading option
+                modelSelect.innerHTML = '';
+                
+                if (data.success && data.models && data.models.length > 0) {
+                    data.models.forEach(model => {
+                        const option = document.createElement('option');
+                        option.value = model.id;
+                        option.textContent = model.name;
+                        option.title = model.description || '';
+                        
+                        // Set selected if this is the current model
+                        if (model.id === currentGeminiModel) {
+                            option.selected = true;
+                            // Update info text with model details
+                            updateModelInfo(model);
+                        }
+                        
+                        modelSelect.appendChild(option);
+                    });
+                    
+                    // If no model was selected, select the first one
+                    if (!modelSelect.value && data.models.length > 0) {
+                        modelSelect.value = data.models[0].id;
+                        updateModelInfo(data.models[0]);
+                    }
+                } else {
+                    // Fallback to default options if API fails
+                    const fallbackModels = [
+                        { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', description: 'Fast and efficient model' },
+                        { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', description: 'Advanced model with superior performance' },
+                        { id: 'gemini-pro', name: 'Gemini Pro', description: 'Original Gemini Pro model' }
+                    ];
+                    
+                    fallbackModels.forEach(model => {
+                        const option = document.createElement('option');
+                        option.value = model.id;
+                        option.textContent = model.name;
+                        option.title = model.description;
+                        if (model.id === currentGeminiModel) {
+                            option.selected = true;
+                        }
+                        modelSelect.appendChild(option);
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Error loading Gemini models:', error);
+                
+                // Fallback to default options on error
+                modelSelect.innerHTML = '';
+                const fallbackModels = [
+                    { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
+                    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
+                    { id: 'gemini-pro', name: 'Gemini Pro' }
+                ];
+                
+                fallbackModels.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model.id;
+                    option.textContent = model.name;
+                    if (model.id === currentGeminiModel) {
+                        option.selected = true;
+                    }
+                    modelSelect.appendChild(option);
+                });
+                
+                modelInfo.textContent = 'Error loading models - using defaults';
+            });
+    }
+    
+    // Update model info text
+    function updateModelInfo(model) {
+        const modelInfo = document.getElementById('gemini_model_info');
+        let infoText = model.description || 'Select a Gemini model for AI descriptions';
+        
+        if (model.inputTokenLimit) {
+            infoText += ` (Input: ${(model.inputTokenLimit / 1000).toFixed(0)}K tokens)`;
+        }
+        
+        modelInfo.textContent = infoText;
+    }
+    
+    // Handle model selection change
+    document.getElementById('gemini_model').addEventListener('change', function() {
+        const selectedValue = this.value;
+        const selectedOption = this.options[this.selectedIndex];
+        
+        if (selectedOption && selectedOption.title) {
+            const modelInfo = document.getElementById('gemini_model_info');
+            modelInfo.textContent = selectedOption.title;
+        }
+    });
+    
+    // Load models when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        loadGeminiModels();
+    });
+    
+    // Handle refresh button
+    document.getElementById('refreshGeminiModels').addEventListener('click', function() {
+        const btn = this;
+        const icon = btn.querySelector('i');
+        
+        // Add loading state
+        btn.disabled = true;
+        icon.classList.add('fa-spin');
+        
+        loadGeminiModels();
+        
+        // Remove loading state after a delay
+        setTimeout(() => {
+            btn.disabled = false;
+            icon.classList.remove('fa-spin');
+        }, 1000);
+    });
+
     // Toggle email settings visibility based on checkbox
     document.getElementById('email_enabled').addEventListener('change', function() {
         const emailSettings = document.getElementById('emailSettings');
