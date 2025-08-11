@@ -38,17 +38,19 @@ def get_color_for_class(class_name):
 class CameraProcessor:
     """Process RTSP camera streams with YOLOv5 object detection"""
 
-    def __init__(self, camera, model_path=None, confidence_threshold=None):
+    def __init__(self, camera, model_path=None, confidence_threshold=None, device: str | None = None):
         """Initialize camera processor
 
         Args:
             camera: Camera object from database
             model_path: Path to YOLOv5 model file (if None, use camera's model)
             confidence_threshold: Detection confidence threshold (if None, use camera's threshold)
+            device: Optional explicit torch device string (e.g. 'cuda:0'); if None, auto-select
         """
         self.camera = camera
         self.model_path = model_path or self._get_model_path()
         self.confidence_threshold = confidence_threshold or camera.confidence_threshold or 0.45
+        self.device = device  # Preferred compute device for this camera (e.g., 'cuda:0')
         self.cap = None
         self.model = None
         self.running = False
@@ -365,10 +367,24 @@ class CameraProcessor:
             # It's typically set during inference, not on the model object directly like yolov5 hub
             # self.model.conf = self.confidence_threshold # This won't work for ultralytics YOLO
 
-            # Device selection is usually automatic with ultralytics, but can be specified
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
-            self.model.to(device) # Ensure model is on the correct device
-            logger.info(f"Using {device.upper()} for inference")
+            # Device selection: prefer explicitly assigned GPU if provided
+            if self.device is not None:
+                device = self.device
+            else:
+                # Fallback to a single auto-selected device
+                device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+            try:
+                self.model.to(device)  # Ensure model is on the correct device
+                self.device = str(device)
+                logger.info(f"Camera {self.camera.id} → using device {str(device).upper()} for inference")
+            except Exception as dev_err:
+                # Fallback to CPU on any device placement error
+                logger.warning(f"Failed to move model to device '{device}' for camera {self.camera.id}: {dev_err}. Falling back to CPU.")
+                device = 'cpu'
+                self.model.to(device)
+                self.device = 'cpu'
+                logger.info(f"Camera {self.camera.id} → using device CPU for inference")
 
             logger.info(f"Successfully initialized AI model")
         except Exception as e:
@@ -509,6 +525,10 @@ class CameraProcessor:
         with self.detection_lock:
             return self.current_detections.copy()
 
+    def get_device(self) -> str:
+        """Return the compute device currently used by this camera processor."""
+        return self.device or ('cuda' if torch.cuda.is_available() else 'cpu')
+
     def _process_frames(self):
         """Main processing loop for camera frames"""
         frame_count = 0
@@ -628,12 +648,33 @@ class CameraProcessor:
 
                 # Perform inference using model (handling both YOLOv5 and ultralytics YOLO API)
                 # YOLOv5 from torch.hub uses __call__, while ultralytics YOLO uses predict
-                if hasattr(self.model, 'predict'):
-                    # Ultralytics YOLO API
-                    results = self.model.predict(source=frame_to_process, conf=self.confidence_threshold, verbose=False)
-                else:
-                    # YOLOv5 torch.hub API
-                    results = self.model(frame_to_process, size=640, augment=False)
+                try:
+                    if hasattr(self.model, 'predict'):
+                        # Ultralytics YOLO API
+                        results = self.model.predict(source=frame_to_process, conf=self.confidence_threshold, verbose=False)
+                    else:
+                        # YOLOv5 torch.hub API
+                        results = self.model(frame_to_process, size=640, augment=False)
+                except RuntimeError as rt_err:
+                    # Graceful fallback on CUDA OOM: move model to CPU and retry once
+                    msg = str(rt_err).lower()
+                    if 'out of memory' in msg and ('cuda' in msg or 'cublas' in msg):
+                        try:
+                            logger.warning(f"CUDA OOM during inference on camera {self.camera.id}. Falling back to CPU for this camera.")
+                            self.model.to('cpu')
+                            self.device = 'cpu'
+                            if hasattr(self.model, 'predict'):
+                                results = self.model.predict(source=frame_to_process, conf=self.confidence_threshold, verbose=False)
+                            else:
+                                results = self.model(frame_to_process, size=640, augment=False)
+                        except Exception as cpu_fallback_err:
+                            logger.error(f"Inference failed after CPU fallback on camera {self.camera.id}: {cpu_fallback_err}")
+                            self.frame_queue.task_done()
+                            time.sleep(0.05)
+                            continue
+                    else:
+                        # Re-raise non-OOM runtime errors
+                        raise
 
                 # Process results (ultralytics results object is different)
                 detected_objects = []
@@ -1068,6 +1109,32 @@ class CameraManager:
         """Initialize camera manager"""
         self.cameras = {}  # Map camera_id to CameraProcessor
         self.lock = threading.Lock()
+        # Discover available GPUs once; use round-robin assignment across them
+        try:
+            gpu_count = torch.cuda.device_count() if torch.cuda.is_available() else 0
+        except Exception:
+            gpu_count = 0
+        self.available_gpus = [f"cuda:{i}" for i in range(gpu_count)] if gpu_count > 0 else []
+        self._next_gpu_idx = 0
+        if len(self.available_gpus) > 1:
+            logger.info(f"Multi-GPU detected: {len(self.available_gpus)} GPUs available → {self.available_gpus}")
+        elif len(self.available_gpus) == 1:
+            logger.info("Single GPU detected: cuda:0")
+        else:
+            logger.info("No GPU detected; using CPU for inference")
+
+    def _assign_device(self, camera_id) -> str | None:
+        """Assign a compute device for a camera using round-robin across GPUs.
+
+        Returns a torch device string like 'cuda:0' or None to auto-select later.
+        """
+        if not self.available_gpus:
+            return None  # CPU-only or let processor auto-select
+        # Round-robin across available GPUs
+        device = self.available_gpus[self._next_gpu_idx]
+        self._next_gpu_idx = (self._next_gpu_idx + 1) % len(self.available_gpus)
+        logger.info(f"Assigning camera {camera_id} to device {device}")
+        return device
 
     def get_camera_processor(self, camera_id):
         """Get camera processor by ID"""
@@ -1081,7 +1148,8 @@ class CameraManager:
                 self.stop_camera(camera.id)
 
             # Create new processor
-            processor = CameraProcessor(camera)
+            assigned_device = self._assign_device(camera.id)
+            processor = CameraProcessor(camera, device=assigned_device)
             if processor.start():
                 self.cameras[camera.id] = processor
                 return True

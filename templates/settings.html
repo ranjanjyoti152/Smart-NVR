@@ -568,7 +568,9 @@
             if (data.success) {
                 resultDiv.innerHTML = '<div class="alert alert-success">Gemini AI connection successful!</div>';
             } else {
-                resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+                const isTimeout = (data.error || '').toLowerCase().includes('timed out');
+                const hint = isTimeout ? '<div class="small text-muted mt-1">Tip: Verify Internet egress to generativelanguage.googleapis.com:443 (DNS, proxy, firewall), and try again.</div>' : '';
+                resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>${hint}`;
             }
         })
         .catch(error => {

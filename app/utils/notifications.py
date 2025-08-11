@@ -90,8 +90,8 @@ def generate_gemini_ai_description(detection_data, roi_data=None, camera_data=No
         logger.debug("Gemini AI is disabled, skipping enhanced description")
         return None
     
-    # Check for API key
-    api_key = config.get('gemini_api_key', '')
+    # Check for API key (UI setting or env var fallback)
+    api_key = config.get('gemini_api_key', '') or os.getenv('SMARTNVR_GEMINI_API_KEY', '')
     if not api_key:
         logger.warning("Gemini AI is enabled but no API key is configured")
         return None
@@ -148,23 +148,37 @@ def generate_gemini_ai_description(detection_data, roi_data=None, camera_data=No
             }
         }
         
-        # Make the API request
-        response = requests.post(url, headers=headers, json=data, timeout=5)
-        
-        if response.status_code == 200:
-            response_data = response.json()
-            # Extract the generated text from the response
-            if 'candidates' in response_data and response_data['candidates']:
-                generated_text = response_data['candidates'][0]['content']['parts'][0]['text']
-                # Clean up the text (remove quotes, trim whitespace)
-                generated_text = generated_text.strip().strip('"\'')
-                logger.info(f"Generated Gemini AI description: {generated_text}")
-                return generated_text
-            else:
-                logger.warning(f"Gemini API returned empty response: {response_data}")
-        else:
-            logger.warning(f"Gemini API request failed with status {response.status_code}: {response.text}")
-            
+        # Make the API request with a tiny retry/backoff for transient issues
+        timeouts = [5, 8]
+        for idx, t in enumerate(timeouts):
+            try:
+                response = requests.post(url, headers=headers, json=data, timeout=t)
+
+                if response.status_code == 200:
+                    response_data = response.json()
+                    if 'candidates' in response_data and response_data['candidates']:
+                        generated_text = response_data['candidates'][0]['content']['parts'][0]['text']
+                        generated_text = generated_text.strip().strip('"\'')
+                        logger.info(f"Generated Gemini AI description: {generated_text}")
+                        return generated_text
+                    else:
+                        logger.warning(f"Gemini API returned empty response: {response_data}")
+                        break
+                else:
+                    logger.warning(f"Gemini API request failed with status {response.status_code}: {response.text}")
+                    break
+
+            except requests.exceptions.Timeout:
+                logger.warning(f"Gemini description timeout on attempt {idx+1}/{len(timeouts)} after {t}s")
+                if idx < len(timeouts) - 1:
+                    time.sleep(0.5)
+                    continue
+                else:
+                    break
+            except requests.exceptions.RequestException as re:
+                logger.error(f"Gemini description request error: {re}")
+                break
+
     except Exception as e:
         logger.error(f"Error generating Gemini AI description: {str(e)}")
     

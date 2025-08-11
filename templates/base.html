@@ -163,36 +163,7 @@
     <script src="{{ url_for('static', filename='js/dark-mode-test.js') }}"></script>
     {% endif %}
     
-    <script>
-        // Initialize the dark mode toggle button icon after page load
-        document.addEventListener('DOMContentLoaded', function() {
-            const darkModeIcon = document.getElementById('dark-mode-icon');
-            if (localStorage.getItem('darkMode') === 'true') {
-                darkModeIcon.className = 'fas fa-sun';
-            } else {
-                darkModeIcon.className = 'fas fa-moon';
-            }
-            
-            // We will let the initSidebarToggle function in main.js handle the sidebar toggle
-            // to avoid duplicate event listeners
-        });
-        
-        // Dark mode toggle function
-        function toggleDarkMode() {
-            const darkModeOn = localStorage.getItem('darkMode') === 'true';
-            const darkModeIcon = document.getElementById('dark-mode-icon');
-            
-            if (darkModeOn) {
-                document.documentElement.removeAttribute('data-theme');
-                localStorage.setItem('darkMode', 'false');
-                darkModeIcon.className = 'fas fa-moon';
-            } else {
-                document.documentElement.setAttribute('data-theme', 'dark');
-                localStorage.setItem('darkMode', 'true');
-                darkModeIcon.className = 'fas fa-sun';
-            }
-        }
-    </script>
+    <!-- Dark mode toggle handled by main.js (avoid duplicate definitions) -->
     
     <!-- Additional JavaScript specific to pages -->
     {% block scripts %}{% endblock %}

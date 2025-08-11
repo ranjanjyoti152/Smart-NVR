@@ -1268,6 +1268,10 @@ def get_camera_status(camera_id):
     
     if processor:
         online = processor.is_running()
+        try:
+            device = processor.get_device()
+        except Exception:
+            device = None
         
         # Calculate frame loss if metrics are available
         if hasattr(processor, 'metrics'):
@@ -1288,6 +1292,7 @@ def get_camera_status(camera_id):
                     warn_reason = f"High latency ({latency}ms)"
     else:
         online = False
+        device = None
     
     # Get recent errors
     recent_errors = []
@@ -1298,6 +1303,7 @@ def get_camera_status(camera_id):
         'camera_id': camera_id,
         'name': camera.name,
         'online': online,
+    'device': device,
         'frame_loss': frame_loss,
         'latency': latency,
         'warn': warn,
@@ -1591,6 +1597,7 @@ def test_gemini():
     """Test Gemini AI connection"""
     import requests
     import logging
+    import time
     logger = logging.getLogger(__name__)
     
     data = request.json
@@ -1617,11 +1624,11 @@ def test_gemini():
     try:
         # Prepare API request for Gemini
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-        
+
         headers = {
             "Content-Type": "application/json"
         }
-        
+
         test_data = {
             "contents": [
                 {
@@ -1637,52 +1644,55 @@ def test_gemini():
                 "topK": 40
             }
         }
-        
-        # Make the API request with a short timeout
-        response = requests.post(url, headers=headers, json=test_data, timeout=5)
-        
-        if response.status_code == 200:
-            response_data = response.json()
-            
-            # Check if the response contains the expected structure
-            if 'candidates' in response_data and response_data['candidates']:
-                # Test succeeded
-                return jsonify({
-                    'success': True,
-                    'message': 'Gemini AI connection successful'
-                })
-            else:
-                # Unexpected response structure
-                return jsonify({
-                    'success': False,
-                    'error': f'Unexpected response from Gemini API: {response_data}'
-                }), 500
-        else:
-            # API request failed
-            error_msg = f"API request failed with status {response.status_code}"
+
+        # Lightweight retry with backoff to reduce transient timeouts
+        timeouts = [5, 8]  # seconds
+        last_timeout = None
+        for idx, t in enumerate(timeouts):
             try:
-                error_details = response.json()
-                if 'error' in error_details:
-                    error_msg = f"{error_msg}: {error_details['error']['message']}"
-            except:
-                pass
-                
-            return jsonify({
-                'success': False,
-                'error': error_msg
-            }), 500
-            
-    except requests.exceptions.Timeout:
+                response = requests.post(url, headers=headers, json=test_data, timeout=t)
+
+                if response.status_code == 200:
+                    response_data = response.json()
+                    if 'candidates' in response_data and response_data['candidates']:
+                        return jsonify({'success': True, 'message': 'Gemini AI connection successful'})
+                    else:
+                        return jsonify({
+                            'success': False,
+                            'error': f"Unexpected response from Gemini API: {response_data}"
+                        }), 500
+                else:
+                    # API request failed (non-timeout)
+                    error_msg = f"API request failed with status {response.status_code}"
+                    try:
+                        error_details = response.json()
+                        if 'error' in error_details:
+                            error_msg = f"{error_msg}: {error_details['error'].get('message', '')}"
+                    except Exception:
+                        pass
+                    return jsonify({'success': False, 'error': error_msg}), 500
+
+            except requests.exceptions.Timeout as te:
+                last_timeout = t
+                logger.warning(f"Gemini test timeout on attempt {idx+1}/{len(timeouts)} after {t}s")
+                if idx < len(timeouts) - 1:
+                    time.sleep(0.5)
+                    continue
+                else:
+                    break
+            except requests.exceptions.RequestException as re:
+                logger.error(f"Gemini test request error: {re}")
+                return jsonify({'success': False, 'error': f'Request error: {str(re)}'}), 500
+
+        # If we reached here due to timeouts
         return jsonify({
             'success': False,
-            'error': 'Request to Gemini API timed out'
+            'error': f'Request to Gemini API timed out (last attempt {last_timeout}s). Check outbound connectivity to generativelanguage.googleapis.com:443, DNS, and firewall settings.'
         }), 500
+
     except Exception as e:
         logger.error(f"Error testing Gemini AI connection: {str(e)}")
-        return jsonify({
-            'success': False,
-            'error': f'Error: {str(e)}'
-        }), 500
+        return jsonify({'success': False, 'error': f'Error: {str(e)}'}), 500
 
 @api_bp.route('/gemini_models', methods=['GET'])
 @login_required

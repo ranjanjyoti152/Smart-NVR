@@ -7,6 +7,7 @@ A powerful Network Video Recorder (NVR) application that leverages GPU accelerat
 ## Features
 
 - **GPU-Accelerated AI Detection**: Real-time object detection using YOLOv5, v8, v9, v10 models with CUDA acceleration
+- **Multi-GPU Aware**: When 2 or more GPUs are present, cameras are distributed across GPUs automatically (round-robin)
 - **Smart Recording Management**: Automatic recording based on motion or specific AI detection events
 - **Live Camera Dashboard**: Monitor multiple RTSP/IP cameras simultaneously with object detection overlays
 - **Regions of Interest (ROI)**: Define specific areas for detection with time-based scheduling support
@@ -264,6 +265,12 @@ The application can be configured through the web interface or by editing these 
   - `SMARTNVR_GPU_ENABLED`: Enable/disable GPU acceleration (default: true)
   - `SMARTNVR_DB_TYPE`: Database type (mongodb or sqlite)
   - `SMARTNVR_DB_URI`: MongoDB connection URI
+
+### Multi-GPU Usage
+
+- Smart-NVR will automatically detect available CUDA devices at startup and assign each active camera to a specific GPU in round-robin fashion (cuda:0, cuda:1, ...).
+- If a GPU runs out of memory during inference for a camera, that camera will gracefully fall back to CPU to keep the stream alive. Other cameras continue using their assigned GPUs.
+- No extra configuration is required. For Docker, ensure you run the container with `--gpus all` or configure GPU resources in Docker Compose.
 
 ## Models
 

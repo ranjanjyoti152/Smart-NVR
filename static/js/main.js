@@ -835,6 +835,12 @@ function checkDarkMode() {
         if (darkModeToggle) {
             darkModeToggle.className = 'fas fa-sun';
         }
+    } else {
+        // Ensure light mode icon is set on initial load
+        const darkModeToggle = document.querySelector('.dark-mode-toggle i');
+        if (darkModeToggle) {
+            darkModeToggle.className = 'fas fa-moon';
+        }
     }
 }
 
