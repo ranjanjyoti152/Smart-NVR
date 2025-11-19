@@ -24,6 +24,14 @@ class Detection:
         self.video_path = detection_data.get('video_path')
         self.notified = detection_data.get('notified', False)
         self.created_at = detection_data.get('created_at', datetime.utcnow())
+        self.landmarks = detection_data.get('landmarks')
+        self.attributes = detection_data.get('attributes', {})
+        self.source = detection_data.get('source')
+        self.face_profile_id = detection_data.get('face_profile_id')
+        self.face_recognition_score = detection_data.get('face_recognition_score')
+        self.face_recognition_name = detection_data.get('face_recognition_name')
+        self.face_crop_path = detection_data.get('face_crop_path')
+        self.face_status = detection_data.get('face_status')
     
     def __repr__(self):
         return f'<Detection {self.id} {self.class_name} at {self.timestamp}>'
@@ -132,7 +140,10 @@ class Detection:
     
     @classmethod
     def create(cls, camera_id, class_name, confidence, bbox_x, bbox_y, bbox_width, bbox_height, 
-               timestamp=None, recording_id=None, roi_id=None, image_path=None, video_path=None):
+               timestamp=None, recording_id=None, roi_id=None, image_path=None, video_path=None,
+               landmarks=None, attributes=None, source=None, face_profile_id=None,
+               face_recognition_score=None, face_recognition_name=None, face_crop_path=None,
+               face_status=None):
         """Create a new detection"""
         try:
             detection_data = {
@@ -159,6 +170,30 @@ class Detection:
             
             if video_path:
                 detection_data['video_path'] = video_path
+
+            if landmarks is not None:
+                detection_data['landmarks'] = landmarks
+
+            if attributes is not None:
+                detection_data['attributes'] = attributes
+
+            if source is not None:
+                detection_data['source'] = source
+
+            if face_profile_id is not None:
+                detection_data['face_profile_id'] = str(face_profile_id)
+
+            if face_recognition_score is not None:
+                detection_data['face_recognition_score'] = float(face_recognition_score)
+
+            if face_recognition_name is not None:
+                detection_data['face_recognition_name'] = face_recognition_name
+
+            if face_crop_path is not None:
+                detection_data['face_crop_path'] = face_crop_path
+
+            if face_status is not None:
+                detection_data['face_status'] = face_status
             
             result = db.detections.insert_one(detection_data)
             detection_data['_id'] = result.inserted_id
@@ -186,7 +221,15 @@ class Detection:
                     'bbox_height': self.bbox_height,
                     'image_path': self.image_path,
                     'video_path': self.video_path,
-                    'notified': self.notified
+                    'notified': self.notified,
+                    'landmarks': self.landmarks,
+                    'attributes': self.attributes,
+                    'source': self.source,
+                    'face_profile_id': self.face_profile_id,
+                    'face_recognition_score': self.face_recognition_score,
+                    'face_recognition_name': self.face_recognition_name,
+                    'face_crop_path': self.face_crop_path,
+                    'face_status': self.face_status
                 }}
             )
             return True
@@ -230,5 +273,13 @@ class Detection:
             'video_path': self.video_path,
             'timestamp': self.timestamp.isoformat() if isinstance(self.timestamp, datetime) else self.timestamp,
             'created_at': self.created_at.isoformat() if isinstance(self.created_at, datetime) else self.created_at,
-            'notified': self.notified
+            'notified': self.notified,
+            'landmarks': self.landmarks,
+            'attributes': self.attributes,
+            'source': self.source,
+            'face_profile_id': self.face_profile_id,
+            'face_recognition_score': self.face_recognition_score,
+            'face_recognition_name': self.face_recognition_name,
+            'face_crop_path': self.face_crop_path,
+            'face_status': self.face_status
         }

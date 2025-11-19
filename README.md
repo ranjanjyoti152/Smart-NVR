@@ -13,6 +13,8 @@ A powerful Network Video Recorder (NVR) application that leverages GPU accelerat
 - **Regions of Interest (ROI)**: Define specific areas for detection with time-based scheduling support
 - **Advanced Playback**: Timeline-based video playback with object detection markers and filtering
 - **Gemini AI Integration**: Human-friendly, context-aware descriptions for detection events using Google's Gemini AI
+- **Optional Face Detection**: RetinaFace-based face detection powered by the UniFace ONNX runtime library
+- **Face Recognition Gallery**: Automatically group faces, assign friendly names, and monitor appearances over time
 - **System Resource Monitoring**: Track CPU, RAM, GPU, and disk usage in real-time
 - **Modern UI**: Clean, responsive interface designed for ease of use
 - **Multi-User Support**: Role-based access with administrative and standard user accounts
@@ -29,6 +31,7 @@ A powerful Network Video Recorder (NVR) application that leverages GPU accelerat
 - 8GB+ RAM (16GB+ recommended for multiple camera streams)
 - MongoDB 4.4+ (for database storage)
 - Linux, Windows, or macOS (tested primarily on Linux)
+- [UniFace](https://github.com/yakhyo/uniface) (installed via `requirements.txt`) automatically downloads RetinaFace ONNX weights on first use; for NVIDIA acceleration install the optional `uniface[gpu]` extra
 
 ## Installation
 
@@ -156,6 +159,58 @@ docker-compose up -d
    - Enable email notifications if desired
 
 5. Use the Recordings section to review detection events and continuous recordings
+
+6. (Optional) Enable UniFace face detection:
+  - Navigate to **Settings → AI Detection Settings → Face Detection (UniFace)**
+  - Toggle **Enable Face Detection** and choose the RetinaFace model/provider for your hardware
+  - UniFace downloads and caches the selected ONNX model the first time it runs
+  - Add "Face" to any ROI class list if you want notifications scoped to face events only
+
+## UniFace Face Detection
+
+Smart-NVR integrates [UniFace](https://github.com/yakhyo/uniface) to provide RetinaFace-based face detection alongside YOLO object detection.
+
+### Highlights
+
+- Runs on ONNX Runtime and supports CPU, CUDA, TensorRT, or DirectML execution providers
+- Offers MobileNet and ResNet RetinaFace variants to balance speed and accuracy
+- Automatically downloads and caches ONNX weights under `~/.uniface/models/`
+- Emits five-point facial landmarks suitable for overlays or downstream analytics
+- Seamlessly shares ROI, recording, and notification pipelines (including class filters)
+
+### Enabling Face Detection
+
+1. Install dependencies with `pip install -r requirements.txt`. For NVIDIA acceleration run `pip install "uniface[gpu]"` to obtain CUDA-capable execution providers.
+2. Open **Settings → AI Detection Settings** and enable **Face Detection (UniFace)**.
+3. Select the preferred RetinaFace model and ONNX Runtime provider.
+4. Start or restart the desired cameras—UniFace will fetch weights on first use and log provider availability.
+
+### Operational Notes
+
+- Face detections are stored with a `source` field of `uniface` and include landmark metadata when available.
+- ROI email notifications respect detection class filters—include "Face" for face-only alerts.
+- UniFace detections run in parallel with YOLO results and participate in snapshot capture and persistence.
+
+## Face Recognition & Labeling
+
+Smart-NVR includes an optional face gallery that clusters UniFace detections, builds persistent profiles, and lets you assign friendly names for quick identification.
+
+### Capabilities
+
+- Automatically generates face profiles using `facenet-pytorch` embeddings.
+- Groups repeat appearances—even before a name is assigned—so you can label them later.
+- Tracks sample counts, total detections, and last-seen timestamps per profile.
+- Provides a dedicated **Faces** page to review crops, rename individuals, or delete profiles.
+
+### Enabling Face Recognition
+
+1. Install dependencies with `pip install -r requirements.txt` (this includes `facenet-pytorch`).
+2. Navigate to **Settings → AI Detection Settings → Face Detection (UniFace)**.
+3. Enable **Face Detection** and toggle **Face Recognition & Grouping**.
+4. Optionally adjust the cosine similarity threshold or automatic profile creation.
+5. After restarting affected cameras, visit the new **Faces** navigation item to manage identities.
+
+> Face recognition depends on UniFace face detection. If detection is disabled, profiles will not populate.
 
 ## MongoDB Transition
 

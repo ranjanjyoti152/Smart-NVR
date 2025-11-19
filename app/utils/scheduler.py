@@ -133,6 +133,9 @@ class BackgroundScheduler:
         
         # Register memory cleanup task - Run every 10 seconds for aggressive RAM optimization
         self.register_task('memory_cleanup', self._memory_cleanup_task, interval=10)  # Every 10 seconds
+
+        # Register face assimilation task - default every 6 hours
+        self.register_task('auto_assimilate_faces', self._auto_assimilate_faces_task, interval=21600)
         
     def _cleanup_task(self):
         """Clean up old recordings based on retention settings"""
@@ -376,6 +379,25 @@ class BackgroundScheduler:
                 
         except Exception as e:
             logger.error(f"Error in memory cleanup task: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+
+    def _auto_assimilate_faces_task(self):
+        """Periodically assimilate unlabeled faces into known identities."""
+        from app import app
+        from app.models.face_profile import FaceProfile
+
+        logger.info("Running auto-assimilate faces task")
+
+        try:
+            with app.app_context():
+                merges = FaceProfile.auto_assimilate_unlabeled()
+                if merges:
+                    logger.info("Auto-assimilate merged %d profiles", len(merges))
+                else:
+                    logger.info("Auto-assimilate found no high-confidence merges")
+        except Exception as exc:
+            logger.error("Error during auto-assimilate task: %s", exc)
             import traceback
             logger.error(traceback.format_exc())
 

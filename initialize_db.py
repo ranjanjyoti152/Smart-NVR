@@ -50,7 +50,7 @@ def main():
         
         collections_to_create = [
             'users', 'ai_models', 'cameras', 'recordings', 
-            'detections', 'regions_of_interest'
+            'detections', 'regions_of_interest', 'face_profiles'
         ]
         
         logger.info("ROI collections will support time-based scheduling with the following fields:")
@@ -111,6 +111,16 @@ def main():
         db.detections.create_index([("roi_id", ASCENDING)])
         db.detections.create_index([("timestamp", DESCENDING)])
         db.detections.create_index([("class_name", ASCENDING)])
+        db.detections.create_index([("face_profile_id", ASCENDING)], sparse=True)
+        db.detections.create_index([("face_status", ASCENDING)])
+        db.detections.create_index([("source", ASCENDING)])
+
+        # Face profiles collection
+        logger.info("Creating face_profiles collection and indexes")
+        db.create_collection("face_profiles")
+        db.face_profiles.create_index([("name", ASCENDING)], unique=False, sparse=True)
+        db.face_profiles.create_index([("status", ASCENDING)])
+        db.face_profiles.create_index([("last_seen", DESCENDING)])
         
         # Insert default admin user
         logger.info("Creating default admin user: admin/admin")
@@ -197,6 +207,7 @@ def main():
         logger.info("✓ Time-based ROI scheduling support")
         logger.info("✓ Enhanced database indexes for performance")
         logger.info("✓ Sample ROI configurations prepared")
+        logger.info("✓ Face detection and recognition collections ready")
         logger.info("")
         logger.info("You can now run 'python run.py' to start the application")
         logger.info("Login with username: admin, password: admin")

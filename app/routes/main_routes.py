@@ -52,6 +52,13 @@ def camera_management():
     models = AIModel.get_all()
     return render_template('camera_management.html', title='Camera Management', cameras=cameras, models=models)
 
+
+@main_bp.route('/faces')
+@login_required
+def face_library():
+    """Face management and labeling route"""
+    return render_template('face_gallery.html', title='Face Library')
+
 @main_bp.route('/add-camera', methods=['POST'])
 @login_required
 def add_camera():
@@ -405,7 +412,15 @@ def create_default_settings():
             'image_retention_days': 1,
             'enable_gemini_ai': False,
             'gemini_api_key': '',
-            'gemini_model': 'gemini-1.5-flash'
+            'gemini_model': 'gemini-1.5-flash',
+            'enable_face_detection': False,
+            'face_detection_confidence': 0.5,
+            'face_detection_model': 'MNET_V2',
+            'face_detection_provider': 'auto',
+            'face_detection_max_faces': 10,
+            'enable_face_recognition': False,
+            'face_recognition_threshold': 0.62,
+            'face_recognition_auto_create': True
         }
     }
 
@@ -472,7 +487,16 @@ def save_settings():
             # Add Gemini AI settings
             'enable_gemini_ai': 'enable_gemini_ai' in request.form,
             'gemini_api_key': request.form.get('gemini_api_key', ''),
-            'gemini_model': request.form.get('gemini_model', 'gemini-1.5-flash')
+            'gemini_model': request.form.get('gemini_model', 'gemini-1.5-flash'),
+            # Face detection settings
+            'enable_face_detection': 'enable_face_detection' in request.form,
+            'face_detection_confidence': float(request.form.get('face_detection_confidence', 0.5)),
+            'face_detection_model': request.form.get('face_detection_model', 'MNET_V2'),
+            'face_detection_provider': request.form.get('face_detection_provider', 'auto'),
+            'face_detection_max_faces': int(request.form.get('face_detection_max_faces', 10)),
+            'enable_face_recognition': 'enable_face_recognition' in request.form,
+            'face_recognition_threshold': float(request.form.get('face_recognition_threshold', 0.62)),
+            'face_recognition_auto_create': 'face_recognition_auto_create' in request.form
         }
     }
     

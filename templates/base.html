@@ -83,6 +83,11 @@
                     </a>
                 </li>
                 <li>
+                    <a href="{{ url_for('main.face_library') }}" class="{% if request.endpoint == 'main.face_library' %}active{% endif %}">
+                        <i class="fas fa-user-tag"></i> Faces
+                    </a>
+                </li>
+                <li>
                     <a href="{{ url_for('main.settings') }}" class="{% if request.endpoint == 'main.settings' %}active{% endif %}">
                         <i class="fas fa-cog"></i> Settings
                     </a>

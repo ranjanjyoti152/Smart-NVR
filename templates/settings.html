@@ -118,6 +118,91 @@
                         </div>
                     </div>
 
+                    <!-- Face Detection Settings -->
+                    <div class="card border shadow-sm mb-3">
+                        <div class="card-header bg-light">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <i class="fas fa-user-check me-2" style="color: var(--color-success);"></i>
+                                    <span class="fw-bold">Face Detection (UniFace)</span>
+                                </div>
+                                <div class="form-check form-switch mb-0">
+                                    <input class="form-check-input" type="checkbox" id="enable_face_detection" name="enable_face_detection"
+                                        {% if settings.detection.enable_face_detection %}checked{% endif %}>
+                                    <label class="form-check-label" for="enable_face_detection">Enable Face Detection</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-body p-3" id="faceDetectionSettings" {% if not settings.detection.enable_face_detection %}style="display: none;"{% endif %}>
+                            <p class="text-muted mb-3">
+                                <i class="fas fa-info-circle me-1"></i>
+                                Powered by <a href="https://github.com/yakhyo/uniface" target="_blank" rel="noopener">UniFace</a>. Automatically downloads ONNX models on first use. Configure providers to match your hardware.
+                            </p>
+
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label for="face_detection_confidence" class="form-label">Minimum Confidence</label>
+                                    <input type="number" class="form-control" id="face_detection_confidence" name="face_detection_confidence"
+                                        value="{{ settings.detection.face_detection_confidence|default(0.5) }}" min="0.1" max="0.99" step="0.05">
+                                    <div class="form-text">Lower values detect more faces but may add noise</div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="face_detection_model" class="form-label">RetinaFace Model</label>
+                                    <select class="form-select" id="face_detection_model" name="face_detection_model">
+                                        {% set face_model = settings.detection.face_detection_model|default('MNET_V2') %}
+                                        <option value="MNET_025" {% if face_model == 'MNET_025' %}selected{% endif %}>RetinaFace MobileNet-0.25 (fastest)</option>
+                                        <option value="MNET_V2" {% if face_model == 'MNET_V2' %}selected{% endif %}>RetinaFace MobileNetV2 (balanced)</option>
+                                        <option value="RESNET34" {% if face_model == 'RESNET34' %}selected{% endif %}>RetinaFace ResNet-34 (highest accuracy)</option>
+                                    </select>
+                                    <div class="form-text">Choose lighter models for CPU-only systems</div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="face_detection_provider" class="form-label">Execution Provider</label>
+                                    {% set face_provider = settings.detection.face_detection_provider|default('auto') %}
+                                    <select class="form-select" id="face_detection_provider" name="face_detection_provider">
+                                        <option value="auto" {% if face_provider == 'auto' %}selected{% endif %}>Auto (recommended)</option>
+                                        <option value="cpu" {% if face_provider == 'cpu' %}selected{% endif %}>CPU</option>
+                                        <option value="cuda" {% if face_provider == 'cuda' %}selected{% endif %}>CUDA (NVIDIA)</option>
+                                        <option value="tensorrt" {% if face_provider == 'tensorrt' %}selected{% endif %}>TensorRT</option>
+                                        <option value="directml" {% if face_provider == 'directml' %}selected{% endif %}>DirectML</option>
+                                    </select>
+                                    <div class="form-text">Match your available ONNX Runtime execution providers</div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="face_detection_max_faces" class="form-label">Max Faces per Frame</label>
+                                    <input type="number" class="form-control" id="face_detection_max_faces" name="face_detection_max_faces"
+                                        value="{{ settings.detection.face_detection_max_faces|default(10) }}" min="1" max="25">
+                                    <div class="form-text">Limits processing cost by capping detections</div>
+                                </div>
+                            </div>
+
+                            <div class="form-check form-switch mt-4">
+                                <input class="form-check-input" type="checkbox" id="enable_face_recognition" name="enable_face_recognition"
+                                    {% if settings.detection.enable_face_recognition %}checked{% endif %}>
+                                <label class="form-check-label" for="enable_face_recognition">Enable Face Recognition &amp; Grouping</label>
+                            </div>
+
+                            <div id="faceRecognitionSettings" class="row g-3 mt-1" {% if not settings.detection.enable_face_recognition %}style="display: none;"{% endif %}>
+                                <div class="col-md-4">
+                                    <label for="face_recognition_threshold" class="form-label">Match Threshold</label>
+                                    <input type="number" class="form-control" id="face_recognition_threshold" name="face_recognition_threshold"
+                                        value="{{ settings.detection.face_recognition_threshold|default(0.62) }}" min="0.3" max="0.9" step="0.01">
+                                    <div class="form-text">Higher values require closer matches (default 0.62)</div>
+                                </div>
+                                <div class="col-md-4 d-flex align-items-end">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="face_recognition_auto_create" name="face_recognition_auto_create"
+                                            {% if settings.detection.face_recognition_auto_create|default(true) %}checked{% endif %}>
+                                        <label class="form-check-label" for="face_recognition_auto_create">Auto-create profiles for new faces</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="small text-muted">Recognition requires facenet-pytorch. Enable this to group unlabeled faces automatically and label them later.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Gemini AI Settings -->
                     <div class="card border shadow-sm mb-3">
                         <div class="card-header bg-light">
@@ -302,6 +387,7 @@
                 <strong>Default AI Model:</strong> The AI model used for object detection. Smaller models run faster but with less accuracy; larger models are more accurate but require more processing power.<br>
                 <strong>Save Detection Images:</strong> When enabled, saves a snapshot image for each detection event for review later.<br>
                 <strong>Image Retention:</strong> Number of days to keep detection images before automatic deletion.<br>
+                <strong>Face Detection:</strong> Enables RetinaFace-based detection for people monitoring. Requires the UniFace dependency and downloads model weights on demand.<br>
                 <strong>Gemini AI:</strong> Generates human-friendly, context-aware descriptions for ROI notifications when enabled.
             </p>
             
@@ -465,6 +551,24 @@
     document.getElementById('email_enabled').addEventListener('change', function() {
         const emailSettings = document.getElementById('emailSettings');
         emailSettings.style.display = this.checked ? 'block' : 'none';
+    });
+
+    // Toggle face detection settings visibility based on checkbox
+    document.getElementById('enable_face_detection').addEventListener('change', function() {
+        const faceSettings = document.getElementById('faceDetectionSettings');
+        faceSettings.style.display = this.checked ? 'block' : 'none';
+        if (!this.checked) {
+            document.getElementById('enable_face_recognition').checked = false;
+            document.getElementById('faceRecognitionSettings').style.display = 'none';
+        }
+    });
+
+    const faceRecognitionToggle = document.getElementById('enable_face_recognition');
+    if (faceRecognitionToggle) {
+        faceRecognitionToggle.addEventListener('change', function() {
+            const recognitionSettings = document.getElementById('faceRecognitionSettings');
+            recognitionSettings.style.display = this.checked ? 'flex' : 'none';
+        });
     });
     
     // Test email functionality

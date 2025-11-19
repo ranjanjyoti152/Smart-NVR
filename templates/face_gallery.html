@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="mac-content-header">
+    <div>
+        <h2>Face Library</h2>
+        <p class="text-muted">Review detected faces, assign friendly names, and track appearances.</p>
+    </div>
+    <div>
+        <button class="btn btn-outline-secondary" id="refreshFacesBtn">
+            <i class="fas fa-rotate"></i> Refresh
+        </button>
+    </div>
+</div>
+
+<div id="faceAlerts"></div>
+
+<div class="row" id="faceGrid"></div>
+
+<!-- Rename Modal -->
+<div class="modal fade" id="renameFaceModal" tabindex="-1" aria-labelledby="renameFaceLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <form class="modal-content" id="renameFaceForm">
+            <div class="modal-header">
+                <h5 class="modal-title" id="renameFaceLabel">Rename Face</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="faceRenameInput" class="form-label">Friendly Name</label>
+                    <input type="text" class="form-control" id="faceRenameInput" placeholder="Enter name or leave blank to clear">
+                    <input type="hidden" id="faceRenameId">
+                </div>
+                <p class="text-muted small">Clearing the name keeps the profile grouped but marks it as unlabeled.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const faceGrid = document.getElementById('faceGrid');
+const faceAlerts = document.getElementById('faceAlerts');
+const renameModalEl = document.getElementById('renameFaceModal');
+const renameForm = document.getElementById('renameFaceForm');
+const renameInput = document.getElementById('faceRenameInput');
+const renameIdInput = document.getElementById('faceRenameId');
+const refreshBtn = document.getElementById('refreshFacesBtn');
+let renameModal;
+let facesCache = [];
+
+function ensureModal() {
+    if (!renameModal) {
+        renameModal = new bootstrap.Modal(renameModalEl);
+    }
+}
+
+function showFaceAlert(message, type = 'info') {
+    faceAlerts.innerHTML = `<div class="alert alert-${type} alert-dismissible fade show" role="alert">${message}<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>`;
+}
+
+function buildCard(face) {
+    const lastSeen = face.last_seen ? new Date(face.last_seen).toLocaleString() : 'Never';
+    const samples = face.sample_count || 0;
+    const detections = face.total_detections || 0;
+    const statusBadge = face.status === 'known'
+        ? '<span class="badge bg-success">Known</span>'
+        : '<span class="badge bg-warning text-dark">Unlabeled</span>';
+    const name = face.name ? face.name : 'Unlabeled Face';
+    const imgSrc = `/api/faces/${face.id}/image`;
+
+    return `
+    <div class="col-xl-3 col-lg-4 col-md-6 mb-4">
+        <div class="card h-100 shadow-sm">
+            <div class="card-img-top d-flex justify-content-center align-items-center" style="height: 220px; background: #f7f7f9;">
+                <img src="${imgSrc}" alt="Face" class="img-fluid rounded" style="max-height: 200px;" onerror="this.onerror=null;this.src='https://via.placeholder.com/160?text=Face';">
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h5 class="card-title mb-0">${name}</h5>
+                    ${statusBadge}
+                </div>
+                <p class="card-text small text-muted mb-1"><i class="fas fa-history me-1"></i> Last seen: ${lastSeen}</p>
+                <p class="card-text small text-muted mb-1"><i class="fas fa-images me-1"></i> Samples: ${samples}</p>
+                <p class="card-text small text-muted"><i class="fas fa-bullseye me-1"></i> Detections: ${detections}</p>
+            </div>
+            <div class="card-footer bg-transparent d-flex justify-content-between">
+                <button class="btn btn-outline-primary btn-sm" data-face-id="${face.id}" data-action="rename">
+                    <i class="fas fa-pen"></i> Rename
+                </button>
+                <button class="btn btn-outline-danger btn-sm" data-face-id="${face.id}" data-action="delete">
+                    <i class="fas fa-trash"></i> Delete
+                </button>
+            </div>
+        </div>
+    </div>`;
+}
+
+function renderFaces(faces) {
+    if (!faces.length) {
+        faceGrid.innerHTML = '<div class="col-12"><div class="alert alert-info">No face profiles yet. Enable face detection and recognition to start building a gallery.</div></div>';
+        return;
+    }
+    const known = faces.filter(face => face.status === 'known');
+    const unknown = faces.filter(face => face.status !== 'known');
+    let html = '';
+    if (known.length) {
+        html += '<div class="col-12"><h5 class="fw-bold mb-3">Known Faces</h5></div>';
+        html += known.map(buildCard).join('');
+    }
+    if (unknown.length) {
+        html += '<div class="col-12 mt-4"><h5 class="fw-bold mb-3">Unlabeled Faces</h5></div>';
+        html += unknown.map(buildCard).join('');
+    }
+    faceGrid.innerHTML = html;
+}
+
+async function loadFaces() {
+    refreshBtn.disabled = true;
+    try {
+        const response = await fetch('/api/faces');
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Failed to load faces');
+        }
+        facesCache = data.faces || [];
+        renderFaces(facesCache);
+    } catch (error) {
+        showFaceAlert(error.message, 'danger');
+    } finally {
+        refreshBtn.disabled = false;
+    }
+}
+
+function handleGridClick(event) {
+    const button = event.target.closest('button[data-face-id]');
+    if (!button) return;
+    const faceId = button.getAttribute('data-face-id');
+    const action = button.getAttribute('data-action');
+    if (action === 'rename') {
+        openRenameModal(faceId);
+    } else if (action === 'delete') {
+        deleteFace(faceId);
+    }
+}
+
+function openRenameModal(faceId) {
+    const face = facesCache.find(item => item.id === faceId);
+    if (!face) return;
+    ensureModal();
+    renameIdInput.value = face.id;
+    renameInput.value = face.name || '';
+    renameModal.show();
+}
+
+async function deleteFace(faceId) {
+    const confirmation = confirm('Delete this face profile? Detections will remain but lose their association.');
+    if (!confirmation) return;
+    try {
+        const response = await fetch(`/api/faces/${faceId}`, { method: 'DELETE' });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Unable to delete face profile');
+        }
+        showFaceAlert('Face profile deleted.', 'success');
+        await loadFaces();
+    } catch (error) {
+        showFaceAlert(error.message, 'danger');
+    }
+}
+
+renameForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const faceId = renameIdInput.value;
+    const name = renameInput.value.trim();
+    if (!faceId) return;
+    try {
+        const response = await fetch(`/api/faces/${faceId}`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ name: name || null })
+        });
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.message || 'Unable to update face');
+        }
+        showFaceAlert('Face profile updated.', 'success');
+        ensureModal();
+        renameModal.hide();
+        await loadFaces();
+    } catch (error) {
+        showFaceAlert(error.message, 'danger');
+    }
+});
+
+refreshBtn.addEventListener('click', loadFaces);
+faceGrid.addEventListener('click', handleGridClick);
+
+document.addEventListener('DOMContentLoaded', () => {
+    ensureModal();
+    loadFaces();
+});
+</script>
+{% endblock %}

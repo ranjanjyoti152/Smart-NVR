@@ -879,7 +879,12 @@ function setupROICanvas(cameraId) {
         
         // Get selected detection classes
         const detectionClassesSelect = document.getElementById('detectionClasses');
-        const selectedClasses = Array.from(detectionClassesSelect.selectedOptions).map(option => parseInt(option.value));
+        const selectedClasses = Array.from(detectionClassesSelect.selectedOptions)
+            .map(option => {
+                const value = option.value;
+                const numericValue = Number(value);
+                return Number.isNaN(numericValue) ? value : numericValue;
+            });
         
         // Get email notification setting
         const emailNotifications = document.getElementById('emailNotifications').checked;

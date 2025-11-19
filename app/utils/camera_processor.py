@@ -21,6 +21,9 @@ import torchvision.transforms as transforms
 from ultralytics import YOLO # Import YOLO from ultralytics
 import re  # Import re for regex pattern matching
 from bson.objectid import ObjectId  # Add missing import for MongoDB ObjectId
+from app.utils.face_detection import build_face_detection_engine
+from app.utils.face_recognition import get_face_recognition_engine
+from app.models.face_profile import FaceProfile
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +85,16 @@ class CameraProcessor:
             'avg_processing_time': 0.0
         }
         self.frame_timestamps = {}  # Track frame processing times
+        self.face_detection_engine = None
+        self.face_detection_settings = {}
+        self.face_detection_enabled = False
+        self._face_detection_state_logged = False
+        self._last_face_settings_refresh = time.time()
+        self.face_recognition_enabled = False
+        self.face_recognition_threshold = 0.62
+        self._face_recognition_auto_create = True
+        self._face_recognition_warned = False
+        self._load_face_detection_settings()
         
     def is_running(self):
         """Check if the camera processor is running"""
@@ -214,10 +227,96 @@ class CameraProcessor:
         
         return regions
 
+    def _load_face_detection_settings(self):
+        """Load global face detection settings and initialise engine if required."""
+        try:
+            from app.routes.main_routes import get_detection_settings
+
+            detection_settings = get_detection_settings() or {}
+        except Exception as exc:
+            logger.warning("Unable to load detection settings for face detection: %s", exc)
+            detection_settings = {}
+
+        previous_settings = getattr(self, 'face_detection_settings', None)
+        self.face_detection_settings = detection_settings
+        self.face_detection_enabled = detection_settings.get('enable_face_detection', False) and self.camera.detection_enabled
+        self.face_recognition_enabled = (
+            detection_settings.get('enable_face_recognition', False)
+            and self.camera.detection_enabled
+            and self.face_detection_enabled
+        )
+        self.face_recognition_threshold = float(detection_settings.get('face_recognition_threshold', 0.62) or 0.62)
+        self._face_recognition_auto_create = bool(detection_settings.get('face_recognition_auto_create', True))
+        self._last_face_settings_refresh = time.time()
+
+        if not self.face_detection_enabled:
+            if self.face_detection_engine is not None:
+                logger.info("Disabling face detection for camera %s based on updated settings", self.camera.id)
+            self.face_detection_engine = None
+            self._face_detection_state_logged = False
+            self.face_recognition_enabled = False
+            return
+
+        # Initialise or refresh engine using current settings
+        settings_changed = previous_settings != detection_settings or self.face_detection_engine is None
+        self._ensure_face_detection_engine(force=settings_changed)
+
+    def _ensure_face_detection_engine(self, force: bool = False):
+        """Initialise the UniFace engine if enabled."""
+
+        if not self.face_detection_enabled:
+            return None
+
+        if self.face_detection_engine is not None and not force and getattr(self.face_detection_engine, "ready", False):
+            return self.face_detection_engine
+
+        try:
+            engine = build_face_detection_engine(self.face_detection_settings)
+            self.face_detection_engine = engine
+
+            if getattr(engine, "ready", False):
+                if not self._face_detection_state_logged:
+                    logger.info("Face detection enabled for camera %s", self.camera.id)
+                    self._face_detection_state_logged = True
+            else:
+                if not self._face_detection_state_logged:
+                    err = getattr(engine, "init_error", None)
+                    if err:
+                        logger.warning("Face detection unavailable for camera %s: %s", self.camera.id, err)
+                    else:
+                        logger.warning("Face detection engine not ready for camera %s", self.camera.id)
+                    self._face_detection_state_logged = True
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.error("Failed to initialise face detection for camera %s: %s", self.camera.id, exc, exc_info=True)
+            self.face_detection_engine = None
+            self._face_detection_state_logged = True
+
+        return self.face_detection_engine
+
+    def _ensure_face_recognition_engine(self):
+        """Prepare the recognition engine when enabled."""
+
+        if not self.face_recognition_enabled:
+            return None
+
+        engine = get_face_recognition_engine()
+        if engine is None or not engine.ready:
+            if not self._face_recognition_warned:
+                msg = getattr(engine, "init_error", None) if engine is not None else "not initialised"
+                logger.warning("Face recognition unavailable for camera %s: %s", self.camera.id, msg)
+                self._face_recognition_warned = True
+            return None
+
+        if self._face_recognition_warned:
+            logger.info("Face recognition ready for camera %s", self.camera.id)
+            self._face_recognition_warned = False
+        return engine
+
     def reload_rois(self):
         """Reload detection regions (ROIs) from the database"""
         logger.info(f"Reloading ROIs for camera {self.camera.id}")
         self.detection_regions = self._load_detection_regions()
+        self._load_face_detection_settings()
         return len(self.detection_regions)
     
     def _should_reload_rois(self):
@@ -387,6 +486,9 @@ class CameraProcessor:
                 logger.info(f"Camera {self.camera.id} → using device CPU for inference")
 
             logger.info(f"Successfully initialized AI model")
+
+            # Warm up face detection engine if enabled
+            self._ensure_face_detection_engine()
         except Exception as e:
             logger.error(f"Failed to load AI model: {str(e)}")
             import traceback
@@ -505,6 +607,17 @@ class CameraProcessor:
 
                 cv2.rectangle(frame_to_display, (x1, y1), (x2, y2), color, 2)
                 label = f"{class_name} {conf:.2f}"
+                if class_name.lower() == 'face':
+                    status = detection.get('face_status')
+                    name = detection.get('face_recognition_name')
+                    score = detection.get('face_recognition_score')
+                    if status == 'known' and name:
+                        if score is not None:
+                            label = f"{name} ({score:.2f})"
+                        else:
+                            label = f"{name} {conf:.2f}"
+                    elif status in ('unlabeled', 'unknown'):
+                        label = f"Face (?) {conf:.2f}"
                 text_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
                 label_y = y1 - 5
                 label_bg_y1 = y1 - text_size[1] - 5
@@ -536,6 +649,10 @@ class CameraProcessor:
 
         while self.running:
             try:
+                if time.time() - self._last_face_settings_refresh > 60:
+                    self._last_face_settings_refresh = time.time()
+                    self._load_face_detection_settings()
+
                 # Check if ROIs need to be reloaded for time-based scheduling
                 if self._should_reload_rois():
                     self.reload_rois()
@@ -714,6 +831,15 @@ class CameraProcessor:
                     # Explicitly release reference to large result objects to help garbage collection
                     results = None
                     res = None
+
+                # Optional UniFace face detection augmentation
+                try:
+                    face_detections = self._run_face_detection(frame_to_process, current_time, height, width)
+                    if face_detections:
+                        self._augment_face_recognition(frame_to_process, face_detections, current_time)
+                        detected_objects.extend(face_detections)
+                except Exception as exc:
+                    logger.debug("Face detection failed for camera %s: %s", self.camera.id, exc)
 
                 # Update shared state under lock
                 with self.detection_lock:
@@ -1021,6 +1147,145 @@ class CameraProcessor:
             except Exception as e:
                 logger.error(f"Error processing YOLOv5 detection box: {str(e)}")
                 continue
+
+    def _run_face_detection(self, frame, current_time, height, width):
+        """Run UniFace-based face detection for the current frame."""
+
+        if not self.face_detection_enabled:
+            return []
+
+        engine = self._ensure_face_detection_engine()
+        if not engine or not getattr(engine, "ready", False):
+            return []
+
+        face_results = engine.detect(frame)
+        if not face_results:
+            return []
+
+        detections = []
+        for face in face_results:
+            try:
+                x1 = float(face.get('bbox_x', 0.0))
+                y1 = float(face.get('bbox_y', 0.0))
+                w = float(face.get('bbox_width', 0.0))
+                h = float(face.get('bbox_height', 0.0))
+                confidence = float(face.get('confidence', 0.0))
+
+                if confidence < self.face_detection_settings.get('face_detection_confidence', 0.5):
+                    continue
+
+                # Clamp bounding box to frame boundaries
+                x1 = max(0.0, min(float(width - 1), x1))
+                y1 = max(0.0, min(float(height - 1), y1))
+                x2 = max(x1, min(float(width), x1 + max(0.0, w)))
+                y2 = max(y1, min(float(height), y1 + max(0.0, h)))
+
+                bbox_width = int(max(1.0, x2 - x1))
+                bbox_height = int(max(1.0, y2 - y1))
+                x1_int = int(round(x1))
+                y1_int = int(round(y1))
+
+                center_x = x1_int + bbox_width / 2.0
+                center_y = y1_int + bbox_height / 2.0
+                pixel_center = Point(center_x, center_y)
+                norm_center = Point(center_x / max(1, width), center_y / max(1, height))
+                matched_roi_id = self._check_roi_match(pixel_center, norm_center)
+
+                detection = {
+                    'camera_id': self.camera.id,
+                    'class_name': 'face',
+                    'confidence': confidence,
+                    'bbox_x': x1_int,
+                    'bbox_y': y1_int,
+                    'bbox_width': bbox_width,
+                    'bbox_height': bbox_height,
+                    'roi_id': matched_roi_id,
+                    'timestamp': current_time,
+                    'source': 'uniface'
+                }
+
+                if 'landmarks' in face:
+                    detection['landmarks'] = face['landmarks']
+
+                detections.append(detection)
+            except Exception as exc:
+                logger.debug("Failed to process UniFace detection: %s", exc)
+
+        return detections
+
+    def _augment_face_recognition(self, frame, face_detections, current_time):
+        """Run recognition on detected faces and persist crops."""
+
+        if not face_detections:
+            return
+
+        height, width = frame.shape[:2]
+        engine = self._ensure_face_recognition_engine() if self.face_recognition_enabled else None
+
+        for detection in face_detections:
+            x1 = int(max(0, detection.get('bbox_x', 0)))
+            y1 = int(max(0, detection.get('bbox_y', 0)))
+            w = int(max(1, detection.get('bbox_width', 0)))
+            h = int(max(1, detection.get('bbox_height', 0)))
+            x2 = min(width, x1 + w)
+            y2 = min(height, y1 + h)
+
+            if x2 - x1 < 16 or y2 - y1 < 16:
+                detection['face_status'] = detection.get('face_status', 'unlabeled')
+                continue
+
+            crop = frame[y1:y2, x1:x2].copy()
+            crop_path = self._store_face_crop(crop, current_time)
+            if crop_path:
+                detection['face_crop_path'] = crop_path
+                detection.setdefault('attributes', {})['face_crop_path'] = crop_path
+
+            if not engine or not engine.ready:
+                detection['face_status'] = detection.get('face_status', 'unlabeled')
+                continue
+
+            embedding = engine.embed(crop)
+            if embedding is None:
+                detection['face_status'] = 'unlabeled'
+                continue
+
+            matched_profile, score = FaceProfile.find_best_match(embedding, self.face_recognition_threshold)
+            if matched_profile:
+                profile = matched_profile
+                profile.register_match(embedding, crop_path, current_time, str(self.camera.id), None)
+                detection['face_profile_id'] = profile.id
+                detection['face_recognition_score'] = score
+                detection['face_recognition_name'] = profile.name
+                detection['face_status'] = 'known' if profile.name else 'unlabeled'
+                detection.setdefault('attributes', {})['face_profile_id'] = profile.id
+            elif self._face_recognition_auto_create:
+                profile = FaceProfile.create(
+                    embedding,
+                    crop_path,
+                    str(self.camera.id),
+                    current_time,
+                )
+                detection['face_profile_id'] = profile.id
+                detection['face_recognition_score'] = None
+                detection['face_recognition_name'] = profile.name
+                detection['face_status'] = 'unlabeled'
+                detection.setdefault('attributes', {})['face_profile_id'] = profile.id
+            else:
+                detection['face_status'] = 'unlabeled'
+
+    def _store_face_crop(self, crop, current_time):
+        import cv2
+
+        try:
+            base_dir = os.path.join('storage', 'faces', str(self.camera.id))
+            os.makedirs(base_dir, exist_ok=True)
+            filename = f"{current_time.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.jpg"
+            path = os.path.join(base_dir, filename)
+            cv2.imwrite(path, crop)
+            return path
+        except Exception as exc:
+            logger.debug("Failed to persist face crop: %s", exc)
+            return None
 
     def _handle_detection_image_saving(self, frame, detected_objects, current_time):
         """Handle saving detection images efficiently

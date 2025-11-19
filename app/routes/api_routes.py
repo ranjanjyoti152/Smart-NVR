@@ -2,19 +2,22 @@
 API routes for the SmartNVR application
 Provides endpoints for video streaming, camera control, and data retrieval
 """
-from flask import Blueprint, request, jsonify, Response, send_file, abort
+from flask import Blueprint, request, jsonify, Response, send_file, abort, current_app
 from flask_login import login_required, current_user
 import os
 import json
+import logging
 from datetime import datetime, timedelta
 import time
 from bson.objectid import ObjectId
+from typing import Dict, Optional
 
 from app import db
 from app.models.camera import Camera
 from app.models.recording import Recording
 from app.models.detection import Detection
 from app.models.roi import ROI
+from app.models.face_profile import FaceProfile
 from app.utils.decorators import admin_required, api_key_required
 from app.utils.system_monitor import get_system_stats
 
@@ -98,7 +101,15 @@ def report_detection(request):
                 recording_id=recording.id if recording else None,
                 roi_id=roi_id,
                 image_path=det_data.get('image_path'),
-                video_path=det_data.get('video_path')
+                video_path=det_data.get('video_path'),
+                landmarks=det_data.get('landmarks'),
+                attributes=det_data.get('attributes'),
+                source=det_data.get('source'),
+                face_profile_id=det_data.get('face_profile_id'),
+                face_recognition_score=det_data.get('face_recognition_score'),
+                face_recognition_name=det_data.get('face_recognition_name'),
+                face_crop_path=det_data.get('face_crop_path'),
+                face_status=det_data.get('face_status')
             )
             
             new_detections.append(detection)
@@ -177,6 +188,8 @@ def get_camera_frame(camera_id):
             'success': False,
             'message': 'Camera not found'
         }), 404
+
+    fallback_path = os.path.abspath(os.path.join(current_app.root_path, '..', 'static', 'img', 'no-signal.png'))
     
     # Get camera processor or start it if not running
     manager = CameraManager.get_instance()
@@ -186,13 +199,27 @@ def get_camera_frame(camera_id):
         # Try to start the camera
         if not manager.start_camera(camera):
             # If we can't start the camera, return placeholder
-            return send_file('static/img/no-signal.png', mimetype='image/jpeg')
+            if not os.path.exists(fallback_path):
+                logger = logging.getLogger(__name__)
+                logger.warning("Fallback image missing at %s", fallback_path)
+                return jsonify({
+                    'success': False,
+                    'message': 'Camera offline and fallback image unavailable'
+                }), 503
+            return send_file(fallback_path, mimetype='image/jpeg')
     
     # Get the latest frame
     frame = processor.get_frame()
     
     if frame is None:
-        return send_file('static/img/no-signal.png', mimetype='image/jpeg')
+        if not os.path.exists(fallback_path):
+            logger = logging.getLogger(__name__)
+            logger.warning("Fallback image missing at %s", fallback_path)
+            return jsonify({
+                'success': False,
+                'message': 'Camera frame unavailable'
+            }), 503
+        return send_file(fallback_path, mimetype='image/jpeg')
     
     # Check quality parameter
     quality = request.args.get('quality', 'medium')
@@ -236,6 +263,9 @@ def get_camera_stream(camera_id):
         # Try to start the camera
         manager.start_camera(camera)
     
+    fallback_path = os.path.abspath(os.path.join(current_app.root_path, '..', 'static', 'img', 'no-signal.png'))
+    logger = logging.getLogger(__name__)
+
     def generate():
         """Generate MJPEG stream"""
         while True:
@@ -243,20 +273,28 @@ def get_camera_stream(camera_id):
             processor = manager.get_camera_processor(camera_id)
             if not processor:
                 # If camera isn't running, yield placeholder frame
-                with open('static/img/no-signal.png', 'rb') as f:
+                if os.path.exists(fallback_path):
+                    with open(fallback_path, 'rb') as f:
+                        data = f.read()
                     yield (b'--frame\r\n'
-                           b'Content-Type: image/jpeg\r\n\r\n' + f.read() + b'\r\n')
-                    time.sleep(1)
-                    continue
+                           b'Content-Type: image/jpeg\r\n\r\n' + data + b'\r\n')
+                else:
+                    logger.warning("Fallback image missing at %s", fallback_path)
+                time.sleep(1)
+                continue
             
             # Get the latest frame
             frame = processor.get_frame()
             
             if frame is None:
                 # If no frame available, yield placeholder
-                with open('static/img/no-signal.png', 'rb') as f:
+                if os.path.exists(fallback_path):
+                    with open(fallback_path, 'rb') as f:
+                        data = f.read()
                     yield (b'--frame\r\n'
-                           b'Content-Type: image/jpeg\r\n\r\n' + f.read() + b'\r\n')
+                           b'Content-Type: image/jpeg\r\n\r\n' + data + b'\r\n')
+                else:
+                    logger.warning("Fallback image missing at %s", fallback_path)
             else:
                 # Convert frame to JPEG
                 _, buffer = cv2.imencode('.jpg', frame)
@@ -288,7 +326,6 @@ def get_camera_roi(camera_id):
             'success': False,
             'message': 'Camera not found'
         }), 404
-        
     rois = ROI.get_by_camera(camera_id)
     
     return jsonify({
@@ -1533,13 +1570,208 @@ def get_system_resources():
             'resources': resources
         })
     except Exception as e:
-        import logging
         logger = logging.getLogger(__name__)
         logger.error(f"Error fetching system resources: {str(e)}")
         return jsonify({
             'success': False,
             'message': f"Error fetching system resources: {str(e)}"
         }), 500
+
+
+@api_bp.route('/faces', methods=['GET'])
+@login_required
+def list_faces():
+    """List all known/unlabeled face profiles."""
+    faces = FaceProfile.get_all()
+    return jsonify({
+        'success': True,
+        'faces': [face.to_dict() for face in faces]
+    })
+
+
+@api_bp.route('/faces/<face_id>', methods=['PATCH'])
+@login_required
+def update_face_profile(face_id):
+    """Update mutable fields (currently just the friendly name)."""
+    data = request.get_json(silent=True) or {}
+    name = data.get('name')
+
+    profile = FaceProfile.get_by_id(face_id)
+    if not profile:
+        return jsonify({'success': False, 'message': 'Face profile not found'}), 404
+
+    profile.update_name(name)
+    status = 'known' if profile.name else 'unlabeled'
+
+    try:
+        update_doc = {
+            '$set': {
+                'face_recognition_name': profile.name,
+                'face_status': status,
+            }
+        }
+        if profile.name is None:
+            update_doc['$unset'] = {
+                'face_recognition_name': "",
+            }
+        db.detections.update_many({'face_profile_id': profile.id}, update_doc)
+    except Exception as exc:
+        logger = logging.getLogger(__name__)
+        logger.warning('Failed to propagate face name change: %s', exc)
+
+    return jsonify({'success': True, 'face': profile.to_dict()})
+
+
+@api_bp.route('/faces/<face_id>', methods=['DELETE'])
+@login_required
+def delete_face_profile(face_id):
+    """Delete a face profile and unlink detections."""
+    profile = FaceProfile.get_by_id(face_id)
+    if not profile:
+        return jsonify({'success': False, 'message': 'Face profile not found'}), 404
+
+    FaceProfile.delete(face_id)
+    try:
+        db.detections.update_many(
+            {'face_profile_id': face_id},
+            {
+                '$unset': {
+                    'face_profile_id': "",
+                    'face_recognition_name': "",
+                    'face_recognition_score': "",
+                    'face_crop_path': "",
+                },
+                '$set': {'face_status': 'unlabeled'},
+            }
+        )
+    except Exception as exc:
+        logger = logging.getLogger(__name__)
+        logger.warning('Failed to detach detections for deleted face: %s', exc)
+
+    return jsonify({'success': True})
+
+
+@api_bp.route('/faces/<face_id>/detections', methods=['GET'])
+@login_required
+def list_face_detections(face_id):
+    """Return recent detections for a specific face profile."""
+    profile = FaceProfile.get_by_id(face_id)
+    if not profile:
+        return jsonify({'success': False, 'message': 'Face profile not found'}), 404
+
+    limit = max(1, min(100, int(request.args.get('limit', 30))))
+    detections_cursor = db.detections.find({'face_profile_id': face_id}).sort('timestamp', -1).limit(limit)
+    detections = [Detection(detection_data).to_dict() for detection_data in detections_cursor]
+
+    return jsonify({'success': True, 'face': profile.to_dict(), 'detections': detections})
+
+
+@api_bp.route('/faces/groups', methods=['GET'])
+@login_required
+def list_face_groups():
+    """Group faces by cosine similarity across labeled and unlabeled profiles."""
+    try:
+        threshold = float(request.args.get('threshold', 0.8))
+    except ValueError:
+        return jsonify({'success': False, 'message': 'Invalid threshold value'}), 400
+
+    raw_statuses = request.args.get('statuses')
+    statuses = [status.strip() for status in raw_statuses.split(',') if status.strip()] if raw_statuses else None
+    include_singletons = request.args.get('include_singletons', 'false').lower() == 'true'
+
+    groups = FaceProfile.cluster_profiles(threshold=threshold, statuses=statuses)
+
+    payload = []
+    for group in groups:
+        if not group:
+            continue
+        if not include_singletons and len(group) <= 1:
+            continue
+
+        group_sorted = sorted(
+            group,
+            key=lambda profile: profile.last_seen or datetime.min,
+            reverse=True,
+        )
+        representative = group_sorted[0]
+        label = next((member.name for member in group_sorted if member.name), None)
+        status_breakdown: Dict[str, int] = {}
+        for member in group_sorted:
+            status_breakdown[member.status] = status_breakdown.get(member.status, 0) + 1
+
+        payload.append(
+            {
+                'group_id': representative.id,
+                'size': len(group_sorted),
+                'label': label,
+                'status_breakdown': status_breakdown,
+                'representative_face': representative.to_dict(),
+                'faces': [member.to_dict() for member in group_sorted],
+            }
+        )
+
+    return jsonify({'success': True, 'groups': payload, 'count': len(payload)})
+
+
+@api_bp.route('/faces/<face_id>/image')
+@login_required
+def get_face_image(face_id):
+    """Stream the most recent face crop for a profile."""
+    profile = FaceProfile.get_by_id(face_id)
+    if not profile:
+        return abort(404)
+
+    project_root = os.path.abspath(os.path.join(current_app.root_path, '..'))
+    fallback_path = os.path.join(project_root, 'static', 'img', 'no-signal.png')
+
+    def _resolve(path: Optional[str]) -> Optional[str]:
+        if not path:
+            return None
+        return path if os.path.isabs(path) else os.path.normpath(os.path.join(project_root, path))
+
+    def _serve(path: str, mime: str):
+        try:
+            return send_file(path, mimetype=mime)
+        except FileNotFoundError:
+            logger = logging.getLogger(__name__)
+            logger.warning('Face image referenced at %s is missing on disk', path)
+            return None
+
+    image_path = _resolve(profile.primary_image_path)
+    if image_path and os.path.exists(image_path):
+        response = _serve(image_path, 'image/jpeg')
+        if response:
+            return response
+
+    # Prune stale samples then try again before falling back
+    profile.prune_missing_samples(project_root)
+    image_path = _resolve(profile.primary_image_path)
+    if image_path and os.path.exists(image_path):
+        response = _serve(image_path, 'image/jpeg')
+        if response:
+            return response
+
+    if os.path.exists(fallback_path):
+        return send_file(fallback_path, mimetype='image/png')
+
+    return abort(404)
+
+
+@api_bp.route('/faces/auto-assimilate', methods=['POST'])
+@login_required
+def auto_assimilate_faces():
+    """Promote unlabeled face profiles into known identities when highly similar."""
+    payload = request.get_json(silent=True) or {}
+    try:
+        threshold = float(payload.get('threshold', 0.9))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'Invalid threshold value'}), 400
+
+    threshold = max(0.0, min(1.0, threshold))
+
+    merges = FaceProfile.auto_assimilate_unlabeled(threshold=threshold)
+
+    return jsonify({'success': True, 'merged': merges, 'count': len(merges), 'threshold': threshold})
 
 @api_bp.route('/test_email', methods=['POST'])
 @login_required
@@ -2014,6 +2246,17 @@ def get_model_classes():
         
         # Format classes as array of objects for easy use in frontend
         class_list = [{"id": class_id, "name": class_name} for class_id, class_name in classes.items()]
+
+        # Append UniFace face detection class when enabled
+        try:
+            from app.routes.main_routes import get_detection_settings
+
+            detection_settings = get_detection_settings() or {}
+            if detection_settings.get('enable_face_detection', False):
+                if not any(cls.get('id') == 'face' for cls in class_list):
+                    class_list.append({"id": 'face', "name": 'Face'})
+        except Exception as exc:
+            logger.debug("Unable to append face detection class information: %s", exc)
         
         logger.info(f"Returning {len(class_list)} model classes")
         return jsonify({
