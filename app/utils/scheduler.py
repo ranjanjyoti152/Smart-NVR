@@ -383,19 +383,45 @@ class BackgroundScheduler:
             logger.error(traceback.format_exc())
 
     def _auto_assimilate_faces_task(self):
-        """Periodically assimilate unlabeled faces into known identities."""
+        """Periodically assimilate unlabeled faces into known identities.
+        
+        Respects settings:
+        - enable_auto_assimilate: Whether to run automatically
+        - auto_assimilate_threshold: Similarity threshold
+        - auto_assimilate_min_samples: Minimum samples required
+        - auto_assimilate_interval: Interval in minutes (updates task interval)
+        """
         from app import app
         from app.models.face_profile import FaceProfile
-
-        logger.info("Running auto-assimilate faces task")
+        from app.routes.main_routes import get_detection_settings
 
         try:
             with app.app_context():
-                merges = FaceProfile.auto_assimilate_unlabeled()
+                settings = get_detection_settings() or {}
+                
+                # Check if auto-assimilation is enabled
+                if not settings.get('enable_auto_assimilate', False):
+                    logger.debug("Auto-assimilate task skipped: disabled in settings")
+                    return
+                
+                # Get configuration from settings
+                threshold = float(settings.get('auto_assimilate_threshold', 0.9) or 0.9)
+                min_samples = int(settings.get('auto_assimilate_min_samples', 2) or 2)
+                
+                logger.info("Running auto-assimilate faces task (threshold=%.2f, min_samples=%d)", 
+                           threshold, min_samples)
+                
+                merges = FaceProfile.auto_assimilate_unlabeled(
+                    threshold=threshold,
+                    min_samples=min_samples,
+                    require_multi_sample_agreement=True,
+                )
+                
                 if merges:
                     logger.info("Auto-assimilate merged %d profiles", len(merges))
                 else:
                     logger.info("Auto-assimilate found no high-confidence merges")
+                    
         except Exception as exc:
             logger.error("Error during auto-assimilate task: %s", exc)
             import traceback

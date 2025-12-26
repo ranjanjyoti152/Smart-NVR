@@ -22,13 +22,13 @@
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label for="retention_days" class="form-label">Recording Retention (days)</label>
-                            <input type="number" class="form-control" id="retention_days" name="retention_days" 
+                            <input type="number" class="form-control" id="retention_days" name="retention_days"
                                 value="{{ settings.recording.retention_days|default(30) }}" min="1" max="365">
                             <div class="form-text">Number of days to keep recordings before automatic deletion</div>
                         </div>
                         <div class="col-md-6">
                             <label for="clip_length" class="form-label">Default Clip Length (seconds)</label>
-                            <input type="number" class="form-control" id="clip_length" name="clip_length" 
+                            <input type="number" class="form-control" id="clip_length" name="clip_length"
                                 value="{{ settings.recording.clip_length|default(60) }}" min="10" max="600">
                             <div class="form-text">Default length for recorded clips</div>
                         </div>
@@ -36,21 +36,24 @@
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label for="storage_path" class="form-label">Storage Path</label>
-                            <input type="text" class="form-control" id="storage_path" name="storage_path" 
+                            <input type="text" class="form-control" id="storage_path" name="storage_path"
                                 value="{{ settings.recording.storage_path|default('storage/recordings') }}">
                             <div class="form-text">Path where recordings are stored</div>
                         </div>
                         <div class="col-md-6">
                             <label for="format" class="form-label">Recording Format</label>
                             <select class="form-select" id="format" name="format">
-                                <option value="mp4" {% if settings.recording.format == 'mp4' %}selected{% endif %}>MP4</option>
-                                <option value="avi" {% if settings.recording.format == 'avi' %}selected{% endif %}>AVI</option>
-                                <option value="mkv" {% if settings.recording.format == 'mkv' %}selected{% endif %}>MKV</option>
+                                <option value="mp4" {% if settings.recording.format=='mp4' %}selected{% endif %}>MP4
+                                </option>
+                                <option value="avi" {% if settings.recording.format=='avi' %}selected{% endif %}>AVI
+                                </option>
+                                <option value="mkv" {% if settings.recording.format=='mkv' %}selected{% endif %}>MKV
+                                </option>
                             </select>
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- AI Detection Settings -->
                 <div class="mb-4">
                     <div class="d-flex align-items-center mb-3">
@@ -61,8 +64,9 @@
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <label for="default_confidence" class="form-label">Default Detection Confidence</label>
-                            <input type="number" class="form-control" id="default_confidence" name="default_confidence" 
-                                value="{{ settings.detection.default_confidence|default(0.45) }}" min="0.1" max="0.9" step="0.05">
+                            <input type="number" class="form-control" id="default_confidence" name="default_confidence"
+                                value="{{ settings.detection.default_confidence|default(0.45) }}" min="0.1" max="0.9"
+                                step="0.05">
                             <div class="form-text">Default confidence threshold for object detection (0.1-0.9)</div>
                         </div>
                         <div class="col-md-6">
@@ -70,33 +74,37 @@
                             <select class="form-select" id="default_model" name="default_model">
                                 <!-- Custom trained models -->
                                 {% if ai_models|selectattr("is_custom")|list %}
-                                    <optgroup label="Custom Trained Models">
+                                <optgroup label="Custom Trained Models">
                                     {% for model in ai_models|selectattr("is_custom")|list %}
-                                        <option value="{{ model.name }}" {% if settings.detection.default_model == model.name %}selected{% endif %}>
-                                            {{ model.name }}{% if model.description %} - {{ model.description }}{% endif %}
-                                        </option>
+                                    <option value="{{ model.name }}" {% if settings.detection.default_model==model.name
+                                        %}selected{% endif %}>
+                                        {{ model.name }}{% if model.description %} - {{ model.description }}{% endif %}
+                                    </option>
                                     {% endfor %}
-                                    </optgroup>
+                                </optgroup>
                                 {% endif %}
-                                
+
                                 <!-- Pre-trained models -->
                                 {% if ai_models|rejectattr("is_custom")|list %}
-                                    <optgroup label="Pre-trained Models">
+                                <optgroup label="Pre-trained Models">
                                     {% for model in ai_models|rejectattr("is_custom")|list %}
-                                        <option value="{{ model.name }}" {% if settings.detection.default_model == model.name %}selected{% endif %}>
-                                            {{ model.name }}{% if model.description %} - {{ model.description }}{% endif %}
-                                        </option>
+                                    <option value="{{ model.name }}" {% if settings.detection.default_model==model.name
+                                        %}selected{% endif %}>
+                                        {{ model.name }}{% if model.description %} - {{ model.description }}{% endif %}
+                                    </option>
                                     {% endfor %}
-                                    </optgroup>
+                                </optgroup>
                                 {% endif %}
-                                
+
                                 <!-- Message if no models are available -->
                                 {% if not ai_models %}
-                                    <option value="" disabled>No AI models available - Please add models in Admin > AI Models</option>
+                                <option value="" disabled>No AI models available - Please add models in Admin > AI
+                                    Models</option>
                                 {% endif %}
                             </select>
                             <div class="form-text">Default AI model for object detection</div>
-                            <a href="{{ url_for('admin.manage_models') }}" class="btn btn-sm btn-outline-secondary mt-2">
+                            <a href="{{ url_for('admin.manage_models') }}"
+                                class="btn btn-sm btn-outline-secondary mt-2">
                                 <i class="fas fa-cog"></i> Manage Models
                             </a>
                         </div>
@@ -104,15 +112,18 @@
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <div class="form-check form-switch mb-3">
-                                <input class="form-check-input" type="checkbox" id="save_detection_images" name="save_detection_images" 
-                                    {% if settings.detection.save_images %}checked{% endif %}>
-                                <label class="form-check-label" for="save_detection_images">Save Detection Images</label>
+                                <input class="form-check-input" type="checkbox" id="save_detection_images"
+                                    name="save_detection_images" {% if settings.detection.save_images %}checked{% endif
+                                    %}>
+                                <label class="form-check-label" for="save_detection_images">Save Detection
+                                    Images</label>
                                 <div class="form-text">When enabled, saves an image for each detection event</div>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <label for="image_retention_days" class="form-label">Image Retention (days)</label>
-                            <input type="number" class="form-control" id="image_retention_days" name="image_retention_days" 
+                            <input type="number" class="form-control" id="image_retention_days"
+                                name="image_retention_days"
                                 value="{{ settings.detection.image_retention_days|default(7) }}" min="1" max="90">
                             <div class="form-text">Number of days to keep detection images before deletion</div>
                         </div>
@@ -127,77 +138,203 @@
                                     <span class="fw-bold">Face Detection (UniFace)</span>
                                 </div>
                                 <div class="form-check form-switch mb-0">
-                                    <input class="form-check-input" type="checkbox" id="enable_face_detection" name="enable_face_detection"
-                                        {% if settings.detection.enable_face_detection %}checked{% endif %}>
-                                    <label class="form-check-label" for="enable_face_detection">Enable Face Detection</label>
+                                    <input class="form-check-input" type="checkbox" id="enable_face_detection"
+                                        name="enable_face_detection" {% if settings.detection.enable_face_detection
+                                        %}checked{% endif %}>
+                                    <label class="form-check-label" for="enable_face_detection">Enable Face
+                                        Detection</label>
                                 </div>
                             </div>
                         </div>
-                        <div class="card-body p-3" id="faceDetectionSettings" {% if not settings.detection.enable_face_detection %}style="display: none;"{% endif %}>
+                        <div class="card-body p-3" id="faceDetectionSettings" {% if not
+                            settings.detection.enable_face_detection %}style="display: none;" {% endif %}>
                             <p class="text-muted mb-3">
                                 <i class="fas fa-info-circle me-1"></i>
-                                Powered by <a href="https://github.com/yakhyo/uniface" target="_blank" rel="noopener">UniFace</a>. Automatically downloads ONNX models on first use. Configure providers to match your hardware.
+                                Powered by <a href="https://github.com/yakhyo/uniface" target="_blank"
+                                    rel="noopener">UniFace</a>. Automatically downloads ONNX models on first use.
+                                Configure providers to match your hardware.
                             </p>
 
                             <div class="row g-3">
                                 <div class="col-md-4">
                                     <label for="face_detection_confidence" class="form-label">Minimum Confidence</label>
-                                    <input type="number" class="form-control" id="face_detection_confidence" name="face_detection_confidence"
-                                        value="{{ settings.detection.face_detection_confidence|default(0.5) }}" min="0.1" max="0.99" step="0.05">
+                                    <input type="number" class="form-control" id="face_detection_confidence"
+                                        name="face_detection_confidence"
+                                        value="{{ settings.detection.face_detection_confidence|default(0.5) }}"
+                                        min="0.1" max="0.99" step="0.05">
                                     <div class="form-text">Lower values detect more faces but may add noise</div>
                                 </div>
                                 <div class="col-md-4">
-                                    <label for="face_detection_model" class="form-label">RetinaFace Model</label>
-                                    <select class="form-select" id="face_detection_model" name="face_detection_model">
-                                        {% set face_model = settings.detection.face_detection_model|default('MNET_V2') %}
-                                        <option value="MNET_025" {% if face_model == 'MNET_025' %}selected{% endif %}>RetinaFace MobileNet-0.25 (fastest)</option>
-                                        <option value="MNET_V2" {% if face_model == 'MNET_V2' %}selected{% endif %}>RetinaFace MobileNetV2 (balanced)</option>
-                                        <option value="RESNET34" {% if face_model == 'RESNET34' %}selected{% endif %}>RetinaFace ResNet-34 (highest accuracy)</option>
+                                    <label for="face_detector_type" class="form-label">Detector Type</label>
+                                    {% set detector_type = settings.detection.face_detector_type|default('retinaface')
+                                    %}
+                                    <select class="form-select" id="face_detector_type" name="face_detector_type">
+                                        <option value="retinaface" {% if detector_type=='retinaface' %}selected{% endif
+                                            %}>RetinaFace (balanced)</option>
+                                        <option value="scrfd" {% if detector_type=='scrfd' %}selected{% endif %}>SCRFD
+                                            (highest accuracy)</option>
                                     </select>
-                                    <div class="form-text">Choose lighter models for CPU-only systems</div>
+                                    <div class="form-text">SCRFD offers better accuracy for difficult faces</div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="face_detection_model" class="form-label">Model Variant</label>
+                                    <select class="form-select" id="face_detection_model" name="face_detection_model">
+                                        {% set face_model = settings.detection.face_detection_model|default('MNET_V2')
+                                        %}
+                                        <optgroup label="RetinaFace Models" id="retinaface_models">
+                                            <option value="MNET_025" {% if face_model=='MNET_025' %}selected{% endif %}>
+                                                MobileNet-0.25 (1.7MB, fastest)</option>
+                                            <option value="MNET_V2" {% if face_model=='MNET_V2' %}selected{% endif %}>
+                                                MobileNetV2 (4.0MB, balanced)</option>
+                                            <option value="RESNET34" {% if face_model=='RESNET34' %}selected{% endif %}>
+                                                ResNet-34 (90MB, accurate)</option>
+                                        </optgroup>
+                                        <optgroup label="SCRFD Models" id="scrfd_models">
+                                            <option value="SCRFD_500M_KPS" {% if face_model=='SCRFD_500M_KPS'
+                                                %}selected{% endif %}>SCRFD-500M (2.5MB, fast)</option>
+                                            <option value="SCRFD_2_5G_KPS" {% if face_model=='SCRFD_2_5G_KPS'
+                                                %}selected{% endif %}>SCRFD-2.5G (10MB, balanced)</option>
+                                            <option value="SCRFD_10G_KPS" {% if face_model=='SCRFD_10G_KPS' %}selected{%
+                                                endif %}>SCRFD-10G (60MB, most accurate)</option>
+                                        </optgroup>
+                                    </select>
+                                    <div class="form-text">Larger models are more accurate but slower</div>
                                 </div>
                                 <div class="col-md-4">
                                     <label for="face_detection_provider" class="form-label">Execution Provider</label>
                                     {% set face_provider = settings.detection.face_detection_provider|default('auto') %}
-                                    <select class="form-select" id="face_detection_provider" name="face_detection_provider">
-                                        <option value="auto" {% if face_provider == 'auto' %}selected{% endif %}>Auto (recommended)</option>
-                                        <option value="cpu" {% if face_provider == 'cpu' %}selected{% endif %}>CPU</option>
-                                        <option value="cuda" {% if face_provider == 'cuda' %}selected{% endif %}>CUDA (NVIDIA)</option>
-                                        <option value="tensorrt" {% if face_provider == 'tensorrt' %}selected{% endif %}>TensorRT</option>
-                                        <option value="directml" {% if face_provider == 'directml' %}selected{% endif %}>DirectML</option>
+                                    <select class="form-select" id="face_detection_provider"
+                                        name="face_detection_provider">
+                                        <option value="auto" {% if face_provider=='auto' %}selected{% endif %}>Auto
+                                            (recommended)</option>
+                                        <option value="cpu" {% if face_provider=='cpu' %}selected{% endif %}>CPU
+                                        </option>
+                                        <option value="cuda" {% if face_provider=='cuda' %}selected{% endif %}>CUDA
+                                            (NVIDIA)</option>
+                                        <option value="tensorrt" {% if face_provider=='tensorrt' %}selected{% endif %}>
+                                            TensorRT</option>
+                                        <option value="directml" {% if face_provider=='directml' %}selected{% endif %}>
+                                            DirectML</option>
                                     </select>
                                     <div class="form-text">Match your available ONNX Runtime execution providers</div>
                                 </div>
                                 <div class="col-md-4">
                                     <label for="face_detection_max_faces" class="form-label">Max Faces per Frame</label>
-                                    <input type="number" class="form-control" id="face_detection_max_faces" name="face_detection_max_faces"
-                                        value="{{ settings.detection.face_detection_max_faces|default(10) }}" min="1" max="25">
+                                    <input type="number" class="form-control" id="face_detection_max_faces"
+                                        name="face_detection_max_faces"
+                                        value="{{ settings.detection.face_detection_max_faces|default(10) }}" min="1"
+                                        max="50">
                                     <div class="form-text">Limits processing cost by capping detections</div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="face_min_size" class="form-label">Min Face Size (pixels)</label>
+                                    <input type="number" class="form-control" id="face_min_size" name="face_min_size"
+                                        value="{{ settings.detection.face_min_size|default(32) }}" min="16" max="256">
+                                    <div class="form-text">Ignore faces smaller than this (reduces noise)</div>
+                                </div>
+                            </div>
+
+                            <!-- Quality Filter Settings -->
+                            <div class="row g-3 mt-2">
+                                <div class="col-md-4">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="face_blur_detection"
+                                            name="face_blur_detection" {% if settings.detection.face_blur_detection
+                                            %}checked{% endif %}>
+                                        <label class="form-check-label" for="face_blur_detection">Skip Blurry
+                                            Faces</label>
+                                    </div>
+                                    <div class="form-text">Filter out low-quality blurry faces before recognition</div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="face_bbox_padding" class="form-label">Bounding Box Padding</label>
+                                    <input type="number" class="form-control" id="face_bbox_padding"
+                                        name="face_bbox_padding"
+                                        value="{{ settings.detection.face_bbox_padding|default(0.1) }}" min="0"
+                                        max="0.5" step="0.05">
+                                    <div class="form-text">Expand crop by this % for better recognition (0.1 = 10%)
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="small text-muted mt-4">
+                                        <i class="fas fa-lightbulb me-1"></i>Quality filters help improve face
+                                        recognition accuracy by discarding poor samples.
+                                    </div>
                                 </div>
                             </div>
 
                             <div class="form-check form-switch mt-4">
-                                <input class="form-check-input" type="checkbox" id="enable_face_recognition" name="enable_face_recognition"
-                                    {% if settings.detection.enable_face_recognition %}checked{% endif %}>
-                                <label class="form-check-label" for="enable_face_recognition">Enable Face Recognition &amp; Grouping</label>
+                                <input class="form-check-input" type="checkbox" id="enable_face_recognition"
+                                    name="enable_face_recognition" {% if settings.detection.enable_face_recognition
+                                    %}checked{% endif %}>
+                                <label class="form-check-label" for="enable_face_recognition">Enable Face Recognition
+                                    &amp; Grouping</label>
                             </div>
 
-                            <div id="faceRecognitionSettings" class="row g-3 mt-1" {% if not settings.detection.enable_face_recognition %}style="display: none;"{% endif %}>
+                            <div id="faceRecognitionSettings" class="row g-3 mt-1" {% if not
+                                settings.detection.enable_face_recognition %}style="display: none;" {% endif %}>
                                 <div class="col-md-4">
                                     <label for="face_recognition_threshold" class="form-label">Match Threshold</label>
-                                    <input type="number" class="form-control" id="face_recognition_threshold" name="face_recognition_threshold"
-                                        value="{{ settings.detection.face_recognition_threshold|default(0.62) }}" min="0.3" max="0.9" step="0.01">
+                                    <input type="number" class="form-control" id="face_recognition_threshold"
+                                        name="face_recognition_threshold"
+                                        value="{{ settings.detection.face_recognition_threshold|default(0.62) }}"
+                                        min="0.3" max="0.9" step="0.01">
                                     <div class="form-text">Higher values require closer matches (default 0.62)</div>
                                 </div>
                                 <div class="col-md-4 d-flex align-items-end">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" id="face_recognition_auto_create" name="face_recognition_auto_create"
-                                            {% if settings.detection.face_recognition_auto_create|default(true) %}checked{% endif %}>
-                                        <label class="form-check-label" for="face_recognition_auto_create">Auto-create profiles for new faces</label>
+                                        <input class="form-check-input" type="checkbox"
+                                            id="face_recognition_auto_create" name="face_recognition_auto_create" {% if
+                                            settings.detection.face_recognition_auto_create|default(true) %}checked{%
+                                            endif %}>
+                                        <label class="form-check-label" for="face_recognition_auto_create">Auto-create
+                                            profiles for new faces</label>
                                     </div>
                                 </div>
                                 <div class="col-md-4">
-                                    <div class="small text-muted">Recognition requires facenet-pytorch. Enable this to group unlabeled faces automatically and label them later.</div>
+                                    <div class="small text-muted">Recognition requires facenet-pytorch. Enable this to
+                                        group unlabeled faces automatically and label them later.</div>
+                                </div>
+                            </div>
+
+                            <!-- Auto-Assimilation Settings -->
+                            <div class="form-check form-switch mt-4">
+                                <input class="form-check-input" type="checkbox" id="enable_auto_assimilate"
+                                    name="enable_auto_assimilate" {% if settings.detection.enable_auto_assimilate
+                                    %}checked{% endif %}>
+                                <label class="form-check-label" for="enable_auto_assimilate">
+                                    <i class="fas fa-sync-alt me-1"></i>Enable Auto Face Assimilation
+                                </label>
+                            </div>
+                            <div class="form-text mb-2">Automatically merge unlabeled faces into known identities in the
+                                background</div>
+
+                            <div id="autoAssimilateSettings" class="row g-3 mt-1" {% if not
+                                settings.detection.enable_auto_assimilate %}style="display: none;" {% endif %}>
+                                <div class="col-md-4">
+                                    <label for="auto_assimilate_threshold" class="form-label">Match Threshold</label>
+                                    <input type="number" class="form-control" id="auto_assimilate_threshold"
+                                        name="auto_assimilate_threshold"
+                                        value="{{ settings.detection.auto_assimilate_threshold|default(0.9) }}"
+                                        min="0.7" max="0.99" step="0.01">
+                                    <div class="form-text">Higher = stricter matching (0.9 recommended)</div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="auto_assimilate_min_samples" class="form-label">Min Samples
+                                        Required</label>
+                                    <input type="number" class="form-control" id="auto_assimilate_min_samples"
+                                        name="auto_assimilate_min_samples"
+                                        value="{{ settings.detection.auto_assimilate_min_samples|default(2) }}" min="1"
+                                        max="10">
+                                    <div class="form-text">Faces need at least this many detections</div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="auto_assimilate_interval" class="form-label">Run Every (minutes)</label>
+                                    <input type="number" class="form-control" id="auto_assimilate_interval"
+                                        name="auto_assimilate_interval"
+                                        value="{{ settings.detection.auto_assimilate_interval|default(60) }}" min="5"
+                                        max="1440">
+                                    <div class="form-text">How often to check for matches (default 60 min)</div>
                                 </div>
                             </div>
                         </div>
@@ -212,16 +349,19 @@
                                     <span class="fw-bold">Gemini AI Enhancement</span>
                                 </div>
                                 <div class="form-check form-switch mb-0">
-                                    <input class="form-check-input" type="checkbox" id="enable_gemini_ai" name="enable_gemini_ai" 
-                                        {% if settings.detection.enable_gemini_ai %}checked{% endif %}>
+                                    <input class="form-check-input" type="checkbox" id="enable_gemini_ai"
+                                        name="enable_gemini_ai" {% if settings.detection.enable_gemini_ai %}checked{%
+                                        endif %}>
                                     <label class="form-check-label" for="enable_gemini_ai">Enable Gemini AI</label>
                                 </div>
                             </div>
                         </div>
-                        <div class="card-body p-3" id="geminiSettings" {% if not settings.detection.enable_gemini_ai %}style="display: none;"{% endif %}>
+                        <div class="card-body p-3" id="geminiSettings" {% if not settings.detection.enable_gemini_ai
+                            %}style="display: none;" {% endif %}>
                             <p class="text-muted mb-3">
-                                <i class="fas fa-info-circle me-1"></i> 
-                                When enabled, Gemini AI generates human-friendly, context-aware descriptions for ROI notifications.
+                                <i class="fas fa-info-circle me-1"></i>
+                                When enabled, Gemini AI generates human-friendly, context-aware descriptions for ROI
+                                notifications.
                             </p>
 
                             <div class="row mb-3">
@@ -229,15 +369,17 @@
                                     <label for="gemini_api_key" class="form-label">Gemini API Key</label>
                                     <div class="input-group">
                                         <span class="input-group-text"><i class="fas fa-key"></i></span>
-                                        <input type="password" class="form-control" id="gemini_api_key" name="gemini_api_key" 
-                                            value="{{ settings.detection.gemini_api_key|default('') }}" 
+                                        <input type="password" class="form-control" id="gemini_api_key"
+                                            name="gemini_api_key"
+                                            value="{{ settings.detection.gemini_api_key|default('') }}"
                                             placeholder="Enter your Gemini API key">
                                         <button class="btn btn-outline-secondary" type="button" id="toggleGeminiKey">
                                             <i class="fas fa-eye"></i>
                                         </button>
                                     </div>
                                     <div class="form-text">
-                                        Get your API key from <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a>
+                                        Get your API key from <a href="https://aistudio.google.com/app/apikey"
+                                            target="_blank">Google AI Studio</a>
                                     </div>
                                 </div>
                                 <div class="col-md-4">
@@ -246,7 +388,8 @@
                                         <select class="form-select" id="gemini_model" name="gemini_model">
                                             <option value="">Loading models...</option>
                                         </select>
-                                        <button class="btn btn-outline-secondary" type="button" id="refreshGeminiModels" title="Refresh model list">
+                                        <button class="btn btn-outline-secondary" type="button" id="refreshGeminiModels"
+                                            title="Refresh model list">
                                             <i class="fas fa-sync-alt"></i>
                                         </button>
                                     </div>
@@ -267,7 +410,7 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- Notification Settings -->
                 <div class="mb-4">
                     <div class="d-flex align-items-center mb-3">
@@ -276,58 +419,62 @@
                     </div>
                     <hr>
                     <div class="form-check form-switch mb-3">
-                        <input class="form-check-input" type="checkbox" id="email_enabled" name="email_enabled" 
-                            {% if settings.notifications.email_enabled %}checked{% endif %}>
+                        <input class="form-check-input" type="checkbox" id="email_enabled" name="email_enabled" {% if
+                            settings.notifications.email_enabled %}checked{% endif %}>
                         <label class="form-check-label" for="email_enabled">Enable Email Notifications</label>
                     </div>
-                    
-                    <div id="emailSettings" {% if not settings.notifications.email_enabled %}style="display: none;"{% endif %}>
+
+                    <div id="emailSettings" {% if not settings.notifications.email_enabled %}style="display: none;" {%
+                        endif %}>
                         <div class="row mb-3">
                             <div class="col-md-6">
                                 <label for="smtp_server" class="form-label">SMTP Server</label>
-                                <input type="text" class="form-control" id="smtp_server" name="smtp_server" 
+                                <input type="text" class="form-control" id="smtp_server" name="smtp_server"
                                     value="{{ settings.notifications.smtp_server|default('smtp.gmail.com') }}">
                                 <div class="form-text">For Gmail use: smtp.gmail.com</div>
                             </div>
                             <div class="col-md-6">
                                 <label for="smtp_port" class="form-label">SMTP Port</label>
-                                <input type="number" class="form-control" id="smtp_port" name="smtp_port" 
+                                <input type="number" class="form-control" id="smtp_port" name="smtp_port"
                                     value="{{ settings.notifications.smtp_port|default(587) }}">
                                 <div class="form-text">For Gmail use: 587</div>
                             </div>
                         </div>
-                        
+
                         <div class="row mb-3">
                             <div class="col-md-6">
                                 <label for="smtp_username" class="form-label">SMTP Username</label>
-                                <input type="text" class="form-control" id="smtp_username" name="smtp_username" 
+                                <input type="text" class="form-control" id="smtp_username" name="smtp_username"
                                     value="{{ settings.notifications.smtp_username|default('') }}">
                                 <div class="form-text">For Gmail use your full email address</div>
                             </div>
                             <div class="col-md-6">
                                 <label for="smtp_password" class="form-label">SMTP Password</label>
-                                <input type="password" class="form-control" id="smtp_password" name="smtp_password" 
+                                <input type="password" class="form-control" id="smtp_password" name="smtp_password"
                                     placeholder="Leave blank to keep current">
-                                <div class="form-text">For Gmail use an <a href="https://myaccount.google.com/apppasswords" target="_blank">App Password</a></div>
+                                <div class="form-text">For Gmail use an <a
+                                        href="https://myaccount.google.com/apppasswords" target="_blank">App
+                                        Password</a></div>
                             </div>
                         </div>
-                        
+
                         <div class="row mb-3">
                             <div class="col-md-12">
                                 <label for="from_email" class="form-label">From Email Address</label>
-                                <input type="email" class="form-control" id="from_email" name="from_email" 
+                                <input type="email" class="form-control" id="from_email" name="from_email"
                                     value="{{ settings.notifications.from_email|default('') }}">
                                 <div class="form-text">Email address that notifications will be sent from</div>
                             </div>
                         </div>
-                        
+
                         <div class="mb-3">
                             <label for="email_to" class="form-label">Email Recipients</label>
-                            <input type="text" class="form-control" id="email_to" name="email_to" 
+                            <input type="text" class="form-control" id="email_to" name="email_to"
                                 value="{{ settings.notifications.email_to|default('') }}">
-                            <div class="form-text">Comma-separated list of email addresses to receive notifications</div>
+                            <div class="form-text">Comma-separated list of email addresses to receive notifications
+                            </div>
                         </div>
-                        
+
                         <div class="mb-3">
                             <button type="button" id="testEmailBtn" class="btn btn-outline-primary">
                                 <i class="fas fa-paper-plane me-1"></i> Test Email
@@ -336,7 +483,7 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- System Settings -->
                 <div class="mb-4">
                     <div class="d-flex align-items-center mb-3">
@@ -348,70 +495,88 @@
                         <div class="col-md-6">
                             <label for="log_level" class="form-label">Log Level</label>
                             <select class="form-select" id="log_level" name="log_level">
-                                <option value="debug" {% if settings.system.log_level == 'debug' %}selected{% endif %}>Debug</option>
-                                <option value="info" {% if settings.system.log_level == 'info' %}selected{% endif %}>Info</option>
-                                <option value="warning" {% if settings.system.log_level == 'warning' %}selected{% endif %}>Warning</option>
-                                <option value="error" {% if settings.system.log_level == 'error' %}selected{% endif %}>Error</option>
+                                <option value="debug" {% if settings.system.log_level=='debug' %}selected{% endif %}>
+                                    Debug</option>
+                                <option value="info" {% if settings.system.log_level=='info' %}selected{% endif %}>Info
+                                </option>
+                                <option value="warning" {% if settings.system.log_level=='warning' %}selected{% endif
+                                    %}>Warning</option>
+                                <option value="error" {% if settings.system.log_level=='error' %}selected{% endif %}>
+                                    Error</option>
                             </select>
                             <div class="form-text">Controls the detail level of system logs</div>
                         </div>
                     </div>
                 </div>
-                
+
                 <button type="submit" class="btn btn-primary">
                     <i class="fas fa-save me-1"></i> Save Settings
                 </button>
             </form>
         </div>
     </div>
-    
+
     <div class="col-md-4">
         <div class="mac-card mb-4">
             <div class="d-flex align-items-center mb-3">
                 <i class="fas fa-info-circle me-2" style="color: var(--color-info);"></i>
                 <h5 class="mb-0">Configuration Info</h5>
             </div>
-            <p>These settings define system-wide defaults and behavior. Each camera can override specific settings on a per-camera basis.</p>
-            
+            <p>These settings define system-wide defaults and behavior. Each camera can override specific settings on a
+                per-camera basis.</p>
+
             <h6 class="mt-4 mb-2 fw-bold" style="color: var(--color-primary);">General Settings</h6>
             <p>
-                <strong>Recording Retention:</strong> Set how many days to keep video recordings before automatic deletion. Higher values require more storage space.<br>
-                <strong>Clip Length:</strong> Duration in seconds for each video clip file. Shorter clips are easier to navigate but create more files.<br>
-                <strong>Storage Path:</strong> Directory where recordings are stored. Ensure this location has sufficient disk space.<br>
-                <strong>Recording Format:</strong> Video container format for recordings. MP4 is widely compatible, MKV supports more features, AVI is better for some legacy systems.
+                <strong>Recording Retention:</strong> Set how many days to keep video recordings before automatic
+                deletion. Higher values require more storage space.<br>
+                <strong>Clip Length:</strong> Duration in seconds for each video clip file. Shorter clips are easier to
+                navigate but create more files.<br>
+                <strong>Storage Path:</strong> Directory where recordings are stored. Ensure this location has
+                sufficient disk space.<br>
+                <strong>Recording Format:</strong> Video container format for recordings. MP4 is widely compatible, MKV
+                supports more features, AVI is better for some legacy systems.
             </p>
-            
+
             <h6 class="mt-4 mb-2 fw-bold" style="color: var(--color-secondary);">AI Detection Settings</h6>
             <p>
-                <strong>Default Confidence:</strong> The threshold (0.1-0.9) that determines how certain the AI must be to report a detection. Higher values (e.g., 0.7) reduce false positives but might miss some objects. Lower values (e.g., 0.3) catch more objects but may include false detections.<br>
-                <strong>Default AI Model:</strong> The AI model used for object detection. Smaller models run faster but with less accuracy; larger models are more accurate but require more processing power.<br>
-                <strong>Save Detection Images:</strong> When enabled, saves a snapshot image for each detection event for review later.<br>
+                <strong>Default Confidence:</strong> The threshold (0.1-0.9) that determines how certain the AI must be
+                to report a detection. Higher values (e.g., 0.7) reduce false positives but might miss some objects.
+                Lower values (e.g., 0.3) catch more objects but may include false detections.<br>
+                <strong>Default AI Model:</strong> The AI model used for object detection. Smaller models run faster but
+                with less accuracy; larger models are more accurate but require more processing power.<br>
+                <strong>Save Detection Images:</strong> When enabled, saves a snapshot image for each detection event
+                for review later.<br>
                 <strong>Image Retention:</strong> Number of days to keep detection images before automatic deletion.<br>
-                <strong>Face Detection:</strong> Enables RetinaFace-based detection for people monitoring. Requires the UniFace dependency and downloads model weights on demand.<br>
-                <strong>Gemini AI:</strong> Generates human-friendly, context-aware descriptions for ROI notifications when enabled.
+                <strong>Face Detection:</strong> Enables RetinaFace-based detection for people monitoring. Requires the
+                UniFace dependency and downloads model weights on demand.<br>
+                <strong>Gemini AI:</strong> Generates human-friendly, context-aware descriptions for ROI notifications
+                when enabled.
             </p>
-            
+
             <h6 class="mt-4 mb-2 fw-bold" style="color: var(--color-warning);">Email Notifications</h6>
             <p>
-                <strong>SMTP Settings:</strong> Your email server details for sending notifications. For Gmail, use smtp.gmail.com:587 and create an App Password if you have 2FA enabled.<br>
-                <strong>From/To Addresses:</strong> The sender address should match your SMTP username in most cases. Recipients can be multiple addresses separated by commas.<br>
+                <strong>SMTP Settings:</strong> Your email server details for sending notifications. For Gmail, use
+                smtp.gmail.com:587 and create an App Password if you have 2FA enabled.<br>
+                <strong>From/To Addresses:</strong> The sender address should match your SMTP username in most cases.
+                Recipients can be multiple addresses separated by commas.<br>
                 <strong>Testing:</strong> Always use the "Test Email" button to verify your configuration before saving.
             </p>
-            
+
             <h6 class="mt-4 mb-2 fw-bold" style="color: var(--color-info);">System Settings</h6>
             <p>
                 <strong>Log Level:</strong> Controls the verbosity of system logs:
-                <ul class="mt-2">
-                    <li><strong>Debug:</strong> Maximum detail, useful for troubleshooting but generates large logs</li>
-                    <li><strong>Info:</strong> Recommended for normal operation</li>
-                    <li><strong>Warning:</strong> Only logs potential issues</li>
-                    <li><strong>Error:</strong> Only logs critical errors</li>
-                </ul>
+            <ul class="mt-2">
+                <li><strong>Debug:</strong> Maximum detail, useful for troubleshooting but generates large logs</li>
+                <li><strong>Info:</strong> Recommended for normal operation</li>
+                <li><strong>Warning:</strong> Only logs potential issues</li>
+                <li><strong>Error:</strong> Only logs critical errors</li>
+            </ul>
             </p>
-            
+
             <div class="alert alert-info mt-4">
-                <i class="fas fa-info-circle me-2"></i> 
-                <span>For best performance, ensure your server has sufficient CPU, RAM, and GPU resources for the selected AI models, especially when running multiple cameras simultaneously.</span>
+                <i class="fas fa-info-circle me-2"></i>
+                <span>For best performance, ensure your server has sufficient CPU, RAM, and GPU resources for the
+                    selected AI models, especially when running multiple cameras simultaneously.</span>
             </div>
         </div>
     </div>
@@ -422,35 +587,35 @@
 <script>
     // Store current selected model for restoration after loading
     const currentGeminiModel = "{{ settings.detection.gemini_model|default('gemini-1.5-flash') }}";
-    
+
     // Load Gemini models dynamically
     function loadGeminiModels() {
         const modelSelect = document.getElementById('gemini_model');
         const modelInfo = document.getElementById('gemini_model_info');
-        
+
         fetch('/api/gemini_models')
             .then(response => response.json())
             .then(data => {
                 // Clear loading option
                 modelSelect.innerHTML = '';
-                
+
                 if (data.success && data.models && data.models.length > 0) {
                     data.models.forEach(model => {
                         const option = document.createElement('option');
                         option.value = model.id;
                         option.textContent = model.name;
                         option.title = model.description || '';
-                        
+
                         // Set selected if this is the current model
                         if (model.id === currentGeminiModel) {
                             option.selected = true;
                             // Update info text with model details
                             updateModelInfo(model);
                         }
-                        
+
                         modelSelect.appendChild(option);
                     });
-                    
+
                     // If no model was selected, select the first one
                     if (!modelSelect.value && data.models.length > 0) {
                         modelSelect.value = data.models[0].id;
@@ -463,7 +628,7 @@
                         { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', description: 'Advanced model with superior performance' },
                         { id: 'gemini-pro', name: 'Gemini Pro', description: 'Original Gemini Pro model' }
                     ];
-                    
+
                     fallbackModels.forEach(model => {
                         const option = document.createElement('option');
                         option.value = model.id;
@@ -478,7 +643,7 @@
             })
             .catch(error => {
                 console.error('Error loading Gemini models:', error);
-                
+
                 // Fallback to default options on error
                 modelSelect.innerHTML = '';
                 const fallbackModels = [
@@ -486,7 +651,7 @@
                     { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
                     { id: 'gemini-pro', name: 'Gemini Pro' }
                 ];
-                
+
                 fallbackModels.forEach(model => {
                     const option = document.createElement('option');
                     option.value = model.id;
@@ -496,50 +661,50 @@
                     }
                     modelSelect.appendChild(option);
                 });
-                
+
                 modelInfo.textContent = 'Error loading models - using defaults';
             });
     }
-    
+
     // Update model info text
     function updateModelInfo(model) {
         const modelInfo = document.getElementById('gemini_model_info');
         let infoText = model.description || 'Select a Gemini model for AI descriptions';
-        
+
         if (model.inputTokenLimit) {
             infoText += ` (Input: ${(model.inputTokenLimit / 1000).toFixed(0)}K tokens)`;
         }
-        
+
         modelInfo.textContent = infoText;
     }
-    
+
     // Handle model selection change
-    document.getElementById('gemini_model').addEventListener('change', function() {
+    document.getElementById('gemini_model').addEventListener('change', function () {
         const selectedValue = this.value;
         const selectedOption = this.options[this.selectedIndex];
-        
+
         if (selectedOption && selectedOption.title) {
             const modelInfo = document.getElementById('gemini_model_info');
             modelInfo.textContent = selectedOption.title;
         }
     });
-    
+
     // Load models when page loads
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
         loadGeminiModels();
     });
-    
+
     // Handle refresh button
-    document.getElementById('refreshGeminiModels').addEventListener('click', function() {
+    document.getElementById('refreshGeminiModels').addEventListener('click', function () {
         const btn = this;
         const icon = btn.querySelector('i');
-        
+
         // Add loading state
         btn.disabled = true;
         icon.classList.add('fa-spin');
-        
+
         loadGeminiModels();
-        
+
         // Remove loading state after a delay
         setTimeout(() => {
             btn.disabled = false;
@@ -548,13 +713,13 @@
     });
 
     // Toggle email settings visibility based on checkbox
-    document.getElementById('email_enabled').addEventListener('change', function() {
+    document.getElementById('email_enabled').addEventListener('change', function () {
         const emailSettings = document.getElementById('emailSettings');
         emailSettings.style.display = this.checked ? 'block' : 'none';
     });
 
     // Toggle face detection settings visibility based on checkbox
-    document.getElementById('enable_face_detection').addEventListener('change', function() {
+    document.getElementById('enable_face_detection').addEventListener('change', function () {
         const faceSettings = document.getElementById('faceDetectionSettings');
         faceSettings.style.display = this.checked ? 'block' : 'none';
         if (!this.checked) {
@@ -565,29 +730,38 @@
 
     const faceRecognitionToggle = document.getElementById('enable_face_recognition');
     if (faceRecognitionToggle) {
-        faceRecognitionToggle.addEventListener('change', function() {
+        faceRecognitionToggle.addEventListener('change', function () {
             const recognitionSettings = document.getElementById('faceRecognitionSettings');
             recognitionSettings.style.display = this.checked ? 'flex' : 'none';
         });
-    });
-    
+    }
+
+    // Toggle auto-assimilation settings visibility
+    const autoAssimilateToggle = document.getElementById('enable_auto_assimilate');
+    if (autoAssimilateToggle) {
+        autoAssimilateToggle.addEventListener('change', function () {
+            const assimilateSettings = document.getElementById('autoAssimilateSettings');
+            assimilateSettings.style.display = this.checked ? 'flex' : 'none';
+        });
+    }
+
     // Test email functionality
-    document.getElementById('testEmailBtn').addEventListener('click', function() {
+    document.getElementById('testEmailBtn').addEventListener('click', function () {
         const btn = this;
         const resultDiv = document.getElementById('emailTestResult');
-        
+
         // Get current form values for testing
         const smtpServer = document.getElementById('smtp_server').value;
         const smtpPort = document.getElementById('smtp_port').value;
         const smtpUsername = document.getElementById('smtp_username').value;
         const smtpPassword = document.getElementById('smtp_password').value;
         const emailTo = document.getElementById('email_to').value;
-        
+
         // Change button state
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Sending...';
         resultDiv.innerHTML = '';
-        
+
         // Send test request
         fetch('/api/test_email', {
             method: 'POST',
@@ -602,33 +776,33 @@
                 email_recipients: emailTo
             })
         })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                resultDiv.innerHTML = '<div class="alert alert-success">Test email sent successfully!</div>';
-            } else {
-                resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
-            }
-        })
-        .catch(error => {
-            resultDiv.innerHTML = '<div class="alert alert-danger">Error sending email. Check server logs.</div>';
-            console.error('Error:', error);
-        })
-        .finally(() => {
-            // Restore button state
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-paper-plane me-1"></i> Test Email';
-        });
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    resultDiv.innerHTML = '<div class="alert alert-success">Test email sent successfully!</div>';
+                } else {
+                    resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
+                }
+            })
+            .catch(error => {
+                resultDiv.innerHTML = '<div class="alert alert-danger">Error sending email. Check server logs.</div>';
+                console.error('Error:', error);
+            })
+            .finally(() => {
+                // Restore button state
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-paper-plane me-1"></i> Test Email';
+            });
     });
 
     // Toggle Gemini AI settings visibility based on checkbox
-    document.getElementById('enable_gemini_ai').addEventListener('change', function() {
+    document.getElementById('enable_gemini_ai').addEventListener('change', function () {
         const geminiSettings = document.getElementById('geminiSettings');
         geminiSettings.style.display = this.checked ? 'block' : 'none';
     });
 
     // Toggle visibility of Gemini API key
-    document.getElementById('toggleGeminiKey').addEventListener('click', function() {
+    document.getElementById('toggleGeminiKey').addEventListener('click', function () {
         const apiKeyInput = document.getElementById('gemini_api_key');
         const icon = this.querySelector('i');
         if (apiKeyInput.type === 'password') {
@@ -643,19 +817,19 @@
     });
 
     // Test Gemini AI connection
-    document.getElementById('testGeminiBtn').addEventListener('click', function() {
+    document.getElementById('testGeminiBtn').addEventListener('click', function () {
         const btn = this;
         const resultDiv = document.getElementById('geminiTestResult');
-        
+
         // Get current form values for testing
         const apiKey = document.getElementById('gemini_api_key').value;
         const model = document.getElementById('gemini_model').value;
-        
+
         // Change button state
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Testing...';
         resultDiv.innerHTML = '';
-        
+
         // Send test request
         fetch('/api/test_gemini', {
             method: 'POST',
@@ -667,25 +841,25 @@
                 model: model
             })
         })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                resultDiv.innerHTML = '<div class="alert alert-success">Gemini AI connection successful!</div>';
-            } else {
-                const isTimeout = (data.error || '').toLowerCase().includes('timed out');
-                const hint = isTimeout ? '<div class="small text-muted mt-1">Tip: Verify Internet egress to generativelanguage.googleapis.com:443 (DNS, proxy, firewall), and try again.</div>' : '';
-                resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>${hint}`;
-            }
-        })
-        .catch(error => {
-            resultDiv.innerHTML = '<div class="alert alert-danger">Error testing Gemini AI connection. Check server logs.</div>';
-            console.error('Error:', error);
-        })
-        .finally(() => {
-            // Restore button state
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-vial me-1"></i> Test Gemini Connection';
-        });
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    resultDiv.innerHTML = '<div class="alert alert-success">Gemini AI connection successful!</div>';
+                } else {
+                    const isTimeout = (data.error || '').toLowerCase().includes('timed out');
+                    const hint = isTimeout ? '<div class="small text-muted mt-1">Tip: Verify Internet egress to generativelanguage.googleapis.com:443 (DNS, proxy, firewall), and try again.</div>' : '';
+                    resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>${hint}`;
+                }
+            })
+            .catch(error => {
+                resultDiv.innerHTML = '<div class="alert alert-danger">Error testing Gemini AI connection. Check server logs.</div>';
+                console.error('Error:', error);
+            })
+            .finally(() => {
+                // Restore button state
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-vial me-1"></i> Test Gemini Connection';
+            });
     });
 </script>
 {% endblock %}

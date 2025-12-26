@@ -418,9 +418,18 @@ def create_default_settings():
             'face_detection_model': 'MNET_V2',
             'face_detection_provider': 'auto',
             'face_detection_max_faces': 10,
+            'face_detector_type': 'retinaface',
+            'face_min_size': 32,
+            'face_blur_detection': False,
+            'face_bbox_padding': 0.1,
             'enable_face_recognition': False,
             'face_recognition_threshold': 0.62,
-            'face_recognition_auto_create': True
+            'face_recognition_auto_create': True,
+            # Auto-assimilation settings
+            'enable_auto_assimilate': False,
+            'auto_assimilate_threshold': 0.9,
+            'auto_assimilate_min_samples': 2,
+            'auto_assimilate_interval': 60
         }
     }
 
@@ -494,9 +503,18 @@ def save_settings():
             'face_detection_model': request.form.get('face_detection_model', 'MNET_V2'),
             'face_detection_provider': request.form.get('face_detection_provider', 'auto'),
             'face_detection_max_faces': int(request.form.get('face_detection_max_faces', 10)),
+            'face_detector_type': request.form.get('face_detector_type', 'retinaface'),
+            'face_min_size': int(request.form.get('face_min_size', 32)),
+            'face_blur_detection': 'face_blur_detection' in request.form,
+            'face_bbox_padding': float(request.form.get('face_bbox_padding', 0.1)),
             'enable_face_recognition': 'enable_face_recognition' in request.form,
             'face_recognition_threshold': float(request.form.get('face_recognition_threshold', 0.62)),
-            'face_recognition_auto_create': 'face_recognition_auto_create' in request.form
+            'face_recognition_auto_create': 'face_recognition_auto_create' in request.form,
+            # Auto-assimilation settings
+            'enable_auto_assimilate': 'enable_auto_assimilate' in request.form,
+            'auto_assimilate_threshold': float(request.form.get('auto_assimilate_threshold', 0.9)),
+            'auto_assimilate_min_samples': int(request.form.get('auto_assimilate_min_samples', 2)),
+            'auto_assimilate_interval': int(request.form.get('auto_assimilate_interval', 60))
         }
     }
     

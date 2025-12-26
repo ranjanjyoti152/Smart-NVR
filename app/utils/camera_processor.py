@@ -1149,7 +1149,11 @@ class CameraProcessor:
                 continue
 
     def _run_face_detection(self, frame, current_time, height, width):
-        """Run UniFace-based face detection for the current frame."""
+        """Run UniFace-based face detection for the current frame.
+        
+        The detection engine now handles quality filtering (min size, blur detection)
+        and bounding box padding internally, so this method is simplified.
+        """
 
         if not self.face_detection_enabled:
             return []
@@ -1158,23 +1162,28 @@ class CameraProcessor:
         if not engine or not getattr(engine, "ready", False):
             return []
 
-        face_results = engine.detect(frame)
+        # Pass frame dimensions for quality filtering and padding calculations
+        face_results = engine.detect(frame, frame_height=height, frame_width=width)
         if not face_results:
             return []
 
         detections = []
         for face in face_results:
             try:
+                # Face detection engine now provides pre-filtered, padded coordinates
                 x1 = float(face.get('bbox_x', 0.0))
                 y1 = float(face.get('bbox_y', 0.0))
                 w = float(face.get('bbox_width', 0.0))
                 h = float(face.get('bbox_height', 0.0))
                 confidence = float(face.get('confidence', 0.0))
 
-                if confidence < self.face_detection_settings.get('face_detection_confidence', 0.5):
+                # Note: confidence filtering now happens in the engine,
+                # but we double-check against dynamic settings here
+                min_conf = self.face_detection_settings.get('face_detection_confidence', 0.5)
+                if confidence < min_conf:
                     continue
 
-                # Clamp bounding box to frame boundaries
+                # Clamp bounding box to frame boundaries (safety check)
                 x1 = max(0.0, min(float(width - 1), x1))
                 y1 = max(0.0, min(float(height - 1), y1))
                 x2 = max(x1, min(float(width), x1 + max(0.0, w)))
@@ -1191,6 +1200,10 @@ class CameraProcessor:
                 norm_center = Point(center_x / max(1, width), center_y / max(1, height))
                 matched_roi_id = self._check_roi_match(pixel_center, norm_center)
 
+                # Get detector type from engine if available
+                detector_type = getattr(engine, 'detector_type', None)
+                source = f"uniface_{detector_type.value}" if detector_type else 'uniface'
+
                 detection = {
                     'camera_id': self.camera.id,
                     'class_name': 'face',
@@ -1201,15 +1214,21 @@ class CameraProcessor:
                     'bbox_height': bbox_height,
                     'roi_id': matched_roi_id,
                     'timestamp': current_time,
-                    'source': 'uniface'
+                    'source': source
                 }
 
                 if 'landmarks' in face:
                     detection['landmarks'] = face['landmarks']
+                
+                if 'detector_type' in face:
+                    detection['detector_type'] = face['detector_type']
 
                 detections.append(detection)
             except Exception as exc:
                 logger.debug("Failed to process UniFace detection: %s", exc)
+
+        if detections:
+            logger.debug("Face detection found %d faces for camera %s", len(detections), self.camera.id)
 
         return detections
 

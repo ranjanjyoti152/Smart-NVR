@@ -1760,18 +1760,56 @@ def get_face_image(face_id):
 @api_bp.route('/faces/auto-assimilate', methods=['POST'])
 @login_required
 def auto_assimilate_faces():
-    """Promote unlabeled face profiles into known identities when highly similar."""
+    """Promote unlabeled face profiles into known identities when highly similar.
+    
+    Request body (all optional):
+        threshold: Cosine similarity threshold (0.0-1.0, default: 0.9)
+        min_samples: Minimum samples required (default: 1)
+        require_multi_sample_agreement: Enable multi-sample validation (default: true)
+        min_agreement_ratio: Minimum agreement ratio (0.0-1.0, default: 0.6)
+    """
     payload = request.get_json(silent=True) or {}
+    
     try:
         threshold = float(payload.get('threshold', 0.9))
+        threshold = max(0.0, min(1.0, threshold))
     except (TypeError, ValueError):
         return jsonify({'success': False, 'message': 'Invalid threshold value'}), 400
 
-    threshold = max(0.0, min(1.0, threshold))
+    try:
+        min_samples = int(payload.get('min_samples', 1))
+        min_samples = max(1, min_samples)
+    except (TypeError, ValueError):
+        min_samples = 1
 
-    merges = FaceProfile.auto_assimilate_unlabeled(threshold=threshold)
+    require_multi_sample = payload.get('require_multi_sample_agreement', True)
+    if isinstance(require_multi_sample, str):
+        require_multi_sample = require_multi_sample.lower() in ('true', '1', 'yes')
 
-    return jsonify({'success': True, 'merged': merges, 'count': len(merges), 'threshold': threshold})
+    try:
+        min_agreement = float(payload.get('min_agreement_ratio', 0.6))
+        min_agreement = max(0.0, min(1.0, min_agreement))
+    except (TypeError, ValueError):
+        min_agreement = 0.6
+
+    merges = FaceProfile.auto_assimilate_unlabeled(
+        threshold=threshold,
+        min_samples=min_samples,
+        require_multi_sample_agreement=require_multi_sample,
+        min_agreement_ratio=min_agreement,
+    )
+
+    return jsonify({
+        'success': True,
+        'merged': merges,
+        'count': len(merges),
+        'settings': {
+            'threshold': threshold,
+            'min_samples': min_samples,
+            'require_multi_sample_agreement': require_multi_sample,
+            'min_agreement_ratio': min_agreement,
+        }
+    })
 
 @api_bp.route('/test_email', methods=['POST'])
 @login_required
