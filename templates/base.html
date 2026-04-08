@@ -7,11 +7,14 @@
     
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     
     <!-- Font Awesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- Custom CSS for macOS-inspired design -->
+    <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     
     <!-- Initialize dark mode before rendering page -->
@@ -25,19 +28,28 @@
     <!-- Additional CSS specific to pages -->
     {% block styles %}{% endblock %}
 </head>
-<body>
-    <!-- macOS-style header -->
+<body class="{% if current_user.is_authenticated %}app-authenticated{% else %}app-guest{% endif %}">
+    <!-- App Header -->
     <header class="mac-header">
         <div class="container-fluid">
-            <div class="row align-items-center">
+            <div class="row align-items-center g-2">
                 <div class="col-auto d-lg-none">
-                    <!-- Mobile sidebar toggle (only visible on small screens) -->
                     <button class="btn mac-sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation">
                         <i class="fas fa-bars"></i>
                     </button>
                 </div>
-                <div class="col d-flex justify-content-center">
-                    <h1 class="mac-title">SmartNVR</h1>
+                <div class="col d-flex align-items-center">
+                    {% if current_user.is_authenticated %}
+                    <a href="{{ url_for('main.dashboard') }}" class="mac-brand" aria-label="SmartNVR home">
+                    {% else %}
+                    <a href="{{ url_for('auth.login') }}" class="mac-brand" aria-label="SmartNVR home">
+                    {% endif %}
+                        <span class="mac-brand-mark"><i class="fas fa-shield-halved"></i></span>
+                        <div class="mac-brand-copy">
+                            <h1 class="mac-title">SmartNVR</h1>
+                            <span class="mac-subtitle">Vision Control Center</span>
+                        </div>
+                    </a>
                 </div>
                 <div class="col-auto">
                     {% if current_user.is_authenticated %}
@@ -63,62 +75,71 @@
     </header>
     
     {% if current_user.is_authenticated %}
-    <!-- macOS-style sidebar navigation -->
-    <div class="mac-sidebar">
+    <!-- App Sidebar -->
+    <aside class="mac-sidebar">
         <nav>
-            <ul class="mac-menu">
+            <div class="mac-sidebar-section-label">Workspace</div>
+            <ul class="mac-menu mb-2">
                 <li>
                     <a href="{{ url_for('main.dashboard') }}" class="{% if request.endpoint == 'main.dashboard' %}active{% endif %}">
-                        <i class="fas fa-home"></i> Dashboard
+                        <i class="fas fa-home"></i>
+                        <span>Dashboard</span>
                     </a>
                 </li>
                 <li>
                     <a href="{{ url_for('main.playback') }}" class="{% if request.endpoint == 'main.playback' %}active{% endif %}">
-                        <i class="fas fa-play-circle"></i> Playback
+                        <i class="fas fa-play-circle"></i>
+                        <span>Playback</span>
                     </a>
                 </li>
                 <li>
                     <a href="{{ url_for('main.camera_management') }}" class="{% if request.endpoint == 'main.camera_management' %}active{% endif %}">
-                        <i class="fas fa-camera"></i> Cameras
+                        <i class="fas fa-camera"></i>
+                        <span>Cameras</span>
                     </a>
                 </li>
                 <li>
                     <a href="{{ url_for('main.face_library') }}" class="{% if request.endpoint == 'main.face_library' %}active{% endif %}">
-                        <i class="fas fa-user-tag"></i> Faces
+                        <i class="fas fa-user-tag"></i>
+                        <span>Faces</span>
                     </a>
                 </li>
                 <li>
                     <a href="{{ url_for('main.settings') }}" class="{% if request.endpoint == 'main.settings' %}active{% endif %}">
-                        <i class="fas fa-cog"></i> Settings
+                        <i class="fas fa-cog"></i>
+                        <span>Settings</span>
                     </a>
                 </li>
                 <li>
                     <a href="{{ url_for('main.monitor') }}" class="{% if request.endpoint == 'main.monitor' %}active{% endif %}">
-                        <i class="fas fa-chart-line"></i> System Monitor
+                        <i class="fas fa-chart-line"></i>
+                        <span>System Monitor</span>
                     </a>
                 </li>
                 {% if current_user.is_admin %}
                 <li class="sidebar-divider"></li>
+                <li class="mac-sidebar-section-label">Administration</li>
                 <li>
                     <a href="{{ url_for('admin.user_management') }}" class="{% if request.endpoint == 'admin.user_management' %}active{% endif %}">
-                        <i class="fas fa-users"></i> User Management
+                        <i class="fas fa-users"></i>
+                        <span>User Management</span>
                     </a>
                 </li>
                 <li>
                     <a href="{{ url_for('admin.manage_models') }}" class="{% if request.endpoint == 'admin.manage_models' %}active{% endif %}">
-                        <i class="fas fa-brain"></i> AI Models
+                        <i class="fas fa-brain"></i>
+                        <span>AI Models</span>
                     </a>
                 </li>
-                <!-- Removed System Config link as this functionality has been combined with Settings -->
                 {% endif %}
             </ul>
         </nav>
-    </div>
+    </aside>
     {% endif %}
 
     <!-- Main Content Area -->
     <main class="mac-content {% if not current_user.is_authenticated %}no-sidebar{% endif %}">
-        <div class="container-fluid py-3">
+        <div class="container-fluid app-shell-container py-3 py-lg-4">
             <!-- Flash messages with category support -->
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}

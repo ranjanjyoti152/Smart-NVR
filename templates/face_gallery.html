@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set hide_title = True %}
 
 {% block content %}
 <div class="mac-content-header">
@@ -16,6 +17,11 @@
 <div id="faceAlerts"></div>
 
 <div class="row" id="faceGrid"></div>
+<div class="d-flex justify-content-center mb-3">
+    <button class="btn btn-outline-primary d-none" id="loadMoreFacesBtn">
+        <i class="fas fa-chevron-down me-1"></i> Load More
+    </button>
+</div>
 
 <!-- Rename Modal -->
 <div class="modal fade" id="renameFaceModal" tabindex="-1" aria-labelledby="renameFaceLabel" aria-hidden="true">
@@ -51,8 +57,13 @@ const renameForm = document.getElementById('renameFaceForm');
 const renameInput = document.getElementById('faceRenameInput');
 const renameIdInput = document.getElementById('faceRenameId');
 const refreshBtn = document.getElementById('refreshFacesBtn');
+const loadMoreBtn = document.getElementById('loadMoreFacesBtn');
 let renameModal;
 let facesCache = [];
+let hasMoreFaces = false;
+let nextOffset = 0;
+const PAGE_SIZE = 120;
+let faceLoading = false;
 
 function ensureModal() {
     if (!renameModal) {
@@ -78,7 +89,7 @@ function buildCard(face) {
     <div class="col-xl-3 col-lg-4 col-md-6 mb-4">
         <div class="card h-100 shadow-sm">
             <div class="card-img-top d-flex justify-content-center align-items-center" style="height: 220px; background: #f7f7f9;">
-                <img src="${imgSrc}" alt="Face" class="img-fluid rounded" style="max-height: 200px;" onerror="this.onerror=null;this.src='https://via.placeholder.com/160?text=Face';">
+                <img src="${imgSrc}" alt="Face" loading="lazy" decoding="async" class="img-fluid rounded" style="max-height: 200px;" onerror="this.onerror=null;this.src='/static/img/no-signal.png';">
             </div>
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center mb-2">
@@ -104,6 +115,7 @@ function buildCard(face) {
 function renderFaces(faces) {
     if (!faces.length) {
         faceGrid.innerHTML = '<div class="col-12"><div class="alert alert-info">No face profiles yet. Enable face detection and recognition to start building a gallery.</div></div>';
+        loadMoreBtn.classList.add('d-none');
         return;
     }
     const known = faces.filter(face => face.status === 'known');
@@ -118,22 +130,42 @@ function renderFaces(faces) {
         html += unknown.map(buildCard).join('');
     }
     faceGrid.innerHTML = html;
+    loadMoreBtn.classList.toggle('d-none', !hasMoreFaces);
 }
 
-async function loadFaces() {
-    refreshBtn.disabled = true;
+function setLoadingState(isLoading, isLoadMore = false) {
+    faceLoading = isLoading;
+    refreshBtn.disabled = isLoading;
+    loadMoreBtn.disabled = isLoading;
+    if (!isLoading) {
+        loadMoreBtn.innerHTML = '<i class="fas fa-chevron-down me-1"></i> Load More';
+        return;
+    }
+    if (isLoadMore) {
+        loadMoreBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Loading...';
+    }
+}
+
+async function loadFaces({ append = false } = {}) {
+    if (faceLoading) return;
+    setLoadingState(true, append);
     try {
-        const response = await fetch('/api/faces');
+        const offset = append ? nextOffset : 0;
+        const response = await fetch(`/api/faces?limit=${PAGE_SIZE}&offset=${offset}`);
         const data = await response.json();
         if (!data.success) {
             throw new Error(data.message || 'Failed to load faces');
         }
-        facesCache = data.faces || [];
+        const fetchedFaces = data.faces || [];
+        facesCache = append ? [...facesCache, ...fetchedFaces] : fetchedFaces;
+        const pagination = data.pagination || {};
+        hasMoreFaces = Boolean(pagination.has_more);
+        nextOffset = Number.isInteger(pagination.next_offset) ? pagination.next_offset : facesCache.length;
         renderFaces(facesCache);
     } catch (error) {
         showFaceAlert(error.message, 'danger');
     } finally {
-        refreshBtn.disabled = false;
+        setLoadingState(false);
     }
 }
 
@@ -200,7 +232,8 @@ renameForm.addEventListener('submit', async (event) => {
     }
 });
 
-refreshBtn.addEventListener('click', loadFaces);
+refreshBtn.addEventListener('click', () => loadFaces());
+loadMoreBtn.addEventListener('click', () => loadFaces({ append: true }));
 faceGrid.addEventListener('click', handleGridClick);
 
 document.addEventListener('DOMContentLoaded', () => {

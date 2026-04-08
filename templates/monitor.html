@@ -1,9 +1,117 @@
 {% extends "base.html" %}
+{% set hide_title = True %}
+
+{% block styles %}
+<style>
+    .monitor-page-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .monitor-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        border-radius: 999px;
+        padding: 0.38rem 0.78rem;
+        border: 1px solid rgba(var(--color-info-rgb), 0.26);
+        background: rgba(var(--color-info-rgb), 0.14);
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+
+    .monitor-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--color-info);
+        box-shadow: 0 0 0 6px rgba(var(--color-info-rgb), 0.16);
+        animation: pulseMonitor 1.8s infinite;
+    }
+
+    .monitor-grid .mac-card {
+        height: 100%;
+    }
+
+    .chart-container {
+        position: relative;
+        height: 240px;
+        margin-top: 0.6rem;
+        margin-bottom: 0.8rem;
+    }
+
+    .resource-details {
+        border-top: 1px solid var(--border-subtle);
+        padding-top: 0.8rem;
+        margin-top: 0.25rem;
+    }
+
+    .resource-label {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-muted);
+        font-weight: 700;
+    }
+
+    .resource-value {
+        display: block;
+        font-size: 0.92rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-top: 0.1rem;
+    }
+
+    .system-info-card table {
+        margin-bottom: 0;
+    }
+
+    .system-info-card th {
+        width: 220px;
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+    }
+
+    @media (max-width: 991.98px) {
+        .monitor-page-header {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .chart-container {
+            height: 220px;
+        }
+    }
+
+    @keyframes pulseMonitor {
+        0% { box-shadow: 0 0 0 0 rgba(var(--color-info-rgb), 0.3); }
+        70% { box-shadow: 0 0 0 10px rgba(var(--color-info-rgb), 0); }
+        100% { box-shadow: 0 0 0 0 rgba(var(--color-info-rgb), 0); }
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="row">
+<div class="monitor-page-header">
+    <div>
+        <h2 class="mb-1">System Monitor</h2>
+        <p class="text-muted mb-0">Live telemetry for CPU, memory, storage, and accelerator health.</p>
+    </div>
+    <div class="monitor-chip">
+        <span class="monitor-dot"></span>
+        Live Metrics
+    </div>
+</div>
+
+<div class="row g-4 monitor-grid">
     <!-- CPU Usage -->
-    <div class="col-md-6 mb-4">
+    <div class="col-md-6">
         <div class="mac-card">
             <h4><i class="fas fa-microchip me-2"></i> CPU Usage</h4>
             <div class="chart-container">
@@ -29,7 +137,7 @@
     </div>
 
     <!-- Memory Usage -->
-    <div class="col-md-6 mb-4">
+    <div class="col-md-6">
         <div class="mac-card">
             <h4><i class="fas fa-memory me-2"></i> Memory Usage</h4>
             <div class="chart-container">
@@ -55,7 +163,7 @@
     </div>
 
     <!-- Disk Usage -->
-    <div class="col-md-6 mb-4">
+    <div class="col-md-6">
         <div class="mac-card">
             <h4><i class="fas fa-hdd me-2"></i> Disk Usage</h4>
             <div class="chart-container">
@@ -81,7 +189,7 @@
     </div>
 
     <!-- Recordings Storage -->
-    <div class="col-md-6 mb-4">
+    <div class="col-md-6">
         <div class="mac-card">
             <h4><i class="fas fa-film me-2"></i> Recordings Storage</h4>
             <div class="chart-container">
@@ -108,7 +216,7 @@
 
     {% if resources.gpu %}
     <!-- GPU Usage -->
-    <div class="col-12 mb-4">
+    <div class="col-12">
         <div class="mac-card">
             <h4><i class="fas fa-server me-2"></i> GPU Resources</h4>
             <div class="row">
@@ -143,7 +251,7 @@
 </div>
 
 <!-- Hardware Info Card -->
-<div class="mac-card">
+<div class="mac-card system-info-card mt-4">
     <h4><i class="fas fa-info-circle me-2"></i> System Information</h4>
     <div class="table-responsive">
         <table class="table">

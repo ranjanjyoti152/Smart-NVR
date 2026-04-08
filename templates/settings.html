@@ -1,16 +1,93 @@
 {% extends "base.html" %}
+{% set hide_title = True %}
+
+{% block styles %}
+<style>
+    .settings-page .settings-main-card {
+        padding: 1.2rem 1.25rem;
+    }
+
+    .settings-page .settings-subcard {
+        border: 1px solid var(--border-subtle);
+        border-radius: 14px;
+        background: var(--surface-2);
+        overflow: hidden;
+    }
+
+    .settings-page .settings-subcard .card-header {
+        background: transparent;
+        border-bottom: 1px solid var(--border-subtle);
+        padding: 0.8rem 1rem;
+    }
+
+    .settings-page .settings-subcard .card-body {
+        padding: 0.95rem 1rem;
+    }
+
+    .settings-page .form-label {
+        margin-bottom: 0.28rem;
+    }
+
+    .settings-page .form-text {
+        font-size: 0.75rem;
+        line-height: 1.35;
+    }
+
+    .settings-page .settings-info-card {
+        position: sticky;
+        top: calc(var(--header-height) + 1rem);
+        max-height: calc(100vh - var(--header-height) - 2rem);
+        overflow-y: auto;
+    }
+
+    .settings-page .settings-info-card p {
+        line-height: 1.45;
+    }
+
+    .settings-page .settings-info-card ul {
+        margin-bottom: 0.75rem;
+        padding-left: 1.1rem;
+    }
+
+    @media (max-width: 1399.98px) {
+        .settings-page .settings-info-card {
+            position: static;
+            max-height: none;
+            overflow: visible;
+        }
+    }
+
+    @media (max-width: 1199.98px) {
+        .settings-page #faceDetectionSettings .col-md-4,
+        .settings-page #faceRecognitionSettings .col-md-4,
+        .settings-page #autoAssimilateSettings .col-md-4 {
+            flex: 0 0 50%;
+            max-width: 50%;
+        }
+    }
+
+    @media (max-width: 767.98px) {
+        .settings-page #faceDetectionSettings .col-md-4,
+        .settings-page #faceRecognitionSettings .col-md-4,
+        .settings-page #autoAssimilateSettings .col-md-4 {
+            flex: 0 0 100%;
+            max-width: 100%;
+        }
+    }
+</style>
+{% endblock %}
 
 {% block content %}
-<div class="mac-content-header">
+<div class="mac-content-header settings-page">
     <div>
         <h2>Application Settings</h2>
         <p class="text-muted">Configure system-wide defaults and behavior</p>
     </div>
 </div>
 
-<div class="row">
-    <div class="col-md-8">
-        <div class="mac-card">
+<div class="row g-4 settings-page">
+    <div class="col-12 col-xxl-8">
+        <div class="mac-card settings-main-card">
             <form action="{{ url_for('main.save_settings') }}" method="post">
                 <!-- General Settings -->
                 <div class="mb-4">
@@ -20,13 +97,13 @@
                     </div>
                     <hr>
                     <div class="row mb-3">
-                        <div class="col-md-6">
+                        <div class="col-lg-6">
                             <label for="retention_days" class="form-label">Recording Retention (days)</label>
                             <input type="number" class="form-control" id="retention_days" name="retention_days"
                                 value="{{ settings.recording.retention_days|default(30) }}" min="1" max="365">
                             <div class="form-text">Number of days to keep recordings before automatic deletion</div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-lg-6">
                             <label for="clip_length" class="form-label">Default Clip Length (seconds)</label>
                             <input type="number" class="form-control" id="clip_length" name="clip_length"
                                 value="{{ settings.recording.clip_length|default(60) }}" min="10" max="600">
@@ -34,13 +111,13 @@
                         </div>
                     </div>
                     <div class="row mb-3">
-                        <div class="col-md-6">
+                        <div class="col-lg-6">
                             <label for="storage_path" class="form-label">Storage Path</label>
                             <input type="text" class="form-control" id="storage_path" name="storage_path"
                                 value="{{ settings.recording.storage_path|default('storage/recordings') }}">
                             <div class="form-text">Path where recordings are stored</div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-lg-6">
                             <label for="format" class="form-label">Recording Format</label>
                             <select class="form-select" id="format" name="format">
                                 <option value="mp4" {% if settings.recording.format=='mp4' %}selected{% endif %}>MP4
@@ -62,14 +139,14 @@
                     </div>
                     <hr>
                     <div class="row mb-3">
-                        <div class="col-md-6">
+                        <div class="col-lg-6">
                             <label for="default_confidence" class="form-label">Default Detection Confidence</label>
                             <input type="number" class="form-control" id="default_confidence" name="default_confidence"
                                 value="{{ settings.detection.default_confidence|default(0.45) }}" min="0.1" max="0.9"
                                 step="0.05">
                             <div class="form-text">Default confidence threshold for object detection (0.1-0.9)</div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-lg-6">
                             <label for="default_model" class="form-label">Default AI Model</label>
                             <select class="form-select" id="default_model" name="default_model">
                                 <!-- Custom trained models -->
@@ -110,7 +187,7 @@
                         </div>
                     </div>
                     <div class="row mb-3">
-                        <div class="col-md-6">
+                        <div class="col-lg-6">
                             <div class="form-check form-switch mb-3">
                                 <input class="form-check-input" type="checkbox" id="save_detection_images"
                                     name="save_detection_images" {% if settings.detection.save_images %}checked{% endif
@@ -120,7 +197,7 @@
                                 <div class="form-text">When enabled, saves an image for each detection event</div>
                             </div>
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-lg-6">
                             <label for="image_retention_days" class="form-label">Image Retention (days)</label>
                             <input type="number" class="form-control" id="image_retention_days"
                                 name="image_retention_days"
@@ -130,8 +207,8 @@
                     </div>
 
                     <!-- Face Detection Settings -->
-                    <div class="card border shadow-sm mb-3">
-                        <div class="card-header bg-light">
+                    <div class="card settings-subcard shadow-sm mb-3">
+                        <div class="card-header">
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
                                     <i class="fas fa-user-check me-2" style="color: var(--color-success);"></i>
@@ -156,7 +233,7 @@
                             </p>
 
                             <div class="row g-3">
-                                <div class="col-md-4">
+                                <div class="col-md-4 col-lg-4">
                                     <label for="face_detection_confidence" class="form-label">Minimum Confidence</label>
                                     <input type="number" class="form-control" id="face_detection_confidence"
                                         name="face_detection_confidence"
@@ -164,7 +241,7 @@
                                         min="0.1" max="0.99" step="0.05">
                                     <div class="form-text">Lower values detect more faces but may add noise</div>
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-md-4 col-lg-4">
                                     <label for="face_detector_type" class="form-label">Detector Type</label>
                                     {% set detector_type = settings.detection.face_detector_type|default('retinaface')
                                     %}
@@ -176,7 +253,7 @@
                                     </select>
                                     <div class="form-text">SCRFD offers better accuracy for difficult faces</div>
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-md-4 col-lg-4">
                                     <label for="face_detection_model" class="form-label">Model Variant</label>
                                     <select class="form-select" id="face_detection_model" name="face_detection_model">
                                         {% set face_model = settings.detection.face_detection_model|default('MNET_V2')
@@ -200,7 +277,7 @@
                                     </select>
                                     <div class="form-text">Larger models are more accurate but slower</div>
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-md-4 col-lg-4">
                                     <label for="face_detection_provider" class="form-label">Execution Provider</label>
                                     {% set face_provider = settings.detection.face_detection_provider|default('auto') %}
                                     <select class="form-select" id="face_detection_provider"
@@ -218,7 +295,7 @@
                                     </select>
                                     <div class="form-text">Match your available ONNX Runtime execution providers</div>
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-md-4 col-lg-4">
                                     <label for="face_detection_max_faces" class="form-label">Max Faces per Frame</label>
                                     <input type="number" class="form-control" id="face_detection_max_faces"
                                         name="face_detection_max_faces"
@@ -226,7 +303,7 @@
                                         max="50">
                                     <div class="form-text">Limits processing cost by capping detections</div>
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-md-4 col-lg-4">
                                     <label for="face_min_size" class="form-label">Min Face Size (pixels)</label>
                                     <input type="number" class="form-control" id="face_min_size" name="face_min_size"
                                         value="{{ settings.detection.face_min_size|default(32) }}" min="16" max="256">
@@ -236,7 +313,7 @@
 
                             <!-- Quality Filter Settings -->
                             <div class="row g-3 mt-2">
-                                <div class="col-md-4">
+                                <div class="col-md-4 col-lg-4">
                                     <div class="form-check form-switch">
                                         <input class="form-check-input" type="checkbox" id="face_blur_detection"
                                             name="face_blur_detection" {% if settings.detection.face_blur_detection
@@ -246,7 +323,7 @@
                                     </div>
                                     <div class="form-text">Filter out low-quality blurry faces before recognition</div>
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-md-4 col-lg-4">
                                     <label for="face_bbox_padding" class="form-label">Bounding Box Padding</label>
                                     <input type="number" class="form-control" id="face_bbox_padding"
                                         name="face_bbox_padding"
@@ -255,7 +332,7 @@
                                     <div class="form-text">Expand crop by this % for better recognition (0.1 = 10%)
                                     </div>
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-md-4 col-lg-4">
                                     <div class="small text-muted mt-4">
                                         <i class="fas fa-lightbulb me-1"></i>Quality filters help improve face
                                         recognition accuracy by discarding poor samples.
@@ -273,7 +350,7 @@
 
                             <div id="faceRecognitionSettings" class="row g-3 mt-1" {% if not
                                 settings.detection.enable_face_recognition %}style="display: none;" {% endif %}>
-                                <div class="col-md-4">
+                                <div class="col-md-4 col-lg-4">
                                     <label for="face_recognition_threshold" class="form-label">Match Threshold</label>
                                     <input type="number" class="form-control" id="face_recognition_threshold"
                                         name="face_recognition_threshold"
@@ -281,7 +358,7 @@
                                         min="0.3" max="0.9" step="0.01">
                                     <div class="form-text">Higher values require closer matches (default 0.62)</div>
                                 </div>
-                                <div class="col-md-4 d-flex align-items-end">
+                                <div class="col-md-4 col-lg-4 d-flex align-items-end">
                                     <div class="form-check">
                                         <input class="form-check-input" type="checkbox"
                                             id="face_recognition_auto_create" name="face_recognition_auto_create" {% if
@@ -291,7 +368,7 @@
                                             profiles for new faces</label>
                                     </div>
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-md-4 col-lg-4">
                                     <div class="small text-muted">Recognition requires facenet-pytorch. Enable this to
                                         group unlabeled faces automatically and label them later.</div>
                                 </div>
@@ -311,7 +388,7 @@
 
                             <div id="autoAssimilateSettings" class="row g-3 mt-1" {% if not
                                 settings.detection.enable_auto_assimilate %}style="display: none;" {% endif %}>
-                                <div class="col-md-4">
+                                <div class="col-md-4 col-lg-4">
                                     <label for="auto_assimilate_threshold" class="form-label">Match Threshold</label>
                                     <input type="number" class="form-control" id="auto_assimilate_threshold"
                                         name="auto_assimilate_threshold"
@@ -319,7 +396,7 @@
                                         min="0.7" max="0.99" step="0.01">
                                     <div class="form-text">Higher = stricter matching (0.9 recommended)</div>
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-md-4 col-lg-4">
                                     <label for="auto_assimilate_min_samples" class="form-label">Min Samples
                                         Required</label>
                                     <input type="number" class="form-control" id="auto_assimilate_min_samples"
@@ -328,7 +405,7 @@
                                         max="10">
                                     <div class="form-text">Faces need at least this many detections</div>
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-md-4 col-lg-4">
                                     <label for="auto_assimilate_interval" class="form-label">Run Every (minutes)</label>
                                     <input type="number" class="form-control" id="auto_assimilate_interval"
                                         name="auto_assimilate_interval"
@@ -341,8 +418,8 @@
                     </div>
 
                     <!-- Gemini AI Settings -->
-                    <div class="card border shadow-sm mb-3">
-                        <div class="card-header bg-light">
+                    <div class="card settings-subcard shadow-sm mb-3">
+                        <div class="card-header">
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
                                     <i class="fas fa-robot me-2" style="color: var(--color-info);"></i>
@@ -365,7 +442,7 @@
                             </p>
 
                             <div class="row mb-3">
-                                <div class="col-md-8">
+                                <div class="col-lg-8">
                                     <label for="gemini_api_key" class="form-label">Gemini API Key</label>
                                     <div class="input-group">
                                         <span class="input-group-text"><i class="fas fa-key"></i></span>
@@ -382,7 +459,7 @@
                                             target="_blank">Google AI Studio</a>
                                     </div>
                                 </div>
-                                <div class="col-md-4">
+                                <div class="col-lg-4">
                                     <label for="gemini_model" class="form-label">Gemini Model</label>
                                     <div class="input-group">
                                         <select class="form-select" id="gemini_model" name="gemini_model">
@@ -427,13 +504,13 @@
                     <div id="emailSettings" {% if not settings.notifications.email_enabled %}style="display: none;" {%
                         endif %}>
                         <div class="row mb-3">
-                            <div class="col-md-6">
+                            <div class="col-lg-6">
                                 <label for="smtp_server" class="form-label">SMTP Server</label>
                                 <input type="text" class="form-control" id="smtp_server" name="smtp_server"
                                     value="{{ settings.notifications.smtp_server|default('smtp.gmail.com') }}">
                                 <div class="form-text">For Gmail use: smtp.gmail.com</div>
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-lg-6">
                                 <label for="smtp_port" class="form-label">SMTP Port</label>
                                 <input type="number" class="form-control" id="smtp_port" name="smtp_port"
                                     value="{{ settings.notifications.smtp_port|default(587) }}">
@@ -442,13 +519,13 @@
                         </div>
 
                         <div class="row mb-3">
-                            <div class="col-md-6">
+                            <div class="col-lg-6">
                                 <label for="smtp_username" class="form-label">SMTP Username</label>
                                 <input type="text" class="form-control" id="smtp_username" name="smtp_username"
                                     value="{{ settings.notifications.smtp_username|default('') }}">
                                 <div class="form-text">For Gmail use your full email address</div>
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-lg-6">
                                 <label for="smtp_password" class="form-label">SMTP Password</label>
                                 <input type="password" class="form-control" id="smtp_password" name="smtp_password"
                                     placeholder="Leave blank to keep current">
@@ -459,7 +536,7 @@
                         </div>
 
                         <div class="row mb-3">
-                            <div class="col-md-12">
+                            <div class="col-12">
                                 <label for="from_email" class="form-label">From Email Address</label>
                                 <input type="email" class="form-control" id="from_email" name="from_email"
                                     value="{{ settings.notifications.from_email|default('') }}">
@@ -492,7 +569,7 @@
                     </div>
                     <hr>
                     <div class="row mb-3">
-                        <div class="col-md-6">
+                        <div class="col-lg-6">
                             <label for="log_level" class="form-label">Log Level</label>
                             <select class="form-select" id="log_level" name="log_level">
                                 <option value="debug" {% if settings.system.log_level=='debug' %}selected{% endif %}>
@@ -516,8 +593,8 @@
         </div>
     </div>
 
-    <div class="col-md-4">
-        <div class="mac-card mb-4">
+    <div class="col-12 col-xxl-4">
+        <div class="mac-card mb-4 settings-info-card">
             <div class="d-flex align-items-center mb-3">
                 <i class="fas fa-info-circle me-2" style="color: var(--color-info);"></i>
                 <h5 class="mb-0">Configuration Info</h5>
@@ -563,15 +640,15 @@
             </p>
 
             <h6 class="mt-4 mb-2 fw-bold" style="color: var(--color-info);">System Settings</h6>
-            <p>
+            <p class="mb-2">
                 <strong>Log Level:</strong> Controls the verbosity of system logs:
+            </p>
             <ul class="mt-2">
                 <li><strong>Debug:</strong> Maximum detail, useful for troubleshooting but generates large logs</li>
                 <li><strong>Info:</strong> Recommended for normal operation</li>
                 <li><strong>Warning:</strong> Only logs potential issues</li>
                 <li><strong>Error:</strong> Only logs critical errors</li>
             </ul>
-            </p>
 
             <div class="alert alert-info mt-4">
                 <i class="fas fa-info-circle me-2"></i>

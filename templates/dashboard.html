@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% set hide_title = True %}
 
 {% block styles %}
 <style>
@@ -369,12 +370,177 @@
         display: flex;
         align-items: center;
     }
+
+    /* 2026 dashboard page polish */
+    .dashboard-page-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .live-status-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        border: 1px solid rgba(var(--color-success-rgb), 0.25);
+        background: rgba(var(--color-success-rgb), 0.12);
+        color: var(--text-primary);
+        border-radius: 999px;
+        padding: 0.4rem 0.8rem;
+        font-size: 0.78rem;
+        font-weight: 600;
+    }
+
+    .live-status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--color-success);
+        box-shadow: 0 0 0 6px rgba(var(--color-success-rgb), 0.16);
+        animation: statusPulse 1.8s infinite;
+    }
+
+    .dashboard-control-panel {
+        margin-bottom: 1rem;
+        background: var(--surface-2);
+    }
+
+    .camera-controls {
+        margin-bottom: 0;
+    }
+
+    .camera-controls .btn-group {
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: inset 0 0 0 1px var(--border-subtle);
+    }
+
+    .camera-controls .btn {
+        min-width: 54px;
+    }
+
+    .camera-controls .form-check-input {
+        margin-top: 0;
+    }
+
+    .stream-fps-control,
+    .stream-quality-control {
+        margin-left: 0;
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+
+    #fps-slider {
+        width: 100px !important;
+    }
+
+    .fps-value {
+        margin: 0 0.4rem;
+        color: var(--text-primary);
+    }
+
+    .dashboard-widgets {
+        gap: 1rem;
+    }
+
+    .widget {
+        border-radius: 16px;
+        border: 1px solid var(--border-subtle);
+        box-shadow: var(--shadow-sm);
+    }
+
+    .widget-body {
+        max-height: 320px;
+    }
+
+    .camera-status-item {
+        border-color: var(--border-subtle);
+    }
+
+    .detection-count {
+        background: rgba(var(--color-primary-rgb), 0.14);
+        color: var(--text-primary);
+    }
+
+    .camera-grid {
+        gap: 1rem;
+    }
+
+    .camera-card {
+        border-radius: 18px;
+        box-shadow: var(--shadow-md);
+    }
+
+    .camera-feed {
+        aspect-ratio: 16 / 10;
+        object-fit: cover;
+    }
+
+    .camera-info {
+        padding: 0.72rem 0.88rem;
+        backdrop-filter: blur(6px);
+    }
+
+    .camera-name {
+        font-weight: 600;
+        letter-spacing: 0.01em;
+    }
+
+    .fullscreen-header {
+        background: linear-gradient(180deg, rgba(3, 9, 18, 0.82), rgba(3, 9, 18, 0.15));
+        backdrop-filter: blur(10px);
+    }
+
+    @media (max-width: 991.98px) {
+        .dashboard-page-header {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .camera-controls .btn-group {
+            width: 100%;
+            display: grid !important;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
+        .stream-fps-control,
+        .stream-quality-control {
+            width: 100%;
+            justify-content: flex-start;
+        }
+
+        #quality-select {
+            width: 100% !important;
+            max-width: 180px;
+        }
+    }
+
+    @keyframes statusPulse {
+        0% { box-shadow: 0 0 0 0 rgba(var(--color-success-rgb), 0.3); }
+        70% { box-shadow: 0 0 0 10px rgba(var(--color-success-rgb), 0); }
+        100% { box-shadow: 0 0 0 0 rgba(var(--color-success-rgb), 0); }
+    }
 </style>
 {% endblock %}
 
 {% block content %}
+<div class="dashboard-page-header">
+    <div>
+        <h2 class="mb-1">Live Surveillance Dashboard</h2>
+        <p class="text-muted mb-0">Monitor all camera streams, detections, and AI health in real time.</p>
+    </div>
+    <div class="live-status-chip">
+        <span class="live-status-dot"></span>
+        Realtime Monitoring
+    </div>
+</div>
+
 <!-- Camera Controls - Improved for mobile -->
-<div class="camera-controls mb-3">
+<div class="mac-card dashboard-control-panel">
+<div class="camera-controls">
     <div class="row g-2 align-items-center">
         <div class="col-md-auto mb-2 mb-md-0">
             <div class="btn-group d-flex d-md-inline-flex" role="group">
@@ -413,6 +579,7 @@
             </button>
         </div>
     </div>
+</div>
 </div>
 
 <!-- Dashboard Widgets - Improved for mobile with better spacing -->

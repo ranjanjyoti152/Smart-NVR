@@ -1582,10 +1582,65 @@ def get_system_resources():
 @login_required
 def list_faces():
     """List all known/unlabeled face profiles."""
-    faces = FaceProfile.get_all()
+    try:
+        limit = int(request.args.get('limit', 120))
+    except (TypeError, ValueError):
+        limit = 120
+    try:
+        offset = int(request.args.get('offset', 0))
+    except (TypeError, ValueError):
+        offset = 0
+
+    limit = max(1, min(limit, 500))
+    offset = max(0, offset)
+
+    projection = {
+        'name': 1,
+        'status': 1,
+        'sample_count': 1,
+        'total_detections': 1,
+        'last_seen': 1,
+        'updated_at': 1,
+        'created_at': 1,
+    }
+
+    cursor = (
+        db.face_profiles
+        .find({}, projection)
+        .sort('last_seen', -1)
+        .skip(offset)
+        .limit(limit + 1)
+    )
+    docs = list(cursor)
+    has_more = len(docs) > limit
+    docs = docs[:limit]
+
+    def _dt(value):
+        return value.isoformat() if isinstance(value, datetime) else value
+
+    faces = []
+    for doc in docs:
+        faces.append({
+            'id': str(doc.get('_id')),
+            'name': doc.get('name'),
+            'status': doc.get('status', 'unlabeled'),
+            'sample_count': doc.get('sample_count', 0),
+            'total_detections': doc.get('total_detections', 0),
+            'last_seen': _dt(doc.get('last_seen')),
+            'updated_at': _dt(doc.get('updated_at')),
+            'created_at': _dt(doc.get('created_at')),
+        })
+
     return jsonify({
         'success': True,
-        'faces': [face.to_dict() for face in faces]
+        'faces': faces,
+        'pagination': {
+            'limit': limit,
+            'offset': offset,
+            'returned': len(faces),
+            'has_more': has_more,
+            'next_offset': offset + len(faces) if has_more else None,
+        }
     })
 
 
@@ -1717,8 +1772,16 @@ def list_face_groups():
 @login_required
 def get_face_image(face_id):
     """Stream the most recent face crop for a profile."""
-    profile = FaceProfile.get_by_id(face_id)
-    if not profile:
+    try:
+        face_object_id = ObjectId(face_id)
+    except Exception:
+        return abort(404)
+
+    profile_doc = db.face_profiles.find_one(
+        {'_id': face_object_id},
+        {'samples': {'$slice': -8}}
+    )
+    if not profile_doc:
         return abort(404)
 
     project_root = os.path.abspath(os.path.join(current_app.root_path, '..'))
@@ -1731,28 +1794,25 @@ def get_face_image(face_id):
 
     def _serve(path: str, mime: str):
         try:
-            return send_file(path, mimetype=mime)
+            return send_file(path, mimetype=mime, conditional=True, max_age=300)
         except FileNotFoundError:
             logger = logging.getLogger(__name__)
             logger.warning('Face image referenced at %s is missing on disk', path)
             return None
 
-    image_path = _resolve(profile.primary_image_path)
-    if image_path and os.path.exists(image_path):
-        response = _serve(image_path, 'image/jpeg')
-        if response:
-            return response
+    samples = profile_doc.get('samples') or []
+    sample_paths = [sample.get('image_path') for sample in reversed(samples) if sample.get('image_path')]
 
-    # Prune stale samples then try again before falling back
-    profile.prune_missing_samples(project_root)
-    image_path = _resolve(profile.primary_image_path)
-    if image_path and os.path.exists(image_path):
+    for raw_path in sample_paths:
+        image_path = _resolve(raw_path)
+        if not image_path or not os.path.exists(image_path):
+            continue
         response = _serve(image_path, 'image/jpeg')
         if response:
             return response
 
     if os.path.exists(fallback_path):
-        return send_file(fallback_path, mimetype='image/png')
+        return send_file(fallback_path, mimetype='image/png', conditional=True, max_age=300)
 
     return abort(404)
 

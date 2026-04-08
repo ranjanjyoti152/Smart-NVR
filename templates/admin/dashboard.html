@@ -1,126 +1,103 @@
 {% extends "base.html" %}
+{% set hide_title = True %}
 
 {% block content %}
-<div class="container-fluid">
-    <h1 class="h3 mb-4 text-gray-800">Admin Dashboard</h1>
-    
-    <div class="row">
-        <!-- Admin Navigation Cards -->
-        <div class="col-xl-4 col-md-6 mb-4">
-            <div class="card border-left-primary shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">User Management</div>
-                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
-                                Manage users and permissions
-                            </div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-users fa-2x text-gray-300"></i>
-                        </div>
+<div class="mac-content-header">
+    <div>
+        <h2>Admin Dashboard</h2>
+        <p class="text-muted">Manage operators, AI models, and system-wide operational health.</p>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-xl-4 col-md-6">
+        <a href="{{ url_for('admin.user_management') }}" class="text-decoration-none">
+            <div class="mac-card h-100">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="mb-1">User Management</h5>
+                        <p class="text-muted mb-0 small">Manage users and permissions</p>
                     </div>
-                    <a href="{{ url_for('admin.user_management') }}" class="stretched-link"></a>
+                    <i class="fas fa-users fa-xl"></i>
                 </div>
             </div>
-        </div>
-
-        <div class="col-xl-4 col-md-6 mb-4">
-            <div class="card border-left-success shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">AI Models</div>
-                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
-                                Manage AI detection models
-                            </div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-brain fa-2x text-gray-300"></i>
-                        </div>
+        </a>
+    </div>
+    <div class="col-xl-4 col-md-6">
+        <a href="{{ url_for('admin.manage_models') }}" class="text-decoration-none">
+            <div class="mac-card h-100">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="mb-1">AI Models</h5>
+                        <p class="text-muted mb-0 small">Manage model lifecycle and defaults</p>
                     </div>
-                    <a href="{{ url_for('admin.manage_models') }}" class="stretched-link"></a>
+                    <i class="fas fa-brain fa-xl"></i>
                 </div>
             </div>
-        </div>
-
-        <div class="col-xl-4 col-md-6 mb-4">
-            <div class="card border-left-info shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">System Configuration</div>
-                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
-                                Advanced system settings
-                            </div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-cogs fa-2x text-gray-300"></i>
-                        </div>
+        </a>
+    </div>
+    <div class="col-xl-4 col-md-6">
+        <a href="{{ url_for('admin.config') }}" class="text-decoration-none">
+            <div class="mac-card h-100">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="mb-1">System Configuration</h5>
+                        <p class="text-muted mb-0 small">Tune global defaults and policies</p>
                     </div>
-                    <a href="{{ url_for('admin.config') }}" class="stretched-link"></a>
+                    <i class="fas fa-cogs fa-xl"></i>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="mac-card h-100">
+            <h5 class="mb-3"><i class="fas fa-server me-2"></i>System Information</h5>
+            <div class="mb-2">
+                <strong>System Version:</strong> Smart-NVR v1.0.0
+            </div>
+            <div class="mb-2">
+                <strong>Database Status:</strong> <span id="db-status">Checking...</span>
+            </div>
+            <div class="mb-2">
+                <strong>Storage Usage (<span id="storage-path">/</span>):</strong> <span id="storage-usage-text">N/A</span>
+                <div class="progress mb-4">
+                    <div id="storage-progress-bar" class="progress-bar" role="progressbar" style="width: 0%"
+                        aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
+            </div>
+            <div class="mb-2">
+                <strong>Recordings Usage (<span id="recordings-path">storage/recordings</span>):</strong> <span id="recordings-usage-text">N/A</span>
+                <div class="progress mb-4">
+                    <div id="recordings-progress-bar" class="progress-bar bg-warning" role="progressbar" style="width: 0%"
+                        aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
+            </div>
+            <div class="mb-2">
+                <strong>Memory Usage:</strong> <span id="memory-usage-text">N/A</span>
+                <div class="progress mb-4">
+                    <div id="memory-progress-bar" class="progress-bar bg-info" role="progressbar" style="width: 0%"
+                        aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
+            </div>
+            <div class="mb-0">
+                <strong>CPU Usage:</strong> <span id="cpu-usage-text">N/A</span>
+                <div class="progress mb-0">
+                    <div id="cpu-progress-bar" class="progress-bar bg-danger" role="progressbar" style="width: 0%"
+                        aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="row">
-        <div class="col-lg-6">
-            <div class="card shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">System Information</h6>
-                </div>
-                <div class="card-body">
-                    <div class="mb-2">
-                        <strong>System Version:</strong> Smart-NVR v1.0.0 <!-- TODO: Make dynamic? -->
-                    </div>
-                    <div class="mb-2">
-                        <strong>Database Status:</strong> <span id="db-status">Checking...</span>
-                    </div>
-                    <div class="mb-2">
-                        <strong>Storage Usage (<span id="storage-path">/</span>):</strong> <span id="storage-usage-text">N/A</span>
-                        <div class="progress mb-4">
-                            <div id="storage-progress-bar" class="progress-bar" role="progressbar" style="width: 0%"
-                                aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
-                        </div>
-                    </div>
-                    <div class="mb-2">
-                        <strong>Recordings Usage (<span id="recordings-path">storage/recordings</span>):</strong> <span id="recordings-usage-text">N/A</span>
-                        <div class="progress mb-4">
-                            <div id="recordings-progress-bar" class="progress-bar bg-warning" role="progressbar" style="width: 0%"
-                                aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
-                        </div>
-                    </div>
-                    <div class="mb-2">
-                        <strong>Memory Usage:</strong> <span id="memory-usage-text">N/A</span>
-                        <div class="progress mb-4">
-                            <div id="memory-progress-bar" class="progress-bar bg-info" role="progressbar" style="width: 0%"
-                                aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
-                        </div>
-                    </div>
-                     <div class="mb-2">
-                        <strong>CPU Usage:</strong> <span id="cpu-usage-text">N/A</span>
-                        <div class="progress mb-4">
-                            <div id="cpu-progress-bar" class="progress-bar bg-danger" role="progressbar" style="width: 0%"
-                                aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="col-lg-6">
-            <div class="card shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">Recent Activity</h6>
-                </div>
-                <div class="card-body">
-                    <ul class="list-group list-group-flush" id="recent-activity-list">
-                        <!-- Activity will be loaded here -->
-                        <li class="list-group-item">Loading activity...</li>
-                    </ul>
-                </div>
-            </div>
+    <div class="col-lg-6">
+        <div class="mac-card h-100">
+            <h5 class="mb-3"><i class="fas fa-clock-rotate-left me-2"></i>Recent Activity</h5>
+            <ul class="list-group list-group-flush" id="recent-activity-list">
+                <li class="list-group-item">Loading activity...</li>
+            </ul>
         </div>
     </div>
 </div>
