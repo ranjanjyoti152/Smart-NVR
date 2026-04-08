@@ -4,6 +4,8 @@ import json
 import threading
 import time
 import requests
+from html import escape
+from urllib.parse import quote_plus
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
@@ -71,6 +73,166 @@ def load_config():
         except Exception as e:
             logger.error(f"Error loading email config: {str(e)}")
     return {}
+
+def _get_alert_theme(roi_name_lower):
+    """Return email theme metadata based on ROI keyword."""
+    default_theme = {
+        'badge': 'Detection Alert',
+        'accent': '#1167D8',
+        'surface': '#EEF5FF',
+        'title': 'SmartNVR Detection Alert',
+        'summary': 'An event was detected in a monitored zone.',
+        'actions': [
+            'Verify the event in the attached image.',
+            'Review recent camera playback for context.',
+            'Escalate to the relevant team if needed.'
+        ]
+    }
+
+    if not roi_name_lower:
+        return default_theme
+
+    themed_rules = [
+        (('intrusion',), {
+            'badge': 'Urgent Security',
+            'accent': '#DE2F57',
+            'surface': '#FFF0F4',
+            'title': 'Potential Intrusion Detected',
+            'summary': 'A possible unauthorized entry event was detected.',
+            'actions': [
+                'Validate the alert immediately using live and recorded feed.',
+                'Notify on-site security personnel.',
+                'Preserve evidence snapshots and relevant recordings.',
+                'Inspect adjacent camera zones for linked activity.'
+            ]
+        }),
+        (('fire',), {
+            'badge': 'Emergency',
+            'accent': '#D84A1B',
+            'surface': '#FFF4EE',
+            'title': 'Fire Hazard Alert',
+            'summary': 'A possible fire event was detected.',
+            'actions': [
+                'Trigger emergency response protocol.',
+                'Contact fire services immediately.',
+                'Coordinate area evacuation if risk is confirmed.'
+            ]
+        }),
+        (('smoke',), {
+            'badge': 'Warning',
+            'accent': '#FF8B43',
+            'surface': '#FFF7F1',
+            'title': 'Smoke Detection Warning',
+            'summary': 'Smoke-like activity was identified in the monitored area.',
+            'actions': [
+                'Inspect the source of smoke right away.',
+                'Prepare for fire protocol escalation.',
+                'Inform safety staff and document findings.'
+            ]
+        }),
+        (('helmet', 'safety'), {
+            'badge': 'Safety',
+            'accent': '#D99A12',
+            'surface': '#FFF9E8',
+            'title': 'Safety Compliance Alert',
+            'summary': 'A potential safety compliance issue was detected.',
+            'actions': [
+                'Verify PPE compliance in the affected zone.',
+                'Record the incident for safety tracking.',
+                'Follow your safety SOP for corrective action.'
+            ]
+        }),
+        (('loitering',), {
+            'badge': 'Behavior',
+            'accent': '#6A7B92',
+            'surface': '#F2F5F9',
+            'title': 'Loitering Pattern Detected',
+            'summary': 'Potential loitering was observed in the monitored zone.',
+            'actions': [
+                'Observe live feed to confirm behavior.',
+                'Escalate if the pattern appears suspicious.',
+                'Log time window and location details.'
+            ]
+        }),
+        (('parking',), {
+            'badge': 'Parking',
+            'accent': '#4E63C9',
+            'surface': '#EEF1FF',
+            'title': 'Parking Violation Alert',
+            'summary': 'A likely parking policy violation was detected.',
+            'actions': [
+                'Confirm violation status via camera context.',
+                'Document vehicle and timestamp details.',
+                'Notify enforcement or operations as required.'
+            ]
+        }),
+        (('restricted',), {
+            'badge': 'Restricted Zone',
+            'accent': '#CC2B75',
+            'surface': '#FFF0F8',
+            'title': 'Restricted Zone Violation',
+            'summary': 'Potential unauthorized zone entry was detected.',
+            'actions': [
+                'Validate object type and access permissions.',
+                'Notify security team for intervention.',
+                'Preserve relevant footage for audit.'
+            ]
+        }),
+        (('vehicle',), {
+            'badge': 'Vehicle',
+            'accent': '#1F88D9',
+            'surface': '#EEF8FF',
+            'title': 'Vehicle Activity Alert',
+            'summary': 'Vehicle movement was detected in the monitored area.',
+            'actions': [
+                'Verify whether vehicle presence is expected.',
+                'Review trajectory and dwell time.',
+                'Record details if follow-up is needed.'
+            ]
+        }),
+        (('package',), {
+            'badge': 'Package',
+            'accent': '#7E5E44',
+            'surface': '#F8F4F1',
+            'title': 'Package Activity Detected',
+            'summary': 'Package-related activity was detected.',
+            'actions': [
+                'Confirm delivery or pickup event.',
+                'Secure package if unattended.',
+                'Archive footage for delivery records.'
+            ]
+        }),
+        (('animal',), {
+            'badge': 'Wildlife',
+            'accent': '#2D9B65',
+            'surface': '#EEF9F3',
+            'title': 'Animal Detected',
+            'summary': 'Animal presence was detected in the monitored area.',
+            'actions': [
+                'Identify potential risk to people or assets.',
+                'Follow local policy for animal encounters.',
+                'Notify operations if intervention is required.'
+            ]
+        }),
+        (('fall',), {
+            'badge': 'Assistance Needed',
+            'accent': '#9A3DBA',
+            'surface': '#F7EFFB',
+            'title': 'Potential Fall Event',
+            'summary': 'A potential fall was detected and may need urgent assistance.',
+            'actions': [
+                'Verify incident immediately on live feed.',
+                'Contact emergency support if confirmed.',
+                'Notify designated contacts and preserve evidence.'
+            ]
+        }),
+    ]
+
+    for keywords, theme in themed_rules:
+        if any(keyword in roi_name_lower for keyword in keywords):
+            return theme
+
+    return default_theme
 
 def generate_gemini_ai_description(detection_data, roi_data=None, camera_data=None):
     """
@@ -457,294 +619,155 @@ def _send_email_internal(email_data):
         # Format timestamp if it's a datetime object
         timestamp_str = detection_data['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if isinstance(detection_data['timestamp'], datetime) else str(detection_data['timestamp'])
         
-        # Email header style
-        header_style = "style='padding: 10px; color: white; font-size: 18px; text-align: center;'"
-        
-        # Get custom styles and content based on ROI name
-        header_bg = "#2C3E50"  # Default header background
-        alert_box_style = "style='border: 1px solid #ddd; padding: 15px; margin: 15px 0; border-radius: 5px; background-color: #f9f9f9;'"
-        custom_message = ""
-        action_steps = ""
-        
-        if roi_data:
-            if "intrusion" in roi_name_lower:
-                header_bg = "#B90E0A"  # Red for intrusion
-                alert_box_style = "style='border: 1px solid #B90E0A; padding: 15px; margin: 15px 0; border-radius: 5px; background-color: #FFEBEE;'"
-                custom_message = f"""
-                <div {alert_box_style}>
-                    <h3 style='color: #B90E0A; margin-top: 0;'>⚠️ SECURITY BREACH DETECTED ⚠️</h3>
-                    <p>A potential intruder has been detected in an area marked for intrusion monitoring.</p>
-                    <p>Detected object: <strong>{detection_data['class_name']}</strong> with {detection_data['confidence']:.1%} confidence.</p>
-                </div>
-                """
-                action_steps = """
-                <h3>Recommended Actions:</h3>
-                <ol>
-                    <li>Verify the alert by checking the attached image and video</li>
-                    <li>Contact security personnel immediately if intrusion is confirmed</li>
-                    <li>Save video evidence for future reference</li>
-                    <li>Check other camera feeds for additional intrusion points</li>
-                </ol>
-                """
-                
-            elif "fire" in roi_name_lower:
-                header_bg = "#D32F2F"  # Bright red for fire
-                alert_box_style = "style='border: 1px solid #D32F2F; padding: 15px; margin: 15px 0; border-radius: 5px; background-color: #FFEBEE;'"
-                custom_message = f"""
-                <div {alert_box_style}>
-                    <h3 style='color: #D32F2F; margin-top: 0;'>🔥 FIRE EMERGENCY ALERT 🔥</h3>
-                    <p>A potential fire has been detected in the monitoring area.</p>
-                    <p>Detected object: <strong>{detection_data['class_name']}</strong> with {detection_data['confidence']:.1%} confidence.</p>
-                </div>
-                """
-                action_steps = """
-                <h3>Immediate Actions Required:</h3>
-                <ol>
-                    <li>Evacuate the area immediately</li>
-                    <li>Contact emergency services (Fire Department) at once</li>
-                    <li>Activate fire alarm systems if not already triggered</li>
-                    <li>Do NOT attempt to fight substantial fires</li>
-                    <li>Follow your organization's fire emergency procedures</li>
-                </ol>
-                """
-                
-            elif "smoke" in roi_name_lower:
-                header_bg = "#FF9800"  # Orange for smoke warning
-                alert_box_style = "style='border: 1px solid #FF9800; padding: 15px; margin: 15px 0; border-radius: 5px; background-color: #FFF3E0;'"
-                custom_message = f"""
-                <div {alert_box_style}>
-                    <h3 style='color: #FF9800; margin-top: 0;'>🚨 SMOKE DETECTION WARNING 🚨</h3>
-                    <p>Smoke has been detected in the monitoring area which could indicate a fire hazard.</p>
-                    <p>Detected object: <strong>{detection_data['class_name']}</strong> with {detection_data['confidence']:.1%} confidence.</p>
-                </div>
-                """
-                action_steps = """
-                <h3>Recommended Actions:</h3>
-                <ol>
-                    <li>Investigate the source of smoke immediately</li>
-                    <li>Prepare for possible evacuation</li>
-                    <li>Alert fire safety personnel</li>
-                    <li>Check for signs of fire</li>
-                    <li>If fire is confirmed, follow fire emergency procedures</li>
-                </ol>
-                """
-                
-            elif "helmet" in roi_name_lower or "safety" in roi_name_lower:
-                header_bg = "#FFC107"  # Yellow for safety violations
-                alert_box_style = "style='border: 1px solid #FFC107; padding: 15px; margin: 15px 0; border-radius: 5px; background-color: #FFF8E1;'"
-                custom_message = f"""
-                <div {alert_box_style}>
-                    <h3 style='color: #FFC107; margin-top: 0;'>👷 SAFETY COMPLIANCE ALERT 👷</h3>
-                    <p>A safety-related detection has occurred in the monitoring area.</p>
-                    <p>Detected object: <strong>{detection_data['class_name']}</strong> with {detection_data['confidence']:.1%} confidence.</p>
-                </div>
-                """
-                action_steps = """
-                <h3>Recommended Actions:</h3>
-                <ol>
-                    <li>Verify if proper safety equipment is being used</li>
-                    <li>Address any safety violations</li>
-                    <li>Document the incident for safety records</li>
-                    <li>Consider additional safety training if violations are frequent</li>
-                </ol>
-                """
-            
-            elif "loitering" in roi_name_lower:
-                header_bg = "#607D8B"  # Blue Grey for loitering
-                alert_box_style = "style='border: 1px solid #607D8B; padding: 15px; margin: 15px 0; border-radius: 5px; background-color: #ECEFF1;'"
-                custom_message = f"""
-                <div {alert_box_style}>
-                    <h3 style='color: #607D8B; margin-top: 0;'>⏱️ LOITERING ALERT ⏱️</h3>
-                    <p>Potential loitering detected in the monitored area.</p>
-                    <p>Detected object: <strong>{detection_data['class_name']}</strong> with {detection_data['confidence']:.1%} confidence.</p>
-                </div>
-                """
-                action_steps = """
-                <h3>Recommended Actions:</h3>
-                <ol>
-                    <li>Monitor the situation via live feed</li>
-                    <li>Assess if the activity is suspicious or benign</li>
-                    <li>If suspicious, contact security or relevant personnel</li>
-                    <li>Note the time and duration for records</li>
-                </ol>
-                """
+        theme = _get_alert_theme(roi_name_lower)
+        camera_name = escape(str(camera_data.get('name', 'Unknown Camera')))
+        camera_id = camera_data.get('id', '')
+        object_name = escape(str(detection_data.get('class_name', 'Unknown')))
+        roi_name = escape(str(roi_data.get('name', 'Not specified'))) if roi_data else 'Not specified'
+        ai_description_safe = escape(str(ai_description)) if ai_description else ''
 
-            elif "vehicle" in roi_name_lower:
-                header_bg = "#03A9F4"  # Light Blue for vehicle
-                alert_box_style = "style='border: 1px solid #03A9F4; padding: 15px; margin: 15px 0; border-radius: 5px; background-color: #E1F5FE;'"
-                custom_message = f"""
-                <div {alert_box_style}>
-                    <h3 style='color: #03A9F4; margin-top: 0;'>🚗 VEHICLE ALERT 🚗</h3>
-                    <p>A vehicle has been detected in the specified zone.</p>
-                    <p>Detected object: <strong>{detection_data['class_name']}</strong> with {detection_data['confidence']:.1%} confidence.</p>
-                </div>
-                """
-                action_steps = """
-                <h3>Recommended Actions:</h3>
-                <ol>
-                    <li>Verify if the vehicle is authorized in this area</li>
-                    <li>Check for parking violations if applicable</li>
-                    <li>Monitor vehicle activity if necessary</li>
-                    <li>Note license plate if possible and required</li>
-                </ol>
-                """
+        try:
+            confidence_percentage = float(detection_data.get('confidence', 0.0)) * 100.0
+        except (TypeError, ValueError):
+            confidence_percentage = 0.0
 
-            elif "package" in roi_name_lower:
-                header_bg = "#795548"  # Brown for package
-                alert_box_style = "style='border: 1px solid #795548; padding: 15px; margin: 15px 0; border-radius: 5px; background-color: #EFEBE9;'"
-                custom_message = f"""
-                <div {alert_box_style}>
-                    <h3 style='color: #795548; margin-top: 0;'>📦 PACKAGE DELIVERY DETECTED 📦</h3>
-                    <p>A package-related activity has been detected.</p>
-                    <p>Detected object: <strong>{detection_data['class_name']}</strong> with {detection_data['confidence']:.1%} confidence.</p>
-                </div>
-                """
-                action_steps = """
-                <h3>Recommended Actions:</h3>
-                <ol>
-                    <li>Check the camera feed to confirm delivery</li>
-                    <li>Secure the package as soon as possible</li>
-                    <li>Review footage if package goes missing</li>
-                </ol>
-                """
-
-            elif "animal" in roi_name_lower:
-                header_bg = "#4CAF50"  # Green for animal
-                alert_box_style = "style='border: 1px solid #4CAF50; padding: 15px; margin: 15px 0; border-radius: 5px; background-color: #E8F5E9;'"
-                custom_message = f"""
-                <div {alert_box_style}>
-                    <h3 style='color: #4CAF50; margin-top: 0;'>🐾 ANIMAL DETECTED 🐾</h3>
-                    <p>An animal has been detected in the monitored area.</p>
-                    <p>Detected object: <strong>{detection_data['class_name']}</strong> with {detection_data['confidence']:.1%} confidence.</p>
-                </div>
-                """
-                action_steps = """
-                <h3>Recommended Actions:</h3>
-                <ol>
-                    <li>Identify the type of animal if possible</li>
-                    <li>Assess if the animal poses any risk or nuisance</li>
-                    <li>Take appropriate action based on local wildlife guidelines or pet policies</li>
-                    <li>Ensure pets are safe if wildlife is potentially dangerous</li>
-                </ol>
-                """
-                
-            elif "fall" in roi_name_lower:
-                header_bg = "#9C27B0"  # Purple for fall detection
-                alert_box_style = "style='border: 1px solid #9C27B0; padding: 15px; margin: 15px 0; border-radius: 5px; background-color: #F3E5F5;'"
-                custom_message = f"""
-                <div {alert_box_style}>
-                    <h3 style='color: #9C27B0; margin-top: 0;'>❗ FALL DETECTED - ASSISTANCE MAY BE NEEDED ❗</h3>
-                    <p>A potential fall has been detected.</p>
-                    <p>Detected object: <strong>{detection_data['class_name']}</strong> (likely 'person') with {detection_data['confidence']:.1%} confidence.</p>
-                </div>
-                """
-                action_steps = """
-                <h3>Immediate Actions Recommended:</h3>
-                <ol>
-                    <li>Check the live camera feed immediately to verify the situation</li>
-                    <li>Attempt to contact the person if possible and safe</li>
-                    <li>Call emergency services (ambulance/paramedics) if a fall is confirmed and assistance is needed</li>
-                    <li>Notify designated emergency contacts</li>
-                    <li>Preserve the recording for review</li>
-                </ol>
-                """
-
-            elif "parking" in roi_name_lower:
-                header_bg = "#3F51B5"  # Indigo for parking violations
-                alert_box_style = "style='border: 1px solid #3F51B5; padding: 15px; margin: 15px 0; border-radius: 5px; background-color: #E8EAF6;'"
-                custom_message = f"""
-                <div {alert_box_style}>
-                    <h3 style='color: #3F51B5; margin-top: 0;'>🅿️ PARKING VIOLATION DETECTED 🅿️</h3>
-                    <p>A vehicle appears to be parked in an incorrect zone.</p>
-                    <p>Detected vehicle: <strong>{detection_data['class_name']}</strong> with {detection_data['confidence']:.1%} confidence.</p>
-                    <p>Violation zone: <strong>{roi_data['name']}</strong></p>
-                </div>
-                """
-                action_steps = """
-                <h3>Recommended Actions:</h3>
-                <ol>
-                    <li>Verify that the vehicle is incorrectly parked by checking the camera feed</li>
-                    <li>Determine if the vehicle belongs to a car, motorcycle, or other category</li>
-                    <li>Document the violation including time, location, and vehicle details</li>
-                    <li>Notify parking enforcement personnel if applicable</li>
-                    <li>Monitor how long the vehicle remains in violation</li>
-                </ol>
-                """
-                
-            elif "restricted" in roi_name_lower:
-                header_bg = "#E91E63"  # Pink for restricted zone violations
-                alert_box_style = "style='border: 1px solid #E91E63; padding: 15px; margin: 15px 0; border-radius: 5px; background-color: #FCE4EC;'"
-                custom_message = f"""
-                <div {alert_box_style}>
-                    <h3 style='color: #E91E63; margin-top: 0;'>⛔ RESTRICTED ZONE VIOLATION ⛔</h3>
-                    <p>A heavy vehicle or unauthorized vehicle has entered a restricted zone.</p>
-                    <p>Detected vehicle: <strong>{detection_data['class_name']}</strong> with {detection_data['confidence']:.1%} confidence.</p>
-                    <p>Restricted zone: <strong>{roi_data['name']}</strong></p>
-                </div>
-                """
-                action_steps = """
-                <h3>Immediate Actions Required:</h3>
-                <ol>
-                    <li>Confirm the type of vehicle and whether it's restricted in this zone</li>
-                    <li>Contact the driver or responsible party if possible</li>
-                    <li>Alert security personnel to address the violation</li>
-                    <li>Document the incident including time, location, and vehicle details</li>
-                    <li>Check for any road signs or barriers that may need to be improved</li>
-                </ol>
-                """
-
-        # Email body with HTML, using custom content if available
-        body = f"""
-        <html>
-        <body style='font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto;'>
-            <div style='background-color: {header_bg}; {header_style[7:-1]}'>
-                <h2>SmartNVR Detection Alert</h2>
-            </div>
-            
-            {custom_message}
-            
-            <div style='padding: 15px;'>
-                <p><strong>Camera:</strong> {camera_data['name']}</p>
-                <p><strong>Object:</strong> {detection_data['class_name']}</p>
-                <p><strong>Confidence:</strong> {detection_data['confidence']:.2%}</p>
-                <p><strong>Time:</strong> {timestamp_str}</p>
+        details_rows = f"""
+            <tr>
+                <td style="padding:10px 12px; color:#73829D; font-size:13px; border-bottom:1px solid #E4EBF6;">Camera</td>
+                <td style="padding:10px 12px; color:#0F1F34; font-size:13px; font-weight:600; border-bottom:1px solid #E4EBF6;">{camera_name}</td>
+            </tr>
+            <tr>
+                <td style="padding:10px 12px; color:#73829D; font-size:13px; border-bottom:1px solid #E4EBF6;">Object</td>
+                <td style="padding:10px 12px; color:#0F1F34; font-size:13px; font-weight:600; border-bottom:1px solid #E4EBF6;">{object_name}</td>
+            </tr>
+            <tr>
+                <td style="padding:10px 12px; color:#73829D; font-size:13px; border-bottom:1px solid #E4EBF6;">Confidence</td>
+                <td style="padding:10px 12px; color:#0F1F34; font-size:13px; font-weight:600; border-bottom:1px solid #E4EBF6;">{confidence_percentage:.2f}%</td>
+            </tr>
+            <tr>
+                <td style="padding:10px 12px; color:#73829D; font-size:13px; border-bottom:1px solid #E4EBF6;">Detection Time</td>
+                <td style="padding:10px 12px; color:#0F1F34; font-size:13px; font-weight:600; border-bottom:1px solid #E4EBF6;">{escape(timestamp_str)}</td>
+            </tr>
         """
-        
-        # Add ROI information if available
+
         if roi_data:
-            body += f"<p><strong>Detection Zone:</strong> {roi_data['name']}</p>"
-        
-        # Add AI-enhanced description if available
-        if ai_description:
-            body += f"""
-            <div style='background-color: #E3F2FD; border-left: 4px solid #2196F3; padding: 10px; margin: 15px 0; border-radius: 3px;'>
-                <p style='margin: 0;'><strong>AI Smart Analysis:</strong> {ai_description}</p>
-            </div>
+            details_rows += f"""
+            <tr>
+                <td style="padding:10px 12px; color:#73829D; font-size:13px;">Detection Zone</td>
+                <td style="padding:10px 12px; color:#0F1F34; font-size:13px; font-weight:600;">{roi_name}</td>
+            </tr>
             """
-        
-        # Add action steps if available
-        if action_steps:
-            body += action_steps
-        
-        # Add image if available
-        image_path = detection_data['image_path']
+
+        actions_html = ''.join(
+            f'<li style="margin:0 0 8px; color:#3C4D67;">{escape(action)}</li>'
+            for action in theme['actions']
+        )
+
+        ai_block = ''
+        if ai_description_safe:
+            ai_block = f"""
+            <tr>
+                <td style="padding:0 28px 20px;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate; background:#EEF8FF; border:1px solid #CFE8FF; border-left:4px solid #2E82FF; border-radius:12px;">
+                        <tr>
+                            <td style="padding:14px 16px;">
+                                <p style="margin:0 0 6px; font-size:12px; letter-spacing:0.08em; text-transform:uppercase; color:#2E82FF; font-weight:700;">AI Smart Analysis</p>
+                                <p style="margin:0; color:#23354F; font-size:14px; line-height:1.45;">{ai_description_safe}</p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+            """
+
+        image_block = ''
+        image_path = detection_data.get('image_path')
         if image_path and os.path.exists(image_path):
             with open(image_path, 'rb') as f:
                 img = MIMEImage(f.read())
                 img.add_header('Content-ID', '<detection_image>')
                 msg.attach(img)
-            body += '<p><img src="cid:detection_image" width="640" /></p>'
-        
-        # Add video link if available
-        if detection_data['video_path']:
-            video_url = f"/playback?video={os.path.basename(detection_data['video_path'])}&camera={camera_data['id']}"
-            body += f'<p><a href="{video_url}" style="display: inline-block; padding: 8px 16px; background-color: #0078D7; color: white; text-decoration: none; border-radius: 4px;">View Recorded Video</a></p>'
-        
-        body += """
-            </div>
-            <div style='background-color: #f5f5f5; padding: 10px; font-size: 12px; text-align: center; margin-top: 20px;'>
-                <p>This is an automated message from your SmartNVR system.</p>
-            </div>
+            image_block = """
+            <tr>
+                <td style="padding:0 28px 22px;">
+                    <img src="cid:detection_image" alt="Detection Snapshot" width="624" style="display:block; width:100%; max-width:624px; border-radius:14px; border:1px solid #D9E5F4;" />
+                </td>
+            </tr>
+            """
+
+        playback_block = ''
+        if detection_data.get('video_path'):
+            playback_path = (
+                f"/playback?video={quote_plus(os.path.basename(detection_data['video_path']))}"
+                f"&camera={quote_plus(str(camera_id))}"
+            )
+            public_base_url = str(current_app.config.get('PUBLIC_BASE_URL', '')).rstrip('/')
+            playback_url = f"{public_base_url}{playback_path}" if public_base_url else playback_path
+            playback_block = f"""
+            <tr>
+                <td align="center" style="padding:0 28px 24px;">
+                    <a href="{escape(playback_url)}" style="display:inline-block; padding:12px 20px; border-radius:12px; background:#1167D8; color:#FFFFFF; font-size:14px; font-weight:600; text-decoration:none;">Open Playback</a>
+                </td>
+            </tr>
+            """
+
+        body = f"""
+        <html>
+        <body style="margin:0; padding:0; background:#EEF2F7; font-family:'Segoe UI', Arial, sans-serif;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse; background:#EEF2F7;">
+                <tr>
+                    <td align="center" style="padding:22px 12px;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:680px; border-collapse:separate; background:#FFFFFF; border:1px solid #D9E5F4; border-radius:18px; overflow:hidden;">
+                            <tr>
+                                <td style="padding:0;">
+                                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse; background:{theme['accent']};">
+                                        <tr>
+                                            <td style="padding:16px 22px;">
+                                                <p style="margin:0 0 6px; color:#DDEBFF; font-size:11px; font-weight:700; letter-spacing:0.09em; text-transform:uppercase;">SmartNVR | {escape(theme['badge'])}</p>
+                                                <h2 style="margin:0; color:#FFFFFF; font-size:24px; line-height:1.2;">{escape(theme['title'])}</h2>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding:18px 28px 12px;">
+                                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate; background:{theme['surface']}; border:1px solid #D9E5F4; border-radius:14px;">
+                                        <tr>
+                                            <td style="padding:14px 16px;">
+                                                <p style="margin:0; color:#23354F; font-size:14px; line-height:1.5;">{escape(theme['summary'])}</p>
+                                            </td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding:0 28px 20px;">
+                                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate; background:#F8FBFF; border:1px solid #D9E5F4; border-radius:14px;">
+                                        {details_rows}
+                                    </table>
+                                </td>
+                            </tr>
+                            {ai_block}
+                            <tr>
+                                <td style="padding:0 28px 18px;">
+                                    <h3 style="margin:0 0 10px; color:#0F1F34; font-size:16px;">Recommended Actions</h3>
+                                    <ul style="margin:0; padding-left:20px; font-size:14px; line-height:1.45;">
+                                        {actions_html}
+                                    </ul>
+                                </td>
+                            </tr>
+                            {image_block}
+                            {playback_block}
+                            <tr>
+                                <td style="padding:14px 22px; border-top:1px solid #E4EBF6; background:#F8FBFF;">
+                                    <p style="margin:0; color:#73829D; font-size:12px; line-height:1.4;">Automated notification from SmartNVR Vision Control Center.</p>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
         </body>
         </html>
         """
@@ -799,21 +822,54 @@ def send_test_email(smtp_server, smtp_port, smtp_username, smtp_password, recipi
         msg['To'] = ', '.join(recipients)
         msg['Subject'] = "SmartNVR - Test Email"
         
-        # Email body with HTML
+        sent_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         body = f"""
         <html>
-        <body>
-            <h2>SmartNVR Email Test</h2>
-            <p>This is a test email from your SmartNVR system.</p>
-            <p>If you're receiving this message, your email notifications are configured correctly.</p>
-            <p><strong>Configuration:</strong></p>
-            <ul>
-                <li>SMTP Server: {smtp_server}</li>
-                <li>SMTP Port: {smtp_port}</li>
-                <li>Username: {smtp_username}</li>
-            </ul>
-            <p>This email was sent at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-            <p>Thank you for using SmartNVR!</p>
+        <body style="margin:0; padding:0; background:#EEF2F7; font-family:'Segoe UI', Arial, sans-serif;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse; background:#EEF2F7;">
+                <tr>
+                    <td align="center" style="padding:22px 12px;">
+                        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px; border-collapse:separate; background:#FFFFFF; border:1px solid #D9E5F4; border-radius:18px; overflow:hidden;">
+                            <tr>
+                                <td style="padding:18px 22px; background:#1167D8;">
+                                    <p style="margin:0 0 6px; color:#DDEBFF; font-size:11px; font-weight:700; letter-spacing:0.09em; text-transform:uppercase;">SmartNVR | Notification Test</p>
+                                    <h2 style="margin:0; color:#FFFFFF; font-size:24px; line-height:1.2;">Email Configuration Verified</h2>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding:18px 24px;">
+                                    <p style="margin:0 0 14px; color:#23354F; font-size:14px; line-height:1.5;">
+                                        This test confirms that your SmartNVR email notifications are configured correctly.
+                                    </p>
+                                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate; background:#F8FBFF; border:1px solid #D9E5F4; border-radius:14px;">
+                                        <tr>
+                                            <td style="padding:10px 12px; color:#73829D; font-size:13px; border-bottom:1px solid #E4EBF6;">SMTP Server</td>
+                                            <td style="padding:10px 12px; color:#0F1F34; font-size:13px; font-weight:600; border-bottom:1px solid #E4EBF6;">{escape(str(smtp_server))}</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding:10px 12px; color:#73829D; font-size:13px; border-bottom:1px solid #E4EBF6;">SMTP Port</td>
+                                            <td style="padding:10px 12px; color:#0F1F34; font-size:13px; font-weight:600; border-bottom:1px solid #E4EBF6;">{escape(str(smtp_port))}</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding:10px 12px; color:#73829D; font-size:13px; border-bottom:1px solid #E4EBF6;">Username</td>
+                                            <td style="padding:10px 12px; color:#0F1F34; font-size:13px; font-weight:600; border-bottom:1px solid #E4EBF6;">{escape(str(smtp_username))}</td>
+                                        </tr>
+                                        <tr>
+                                            <td style="padding:10px 12px; color:#73829D; font-size:13px;">Sent At</td>
+                                            <td style="padding:10px 12px; color:#0F1F34; font-size:13px; font-weight:600;">{escape(sent_at)}</td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td style="padding:14px 22px; border-top:1px solid #E4EBF6; background:#F8FBFF;">
+                                    <p style="margin:0; color:#73829D; font-size:12px; line-height:1.4;">Automated notification from SmartNVR Vision Control Center.</p>
+                                </td>
+                            </tr>
+                        </table>
+                    </td>
+                </tr>
+            </table>
         </body>
         </html>
         """
