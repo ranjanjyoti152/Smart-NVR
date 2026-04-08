@@ -116,6 +116,12 @@
                         <span>System Monitor</span>
                     </a>
                 </li>
+                <li>
+                    <a href="{{ url_for('main.usecase') }}" class="{% if request.endpoint == 'main.usecase' %}active{% endif %}">
+                        <i class="fas fa-book-open"></i>
+                        <span>Use Cases</span>
+                    </a>
+                </li>
                 {% if current_user.is_admin %}
                 <li class="sidebar-divider"></li>
                 <li class="mac-sidebar-section-label">Administration</li>

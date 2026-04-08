@@ -1,0 +1,535 @@
+{% extends "base.html" %}
+{% set hide_title = True %}
+
+{% block styles %}
+<style>
+    .usecase-page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .usecase-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        border-radius: 999px;
+        border: 1px solid rgba(var(--color-secondary-rgb), 0.32);
+        background: rgba(var(--color-secondary-rgb), 0.14);
+        color: var(--text-primary);
+        padding: 0.4rem 0.84rem;
+        font-size: 0.78rem;
+        font-weight: 600;
+    }
+
+    .usecase-chip-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--color-secondary);
+        box-shadow: 0 0 0 6px rgba(var(--color-secondary-rgb), 0.16);
+    }
+
+    .usecase-hero-grid {
+        display: grid;
+        grid-template-columns: 1.2fr 0.8fr;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .usecase-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
+    }
+
+    .usecase-kpi {
+        border: 1px solid var(--border-subtle);
+        border-radius: 14px;
+        background: var(--surface-2);
+        padding: 0.9rem;
+    }
+
+    .usecase-kpi-label {
+        display: block;
+        font-size: 0.72rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-weight: 700;
+        margin-bottom: 0.25rem;
+    }
+
+    .usecase-kpi-value {
+        font-size: 1.45rem;
+        color: var(--text-primary);
+        font-weight: 700;
+        line-height: 1.1;
+    }
+
+    .usecase-kpi-note {
+        font-size: 0.78rem;
+        color: var(--text-secondary);
+    }
+
+    .chart-card h5,
+    .workflow-card h5,
+    .capability-card h5,
+    .playbook-card h5 {
+        margin-bottom: 0.7rem;
+    }
+
+    .chart-wrap {
+        position: relative;
+        height: 280px;
+    }
+
+    .workflow-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.8rem;
+    }
+
+    .workflow-step {
+        border: 1px solid var(--border-subtle);
+        border-radius: 14px;
+        background: var(--surface-2);
+        padding: 0.85rem;
+        height: 100%;
+    }
+
+    .workflow-step-index {
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--gradient-primary);
+        color: #fff;
+        font-size: 0.78rem;
+        font-weight: 700;
+        margin-bottom: 0.55rem;
+    }
+
+    .capability-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.8rem;
+    }
+
+    .capability-list {
+        margin: 0;
+        padding-left: 1rem;
+        font-size: 0.88rem;
+        color: var(--text-secondary);
+        line-height: 1.45;
+    }
+
+    .capability-list li + li {
+        margin-top: 0.22rem;
+    }
+
+    .playbook-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.8rem;
+    }
+
+    .playbook-card {
+        border: 1px solid var(--border-subtle);
+        border-radius: 16px;
+        background: var(--surface-2);
+        padding: 0.9rem;
+    }
+
+    .playbook-title {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        font-weight: 700;
+    }
+
+    .playbook-title i {
+        width: 1.8rem;
+        height: 1.8rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 10px;
+        background: rgba(var(--color-primary-rgb), 0.12);
+        color: var(--color-primary);
+        font-size: 0.85rem;
+    }
+
+    .usecase-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.55rem;
+        margin-top: 0.75rem;
+    }
+
+    @media (max-width: 1399.98px) {
+        .capability-grid,
+        .playbook-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 1199.98px) {
+        .usecase-hero-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .workflow-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 767.98px) {
+        .usecase-page-header {
+            flex-direction: column;
+        }
+
+        .workflow-grid,
+        .capability-grid,
+        .playbook-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .usecase-kpi-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="usecase-page-header">
+    <div>
+        <h2 class="mb-1">SmartNVR Use Case Guide</h2>
+        <p class="text-muted mb-0">A practical walkthrough of features, workflows, and deployment scenarios.</p>
+    </div>
+    <div class="usecase-chip">
+        <span class="usecase-chip-dot"></span>
+        Interactive Product Tour
+    </div>
+</div>
+
+<div class="usecase-hero-grid">
+    <div class="mac-card">
+        <h4 class="mb-2">How To Use SmartNVR End-to-End</h4>
+        <p class="text-muted mb-2">
+            SmartNVR combines live surveillance, AI detection, face intelligence, playback investigation, and system health in one control center.
+            Start with camera onboarding, define ROI rules, monitor live events, and use playback + alerts for rapid incident response.
+        </p>
+        <div class="usecase-links">
+            <a href="{{ url_for('main.camera_management') }}" class="btn btn-sm btn-primary">Configure Cameras</a>
+            <a href="{{ url_for('main.dashboard') }}" class="btn btn-sm btn-outline-primary">Open Dashboard</a>
+            <a href="{{ url_for('main.playback') }}" class="btn btn-sm btn-outline-secondary">Review Playback</a>
+            <a href="{{ url_for('main.settings') }}" class="btn btn-sm btn-outline-secondary">Tune Settings</a>
+        </div>
+    </div>
+    <div class="mac-card">
+        <h5>Platform Snapshot</h5>
+        <div class="usecase-kpi-grid">
+            <div class="usecase-kpi">
+                <span class="usecase-kpi-label">Core Modules</span>
+                <div class="usecase-kpi-value">8</div>
+                <div class="usecase-kpi-note">Live, playback, camera, faces, alerts, monitor, settings, admin</div>
+            </div>
+            <div class="usecase-kpi">
+                <span class="usecase-kpi-label">AI Modes</span>
+                <div class="usecase-kpi-value">3</div>
+                <div class="usecase-kpi-note">Object detection, face recognition, Gemini enhancement</div>
+            </div>
+            <div class="usecase-kpi">
+                <span class="usecase-kpi-label">Alert Channels</span>
+                <div class="usecase-kpi-value">2</div>
+                <div class="usecase-kpi-note">In-app detection logs and SMTP email notifications</div>
+            </div>
+            <div class="usecase-kpi">
+                <span class="usecase-kpi-label">Ops Views</span>
+                <div class="usecase-kpi-value">24x7</div>
+                <div class="usecase-kpi-note">Operational dashboard + health monitor + timeline review</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-lg-8">
+        <div class="mac-card chart-card h-100">
+            <h5><i class="fas fa-chart-line me-2"></i>Operational Workflow Coverage</h5>
+            <p class="text-muted mb-2">Typical team time allocation across onboarding, live watch, triage, and optimization loops.</p>
+            <div class="chart-wrap">
+                <canvas id="platformFlowChart"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="mac-card chart-card h-100">
+            <h5><i class="fas fa-bullseye me-2"></i>Capability Radar</h5>
+            <p class="text-muted mb-2">Coverage map of SmartNVR feature pillars.</p>
+            <div class="chart-wrap">
+                <canvas id="capabilityRadarChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mb-3">
+    <div class="col-lg-6">
+        <div class="mac-card chart-card h-100">
+            <h5><i class="fas fa-chart-pie me-2"></i>Alert Intelligence Mix</h5>
+            <p class="text-muted mb-2">How detections are enriched for actionability.</p>
+            <div class="chart-wrap">
+                <canvas id="alertImpactChart"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="mac-card workflow-card h-100">
+            <h5><i class="fas fa-route me-2"></i>Recommended Daily Workflow</h5>
+            <div class="workflow-grid">
+                <div class="workflow-step">
+                    <div class="workflow-step-index">1</div>
+                    <strong>Onboard Cameras</strong>
+                    <p class="text-muted mb-0 small">Add RTSP feeds, model selection, confidence thresholds, and recording preferences.</p>
+                </div>
+                <div class="workflow-step">
+                    <div class="workflow-step-index">2</div>
+                    <strong>Define ROIs</strong>
+                    <p class="text-muted mb-0 small">Set critical zones, schedules, detection class filters, and notification rules.</p>
+                </div>
+                <div class="workflow-step">
+                    <div class="workflow-step-index">3</div>
+                    <strong>Monitor Live</strong>
+                    <p class="text-muted mb-0 small">Track camera streams and event overlays on the dashboard for real-time response.</p>
+                </div>
+                <div class="workflow-step">
+                    <div class="workflow-step-index">4</div>
+                    <strong>Investigate Events</strong>
+                    <p class="text-muted mb-0 small">Use playback timeline, detection list, and snapshots to verify incidents quickly.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="mac-card capability-card mb-3">
+    <h5><i class="fas fa-layer-group me-2"></i>Capability Matrix</h5>
+    <div class="capability-grid">
+        <div class="playbook-card">
+            <div class="playbook-title"><i class="fas fa-home"></i>Realtime Operations</div>
+            <ul class="capability-list mt-2">
+                <li>Live multi-camera dashboard with overlay detection boxes</li>
+                <li>Camera health widget, model status, and detection summary widgets</li>
+                <li>Quick fullscreen and stream quality controls</li>
+            </ul>
+        </div>
+        <div class="playbook-card">
+            <div class="playbook-title"><i class="fas fa-camera"></i>Camera + ROI Control</div>
+            <ul class="capability-list mt-2">
+                <li>RTSP onboarding with credentials and per-camera model settings</li>
+                <li>Detection classes by zone, always-active or scheduled ROI modes</li>
+                <li>Email and Gemini-enhanced notification toggles by ROI</li>
+            </ul>
+        </div>
+        <div class="playbook-card">
+            <div class="playbook-title"><i class="fas fa-film"></i>Playback + Evidence</div>
+            <ul class="capability-list mt-2">
+                <li>Timeline scrubbing with recording and detection event tracks</li>
+                <li>Object filters and event-only review mode</li>
+                <li>Snapshot and video download actions for incident records</li>
+            </ul>
+        </div>
+        <div class="playbook-card">
+            <div class="playbook-title"><i class="fas fa-user-tag"></i>Face Intelligence</div>
+            <ul class="capability-list mt-2">
+                <li>Face profile library with sample management and naming</li>
+                <li>Face detector model/provider tuning and confidence controls</li>
+                <li>Recognition grouping and optional auto-assimilation workflows</li>
+            </ul>
+        </div>
+        <div class="playbook-card">
+            <div class="playbook-title"><i class="fas fa-heart-pulse"></i>System Reliability</div>
+            <ul class="capability-list mt-2">
+                <li>CPU, memory, disk, and optional GPU telemetry</li>
+                <li>Resource charts for trend-based capacity planning</li>
+                <li>Centralized log-level and retention tuning from settings</li>
+            </ul>
+        </div>
+        <div class="playbook-card">
+            <div class="playbook-title"><i class="fas fa-shield"></i>Security + Admin</div>
+            <ul class="capability-list mt-2">
+                <li>User profile controls and preference management</li>
+                <li>Admin user management and AI model administration</li>
+                <li>Role-aware navigation and configuration controls</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="mac-card">
+    <h5><i class="fas fa-lightbulb me-2"></i>Example Deployment Playbooks</h5>
+    <div class="playbook-grid">
+        <div class="playbook-card">
+            <div class="playbook-title"><i class="fas fa-warehouse"></i>Warehouse Security</div>
+            <p class="small text-muted mb-2">Reduce blind spots and unauthorized access in loading and storage areas.</p>
+            <ul class="capability-list">
+                <li>Set intrusion ROIs on restricted aisles</li>
+                <li>Enable after-hours email alerts</li>
+                <li>Use playback timeline for shift-level investigations</li>
+            </ul>
+        </div>
+        <div class="playbook-card">
+            <div class="playbook-title"><i class="fas fa-building"></i>Corporate Campus</div>
+            <p class="small text-muted mb-2">Track lobby, corridor, and parking flow with proactive incident triage.</p>
+            <ul class="capability-list">
+                <li>Use person + vehicle class-specific ROI rules</li>
+                <li>Leverage face grouping for repeated unidentified visitors</li>
+                <li>Monitor system load to plan camera expansion</li>
+            </ul>
+        </div>
+        <div class="playbook-card">
+            <div class="playbook-title"><i class="fas fa-store"></i>Retail Operations</div>
+            <p class="small text-muted mb-2">Improve safety and response for entrances, counters, and storage rooms.</p>
+            <ul class="capability-list">
+                <li>Deploy loitering and restricted-zone detection</li>
+                <li>Use Gemini summaries for faster alert interpretation</li>
+                <li>Keep event snapshots for compliance documentation</li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim() || '#5d6d88';
+        const mutedColor = getComputedStyle(document.documentElement).getPropertyValue('--text-muted').trim() || '#73829d';
+        const borderColor = getComputedStyle(document.documentElement).getPropertyValue('--border-subtle').trim() || 'rgba(19,34,54,0.1)';
+
+        const chartDefaults = {
+            plugins: {
+                legend: {
+                    labels: {
+                        color: textColor,
+                        boxWidth: 12,
+                        font: {
+                            size: 11,
+                            family: 'Space Grotesk, Segoe UI, sans-serif'
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { color: mutedColor },
+                    grid: { color: borderColor }
+                },
+                y: {
+                    ticks: { color: mutedColor },
+                    grid: { color: borderColor }
+                }
+            }
+        };
+
+        const flowCtx = document.getElementById('platformFlowChart');
+        if (flowCtx && window.Chart) {
+            new Chart(flowCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Camera Setup', 'ROI Rules', 'Live Monitoring', 'Incident Review', 'Optimization'],
+                    datasets: [
+                        {
+                            label: 'Weekly Operational Focus (%)',
+                            data: [18, 14, 36, 20, 12],
+                            borderRadius: 10,
+                            backgroundColor: [
+                                'rgba(17, 103, 216, 0.75)',
+                                'rgba(3, 155, 143, 0.72)',
+                                'rgba(46, 130, 255, 0.78)',
+                                'rgba(255, 139, 67, 0.74)',
+                                'rgba(0, 169, 110, 0.75)'
+                            ]
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    ...chartDefaults
+                }
+            });
+        }
+
+        const radarCtx = document.getElementById('capabilityRadarChart');
+        if (radarCtx && window.Chart) {
+            new Chart(radarCtx, {
+                type: 'radar',
+                data: {
+                    labels: ['Detection', 'Playback', 'Face AI', 'Alerts', 'Monitoring', 'Admin'],
+                    datasets: [
+                        {
+                            label: 'Platform Capability Depth',
+                            data: [93, 90, 85, 88, 84, 82],
+                            fill: true,
+                            borderWidth: 2,
+                            borderColor: 'rgba(17, 103, 216, 0.95)',
+                            backgroundColor: 'rgba(17, 103, 216, 0.20)',
+                            pointBackgroundColor: 'rgba(17, 103, 216, 1)'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        r: {
+                            angleLines: { color: borderColor },
+                            grid: { color: borderColor },
+                            pointLabels: { color: textColor, font: { size: 11 } },
+                            ticks: { display: false, backdropColor: 'transparent' },
+                            suggestedMin: 0,
+                            suggestedMax: 100
+                        }
+                    },
+                    plugins: chartDefaults.plugins
+                }
+            });
+        }
+
+        const pieCtx = document.getElementById('alertImpactChart');
+        if (pieCtx && window.Chart) {
+            new Chart(pieCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Object Detection', 'ROI Logic', 'Face Intelligence', 'Gemini Summary'],
+                    datasets: [{
+                        data: [42, 24, 19, 15],
+                        borderWidth: 1,
+                        borderColor: 'rgba(255,255,255,0.5)',
+                        backgroundColor: [
+                            'rgba(17, 103, 216, 0.8)',
+                            'rgba(3, 155, 143, 0.78)',
+                            'rgba(222, 47, 87, 0.78)',
+                            'rgba(255, 139, 67, 0.78)'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '62%',
+                    plugins: chartDefaults.plugins
+                }
+            });
+        }
+    });
+</script>
+{% endblock %}

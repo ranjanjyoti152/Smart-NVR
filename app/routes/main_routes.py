@@ -38,6 +38,12 @@ def monitor():
     resources = get_system_resources()
     return render_template('monitor.html', title='System Monitor', resources=resources)
 
+@main_bp.route('/usecase')
+@login_required
+def usecase():
+    """Use case and capabilities guide route"""
+    return render_template('usecase.html', title='Use Cases')
+
 @main_bp.route('/profile')
 @login_required
 def profile():

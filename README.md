@@ -1,381 +1,230 @@
-# Smart-NVR-GPU
+# SmartNVR
 
-A powerful Network Video Recorder (NVR) application that leverages GPU acceleration for real-time AI object detection, smart recording, and efficient video management. Built with Python, Flask, and YOLOv5, this application provides enterprise-grade surveillance capabilities with a user-friendly interface.
+SmartNVR is a modern AI-powered Network Video Recorder (NVR) built with Flask, MongoDB, OpenCV, and Ultralytics models.
 
-![Smart-NVR-GPU Dashboard](static/img/dashboard-preview.png)
+It combines live camera monitoring, AI detection, timeline playback, face intelligence, ROI-based alerting, and system monitoring in a single web application.
 
-## Features
+## What's New (April 2026)
 
-- **GPU-Accelerated AI Detection**: Real-time object detection using YOLOv5, v8, v9, v10 models with CUDA acceleration
-- **Multi-GPU Aware**: When 2 or more GPUs are present, cameras are distributed across GPUs automatically (round-robin)
-- **Smart Recording Management**: Automatic recording based on motion or specific AI detection events
-- **Live Camera Dashboard**: Monitor multiple RTSP/IP cameras simultaneously with object detection overlays
-- **Regions of Interest (ROI)**: Define specific areas for detection with time-based scheduling support
-- **Advanced Playback**: Timeline-based video playback with object detection markers and filtering
-- **Gemini AI Integration**: Human-friendly, context-aware descriptions for detection events using Google's Gemini AI
-- **Optional Face Detection**: RetinaFace-based face detection powered by the UniFace ONNX runtime library
-- **Face Recognition Gallery**: Automatically group faces, assign friendly names, and monitor appearances over time
-- **System Resource Monitoring**: Track CPU, RAM, GPU, and disk usage in real-time
-- **Modern UI**: Clean, responsive interface designed for ease of use
-- **Multi-User Support**: Role-based access with administrative and standard user accounts
-- **Notifications**: Configurable alerts for specific object detections via email
-- **API Access**: RESTful API for integration with other systems
-- **MongoDB Support**: Scalable NoSQL database for improved performance and flexibility
+- 2026 UI refresh across core pages with responsive layout improvements.
+- Dashboard, Monitor, and Playback visual upgrades with cleaner controls and chart styling.
+- New **Use Cases** page (`/usecase`) with charts and workflow guidance for end users.
+- Settings page responsiveness improvements for normal browser zoom and laptop resolutions.
+- Face gallery performance upgrades:
+  - paginated face listing API
+  - lighter list queries with projection
+  - lazy image loading and faster image route behavior
+- Notification emails redesigned to match the modern UI language.
+- Login and Register pages tuned for better scaling across desktop zoom levels.
+
+## Core Capabilities
+
+### Realtime Operations
+- Live multi-camera dashboard with detection overlays.
+- Quick stream quality selection and fullscreen controls.
+- Camera and model status visibility.
+
+### AI Detection and ROI
+- Object detection with configurable confidence thresholds.
+- ROI creation and class filtering.
+- Time-based ROI schedules (days and active windows).
+- Optional Gemini-generated human-friendly notification summaries.
+
+### Playback and Investigation
+- Timeline-based playback with event context.
+- Event filtering and camera/date scoping.
+- Snapshot and clip review workflows.
+
+### Face Intelligence
+- UniFace-based face detection pipeline.
+- Face profile gallery for naming and management.
+- Face recognition/grouping with configurable thresholds.
+- Optional auto-assimilation behavior for known identities.
+
+### Monitoring and Administration
+- CPU, memory, disk, and GPU visibility in System Monitor.
+- User management and model management for admins.
+- Profile and application-level settings panels.
+
+## Product Navigation
+
+After login, key sections are available in the sidebar:
+
+- `Dashboard`
+- `Playback`
+- `Cameras`
+- `Faces`
+- `Settings`
+- `System Monitor`
+- `Use Cases` (new)
+
+Admin users also see:
+
+- `User Management`
+- `AI Models`
+
+## Tech Stack
+
+- **Backend**: Flask, Flask-Login
+- **Database**: MongoDB (`flask-pymongo`, `pymongo`)
+- **Video and CV**: OpenCV, NumPy
+- **Detection**: Ultralytics (`ultralytics` package)
+- **Face Detection**: UniFace (ONNX Runtime providers)
+- **Face Recognition**: facenet-pytorch
+- **Frontend**: Jinja templates, Bootstrap 5, Chart.js, custom CSS/JS
 
 ## Requirements
 
 - Python 3.8+ (3.10+ recommended)
-- CUDA-compatible GPU (strongly recommended for real-time processing)
-- NVIDIA drivers and CUDA toolkit (for GPU acceleration)
-- RTSP/IP compatible cameras
-- 8GB+ RAM (16GB+ recommended for multiple camera streams)
-- MongoDB 4.4+ (for database storage)
-- Linux, Windows, or macOS (tested primarily on Linux)
-- [UniFace](https://github.com/yakhyo/uniface) (installed via `requirements.txt`) automatically downloads RetinaFace ONNX weights on first use; for NVIDIA acceleration install the optional `uniface[gpu]` extra
+- MongoDB 4.4+
+- RTSP/IP camera sources
+- 8 GB RAM minimum (16 GB+ recommended for multi-camera workloads)
+- NVIDIA GPU recommended for realtime inference
 
-## Installation
+## Quick Start
 
-### Standard Installation
+### 1) Clone and enter project
 
-1. Clone this repository:
 ```bash
-git clone https://github.com/yourusername/Smart-NVR-GPU.git
-cd Smart-NVR-GPU
+git clone https://github.com/ranjanjyoti152/Smart-NVR.git
+cd Smart-NVR
 ```
 
-2. Create a virtual environment and activate it:
+### 2) Create and activate virtual environment
+
 ```bash
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate  # Windows: venv\Scripts\activate
 ```
 
-3. Install dependencies:
+### 3) Install dependencies
+
 ```bash
 pip install -r requirements.txt
 ```
 
-4. Install MongoDB:
+### 4) Start MongoDB
+
+Example (Linux systemd):
+
 ```bash
-# For Ubuntu/Debian
-sudo apt update
-sudo apt install -y mongodb-org
-
-# For CentOS/RHEL
-sudo yum install -y mongodb-org
-
-# For macOS with Homebrew
-brew tap mongodb/brew
-brew install mongodb-community
-
-# Start MongoDB service
-sudo systemctl start mongod    # Linux
-brew services start mongodb-community  # macOS
+sudo systemctl start mongod
+sudo systemctl status mongod
 ```
 
-5. Initialize the database:
+### 5) Initialize database
+
 ```bash
 python initialize_db.py
 ```
 
-6. Start the application:
+Default admin account created by initializer:
+
+- Username: `admin`
+- Password: `admin`
+
+### 6) Run application
+
 ```bash
 python run.py
 ```
 
-7. Access the web interface at http://localhost:8000
+Open:
 
-### Docker Installation
+- `http://localhost:8000`
 
-```bash
-# Build the Docker image
-docker build -t smart-nvr-gpu .
+## Configuration
 
-# Run the container with GPU support and MongoDB
-docker run --gpus all -p 8000:8000 -v /path/to/storage:/app/storage \
-  --name smart-nvr -d smart-nvr-gpu
-```
+Primary runtime configuration is in:
 
-### Docker Compose Setup (Recommended)
+- `config/settings.json`
 
-1. Create a `docker-compose.yml` file:
-```yaml
-version: '3'
-services:
-  smart-nvr:
-    build: .
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./storage:/app/storage
-      - ./config:/app/config
-      - ./logs:/app/logs
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    depends_on:
-      - mongodb
-    environment:
-      - MONGODB_URI=mongodb://mongodb:27017/smartnvr
-  
-  mongodb:
-    image: mongo:4.4
-    volumes:
-      - mongodb_data:/data/db
-    ports:
-      - "27017:27017"
+General app config class:
 
-volumes:
-  mongodb_data:
-```
+- `config.py`
 
-2. Start the application using Docker Compose:
-```bash
-docker-compose up -d
-```
+Useful environment variables:
 
-## Quick Start Guide
+- `SECRET_KEY`
+- `MONGO_URI`
+- `SMARTNVR_GEMINI_API_KEY`
+- `SMARTNVR_GEMINI_MODEL`
+- `API_KEY` (internal API communication)
+- `PUBLIC_BASE_URL` (optional, recommended for email playback links)
 
-1. Login with the default credentials:
-   - Username: `admin`
-   - Password: `admin`
+## Recommended First-Time Workflow
 
-2. Navigate to Camera Management and add your first camera:
-   - Provide an RTSP URL, camera name, and credentials
-   - Select desired AI model and confidence threshold
-   - Enable recording and detection as needed
+1. Login as admin and open `Cameras`.
+2. Add at least one RTSP camera and enable detection.
+3. Configure ROIs (and schedule if needed).
+4. Open `Dashboard` to confirm live inference.
+5. Open `Playback` and validate timeline/event review.
+6. Enable email and optional Gemini enhancement in `Settings`.
+7. Visit `Use Cases` page for team onboarding and deployment patterns.
 
-3. Return to Dashboard to view your camera feeds with AI detection
+## Notification System
 
-4. Configure Regions of Interest (ROI) to focus detection on specific areas:
-   - Click "Manage ROI" on any camera card
-   - Draw regions using the interface
-   - Choose between "Always Active" or "Time-Based Schedule" ROI types
-   - Configure time schedules and active days for time-based ROIs
-   - Select specific object classes for detection in each region
-   - Enable email notifications if desired
+SmartNVR sends ROI-triggered email notifications with:
 
-5. Use the Recordings section to review detection events and continuous recordings
+- detection metadata
+- optional attached snapshot
+- optional playback deep link
+- optional Gemini summary
 
-6. (Optional) Enable UniFace face detection:
-  - Navigate to **Settings → AI Detection Settings → Face Detection (UniFace)**
-  - Toggle **Enable Face Detection** and choose the RetinaFace model/provider for your hardware
-  - UniFace downloads and caches the selected ONNX model the first time it runs
-  - Add "Face" to any ROI class list if you want notifications scoped to face events only
+The email templates were modernized in the latest update to align with the UI style system.
 
-## UniFace Face Detection
+## Face Gallery Performance Notes
 
-Smart-NVR integrates [UniFace](https://github.com/yakhyo/uniface) to provide RetinaFace-based face detection alongside YOLO object detection.
+Recent optimization updates include:
 
-### Highlights
+- paginated `/api/faces` responses
+- lighter face list projection (reduced payload)
+- faster face image fetch path
+- lazy-loaded gallery thumbnails
 
-- Runs on ONNX Runtime and supports CPU, CUDA, TensorRT, or DirectML execution providers
-- Offers MobileNet and ResNet RetinaFace variants to balance speed and accuracy
-- Automatically downloads and caches ONNX weights under `~/.uniface/models/`
-- Emits five-point facial landmarks suitable for overlays or downstream analytics
-- Seamlessly shares ROI, recording, and notification pipelines (including class filters)
+These changes improve large-library responsiveness significantly.
 
-### Enabling Face Detection
+## API Notes
 
-1. Install dependencies with `pip install -r requirements.txt`. For NVIDIA acceleration run `pip install "uniface[gpu]"` to obtain CUDA-capable execution providers.
-2. Open **Settings → AI Detection Settings** and enable **Face Detection (UniFace)**.
-3. Select the preferred RetinaFace model and ONNX Runtime provider.
-4. Start or restart the desired cameras—UniFace will fetch weights on first use and log provider availability.
+The app exposes API routes under `/api` for camera, detection, playback, ROI, face, and configuration flows.
 
-### Operational Notes
+Examples:
 
-- Face detections are stored with a `source` field of `uniface` and include landmark metadata when available.
-- ROI email notifications respect detection class filters—include "Face" for face-only alerts.
-- UniFace detections run in parallel with YOLO results and participate in snapshot capture and persistence.
-
-## Face Recognition & Labeling
-
-Smart-NVR includes an optional face gallery that clusters UniFace detections, builds persistent profiles, and lets you assign friendly names for quick identification.
-
-### Capabilities
-
-- Automatically generates face profiles using `facenet-pytorch` embeddings.
-- Groups repeat appearances—even before a name is assigned—so you can label them later.
-- Tracks sample counts, total detections, and last-seen timestamps per profile.
-- Provides a dedicated **Faces** page to review crops, rename individuals, or delete profiles.
-
-### Enabling Face Recognition
-
-1. Install dependencies with `pip install -r requirements.txt` (this includes `facenet-pytorch`).
-2. Navigate to **Settings → AI Detection Settings → Face Detection (UniFace)**.
-3. Enable **Face Detection** and toggle **Face Recognition & Grouping**.
-4. Optionally adjust the cosine similarity threshold or automatic profile creation.
-5. After restarting affected cameras, visit the new **Faces** navigation item to manage identities.
-
-> Face recognition depends on UniFace face detection. If detection is disabled, profiles will not populate.
-
-## MongoDB Transition
-
-As of April 2025, Smart-NVR has transitioned from SQLite to MongoDB as its primary database engine. This transition provides several benefits:
-
-### Benefits of MongoDB
-- **Improved Performance**: Better handling of concurrent read/write operations
-- **Enhanced Scalability**: Easily scale to thousands of cameras and detection events
-- **Flexible Schema**: Adapt to changing data requirements without migration hassles
-- **Native JSON Support**: Simplified API interactions and data processing
-- **Robust Querying**: Advanced query capabilities for complex filtering
-
-### Migration Instructions
-If you're upgrading from a previous SQLite-based version:
-
-1. Back up your existing data:
-```bash
-python backup_db.py
-```
-
-2. Install MongoDB following the installation instructions above
-
-3. Run the migration script:
-```bash
-python migrate_to_mongodb.py
-```
-
-4. Start Smart-NVR with MongoDB:
-```bash
-python run.py --db-type=mongodb
-```
-
-### MongoDB Configuration
-The MongoDB connection can be configured in `config/settings.json`:
-
-```json
-{
-  "database": {
-    "type": "mongodb",
-    "uri": "mongodb://localhost:27017/",
-    "name": "smartnvr"
-  }
-}
-```
-
-Or using environment variables:
-```bash
-export SMARTNVR_DB_TYPE=mongodb
-export SMARTNVR_DB_URI=mongodb://localhost:27017/smartnvr
-```
-
-## Gemini AI Integration
-
-As of May 2025, Smart-NVR-GPU includes integration with Google's Gemini AI for enhanced detection notifications:
-
-### Features
-- **Smart Detection Descriptions**: Convert technical detection metadata into human-friendly descriptions
-- **Context-Aware Notifications**: Email alerts that describe what's happening in natural language
-- **Configurable per ROI**: Enable/disable Gemini AI on a per-region basis
-- **Fallback Mechanism**: Automatically reverts to standard notifications if Gemini AI is unavailable
-
-### Setup Instructions
-1. **Obtain a Gemini API Key**:
-   - Visit [Google AI Studio](https://aistudio.google.com/app/apikey) to get your API key
-   - Free tier is available with generous limits for typical home usage
-
-2. **Configure in Settings**:
-   - Navigate to Settings page in Smart-NVR
-   - Under "AI Detection Settings", find "Gemini AI Enhancement"  
-   - Enable Gemini AI, enter your API key, and select Gemini model
-   - Click "Test Gemini Connection" to verify functionality
-
-3. **Enable for ROI Notifications**:
-   - In the Camera Management page, click "Manage ROI" for any camera
-   - Create or edit a region, and ensure email notifications are enabled
-   - In the "Smart Email Notifications" panel, enable "Use Gemini AI Smart Descriptions"
-
-### Gemini Models
-- **Gemini 1.5 Flash**: Fastest response, good for typical descriptions (recommended)
-- **Gemini 1.5 Pro**: More detailed analysis, but slightly slower
-- **Gemini Pro**: Original model, maintained for backward compatibility
-
-### Example Usage
-When Gemini AI is enabled for an ROI, instead of a standard notification like:
-```
-Object detected: person (0.87 confidence) in ROI "Backyard"
-```
-
-You'll receive a more descriptive notification such as:
-```
-A person was detected walking through your Backyard at 3:42 PM. They appear to be carrying a package and approaching your back door.
-```
-
-### Environment Variables
-- `SMARTNVR_GEMINI_API_KEY`: API key for Gemini AI (alternative to UI configuration)
-- `SMARTNVR_GEMINI_MODEL`: Model to use (gemini-1.5-flash, gemini-1.5-pro, gemini-pro)
-
-## Advanced Configuration
-
-The application can be configured through the web interface or by editing these files:
-
-- `config/settings.json`: Main application settings
-- `app/utils/camera_processor.py`: Camera processing and AI detection parameters
-- Environment variables:
-  - `SMARTNVR_SECRET_KEY`: Flask secret key
-  - `SMARTNVR_PORT`: Web server port (default: 8000)
-  - `SMARTNVR_GPU_ENABLED`: Enable/disable GPU acceleration (default: true)
-  - `SMARTNVR_DB_TYPE`: Database type (mongodb or sqlite)
-  - `SMARTNVR_DB_URI`: MongoDB connection URI
-
-### Multi-GPU Usage
-
-- Smart-NVR will automatically detect available CUDA devices at startup and assign each active camera to a specific GPU in round-robin fashion (cuda:0, cuda:1, ...).
-- If a GPU runs out of memory during inference for a camera, that camera will gracefully fall back to CPU to keep the stream alive. Other cameras continue using their assigned GPUs.
-- No extra configuration is required. For Docker, ensure you run the container with `--gpus all` or configure GPU resources in Docker Compose.
-
-## Models
-
-Smart-NVR-GPU comes with the following YOLOv5 models:
-
-- **YOLOv5n**: Nano model (fastest, lowest accuracy)
-- **YOLOv5s**: Small model (good balance for most use cases)
-- **YOLOv5m**: Medium model (higher accuracy, moderate resource usage)
-- **YOLOv5l**: Large model (high accuracy, higher resource usage)
-- **YOLOv5x**: Extra large model (highest accuracy, highest resource usage)
-
-Custom models can be added through the Admin > AI Models section.
-
-## Performance Optimization
-
-- Use the smallest YOLOv5 model that meets your detection needs
-- Lower the resolution or frame rate of camera feeds for better performance
-- Create focused Regions of Interest rather than analyzing the entire frame
-- Configure detection thresholds to balance accuracy and false positives
-- Ensure your GPU has adequate VRAM for the number of camera streams
-- With MongoDB, consider indexing frequently queried fields for faster retrieval
+- `/api/cameras`
+- `/api/cameras/<camera_id>/frame`
+- `/api/faces`
+- `/api/test_email`
+- `/api/test_gemini`
 
 ## Troubleshooting
 
-- Check logs in the `/logs` directory for detailed error information
-- Verify camera RTSP URLs are accessible from the host machine
-- Ensure proper GPU drivers are installed for CUDA acceleration
-- For memory issues, reduce the number of cameras or lower resolution
-- MongoDB connection errors: Check if MongoDB is running with `sudo systemctl status mongod`
-- For MongoDB authentication issues, verify credentials in `config/settings.json`
+- Check logs in `logs/` when diagnosing startup or runtime issues.
+- Verify MongoDB connectivity before launching the app.
+- For camera issues, validate RTSP reachability from host machine.
+- For performance issues:
+  - reduce stream resolution/fps
+  - tune model size and confidence
+  - use focused ROIs instead of full-frame detection
+- For face or alert delays, verify settings toggles and camera processor status.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome.
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+Basic flow:
 
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+1. Fork repository
+2. Create feature branch
+3. Commit focused changes
+4. Push branch
+5. Open pull request
 
 ## Acknowledgments
 
-- [YOLOv5](https://github.com/ultralytics/yolov5) for the object detection models
-- [Flask](https://flask.palletsprojects.com/) web framework
-- [OpenCV](https://opencv.org/) for video processing
-- [PyTorch](https://pytorch.org/) for deep learning functionality
-- [MongoDB](https://www.mongodb.com/) for database operations
-- [PyMongo](https://pymongo.readthedocs.io/) for MongoDB connectivity in Python
+- Flask
+- MongoDB
+- OpenCV
+- Ultralytics
+- UniFace
+- facenet-pytorch
+- Chart.js
